@@ -53,7 +53,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Generates a `compile_commands.json` to help IDE intergration
+# Generates a `compile_commands.json` to help IDE integration
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 ###
