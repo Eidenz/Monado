@@ -2163,6 +2163,13 @@ enum xrt_body_tracking_calibration_state_meta
 	XRT_BODY_TRACKING_CALIBRATION_STATE_INVALID_META = 3,
 };
 
+/// @addtogroup XR_META_body_tracking_fidelity
+enum xrt_body_tracking_fidelity_meta
+{
+	XRT_BODY_TRACKING_FIDELITY_LOW_META = 1,
+	XRT_BODY_TRACKING_FIDELITY_HIGH_META = 2,
+};
+
 /// @addtogroup XR_FB_body_tracking
 struct xrt_body_skeleton_joint_fb
 {
@@ -2211,6 +2218,9 @@ struct xrt_base_body_joint_set_meta
 	{
 		// Requires XR_META_body_tracking_calibration, @ref xrt_device_supported::body_tracking_calibration
 		enum xrt_body_tracking_calibration_state_meta calibration_status;
+
+		// Requires XR_META_body_tracking_fidelity, @ref xrt_device_supported::body_tracking_fidelity
+		enum xrt_body_tracking_fidelity_meta fidelity_status;
 	} exts;
 };
 

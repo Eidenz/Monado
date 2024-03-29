@@ -419,6 +419,7 @@ ipc_handle_instance_describe_client(volatile struct ipc_client_state *ics,
 	EXT(fb_body_tracking_enabled);
 	EXT(meta_body_tracking_full_body_enabled);
 	EXT(meta_body_tracking_calibration_enabled);
+	EXT(meta_body_tracking_fidelity_enabled);
 	EXT(fb_face_tracking2_enabled);
 	EXT(android_face_tracking_enabled);
 
@@ -588,6 +589,7 @@ ipc_handle_session_begin(volatile struct ipc_client_state *ics)
 	    .fb_face_tracking2_enabled = ics->client_state.info.fb_face_tracking2_enabled,
 	    .meta_body_tracking_full_body_enabled = ics->client_state.info.meta_body_tracking_full_body_enabled,
 	    .meta_body_tracking_calibration_enabled = ics->client_state.info.meta_body_tracking_calibration_enabled,
+	    .meta_body_tracking_fidelity_enabled = ics->client_state.info.meta_body_tracking_fidelity_enabled,
 	    .android_face_tracking_enabled = ics->client_state.info.android_face_tracking_enabled,
 	};
 
@@ -2844,6 +2846,16 @@ ipc_handle_device_set_body_tracking_calibration_override_meta(volatile struct ip
 	struct xrt_device *xdev = NULL;
 	GET_XDEV_OR_RETURN(ics, id, xdev);
 	return xrt_device_set_body_tracking_calibration_override_meta(xdev, new_body_height);
+}
+
+xrt_result_t
+ipc_handle_device_set_body_tracking_fidelity_meta(volatile struct ipc_client_state *ics,
+                                                  uint32_t id,
+                                                  enum xrt_body_tracking_fidelity_meta new_fidelity)
+{
+	struct xrt_device *xdev = NULL;
+	GET_XDEV_OR_RETURN(ics, id, xdev);
+	return xrt_device_set_body_tracking_fidelity_meta(xdev, new_fidelity);
 }
 
 xrt_result_t

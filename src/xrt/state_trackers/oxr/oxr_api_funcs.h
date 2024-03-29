@@ -722,6 +722,12 @@ oxr_xrSuggestBodyTrackingCalibrationOverrideMETA(XrBodyTrackerFB bodyTracker,
                                                  const XrBodyTrackingCalibrationInfoMETA *calibrationInfo);
 #endif
 
+#ifdef OXR_HAVE_META_body_tracking_fidelity
+//! OpenXR API function @ep{xrRequestBodyTrackingFidelityMETA}
+XRAPI_ATTR XrResult XRAPI_CALL
+oxr_xrRequestBodyTrackingFidelityMETA(XrBodyTrackerFB bodyTracker, const XrBodyTrackingFidelityMETA fidelity);
+#endif
+
 /*
  *
  * oxr_api_future.c

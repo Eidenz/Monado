@@ -291,6 +291,7 @@ struct xrt_device_supported
 	bool face_tracking_calibration_state;
 	bool body_tracking;
 	bool body_tracking_calibration;
+	bool body_tracking_fidelity;
 	bool battery_status;
 	bool brightness_control;
 	bool compositor_info;
@@ -487,6 +488,17 @@ struct xrt_device
 	 * @param[in] new_body_height   The suggested new body height to override.
 	 */
 	xrt_result_t (*set_body_tracking_calibration_override_meta)(struct xrt_device *xdev, float new_body_height);
+
+	/*!
+	 * @brief XR_META_body_tracking_fidelity - body tracking extension for request changing the tracking fidelity
+	 *
+	 * @param[in] xdev              The body tracking device.
+	 * @param[in] new_fidelity      The new tracking fidelity mode.
+	 *
+	 * @see xrt_body_tracking_fidelity_meta
+	 */
+	xrt_result_t (*set_body_tracking_fidelity_meta)(struct xrt_device *xdev,
+	                                                enum xrt_body_tracking_fidelity_meta new_fidelity);
 
 	/*!
 	 * Set a output value.
@@ -879,6 +891,22 @@ xrt_device_set_body_tracking_calibration_override_meta(struct xrt_device *xdev, 
 		return XRT_ERROR_NOT_IMPLEMENTED;
 	}
 	return xdev->set_body_tracking_calibration_override_meta(xdev, new_body_height);
+}
+
+/*!
+ * Helper function for @ref xrt_device::set_body_tracking_fidelity_meta.
+ *
+ * @copydoc xrt_device::set_body_tracking_fidelity_meta
+ *
+ * @public @memberof xrt_device
+ */
+XRT_NONNULL_ALL static inline xrt_result_t
+xrt_device_set_body_tracking_fidelity_meta(struct xrt_device *xdev, enum xrt_body_tracking_fidelity_meta new_fidelity)
+{
+	if (xdev->set_body_tracking_fidelity_meta == NULL) {
+		return XRT_ERROR_NOT_IMPLEMENTED;
+	}
+	return xdev->set_body_tracking_fidelity_meta(xdev, new_fidelity);
 }
 
 /*!

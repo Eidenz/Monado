@@ -223,5 +223,16 @@ oxr_locate_body_joints_fb(struct oxr_logger *log,
 	}
 #endif
 
+#ifdef OXR_HAVE_META_body_tracking_fidelity
+	XrBodyTrackingFidelityStatusMETA *fidelity_status = OXR_GET_OUTPUT_FROM_CHAIN(
+	    locations, XR_TYPE_BODY_TRACKING_FIDELITY_STATUS_META, XrBodyTrackingFidelityStatusMETA);
+	if (fidelity_status != NULL) {
+		if (!body_tracker_fb->xdev->supported.body_tracking_fidelity) {
+			return oxr_error(log, XR_ERROR_FEATURE_UNSUPPORTED,
+			                 "body tracking device does not support XR_META_body_tracking_fidelity");
+		}
+		fidelity_status->fidelity = (XrBodyTrackingFidelityMETA)body_joint_set_fb->exts.fidelity_status;
+	}
+#endif
 	return XR_SUCCESS;
 }
