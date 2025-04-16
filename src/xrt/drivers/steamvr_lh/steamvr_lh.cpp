@@ -282,6 +282,10 @@ Context::setup_controller(const char *serial, vr::ITrackedDeviceServerDriver *dr
 		controller[device_idx]->binding_profiles = vive_binding_profiles_index;
 		controller[device_idx]->binding_profile_count = vive_binding_profiles_index_count;
 		break;
+	case XRT_DEVICE_FLIPVR:
+		controller[device_idx]->binding_profiles = vive_binding_profiles_flipvr;
+		controller[device_idx]->binding_profile_count = vive_binding_profiles_flipvr_count;
+		break;
 	default: break;
 	}
 

@@ -150,6 +150,35 @@ const std::unordered_map<std::string_view, InputClass> controller_classes{
         },
     },
     {
+        "flipvr_controller_vc1b",
+        InputClass{
+            XRT_DEVICE_FLIPVR,
+            {
+                XRT_INPUT_FLIPVR_GRIP_POSE,
+                XRT_INPUT_FLIPVR_AIM_POSE,
+            },
+            {
+                {"/input/system/click", XRT_INPUT_FLIPVR_SYSTEM_CLICK},
+                {"/input/a/click", XRT_INPUT_FLIPVR_A_CLICK},
+                {"/input/a/touch", XRT_INPUT_FLIPVR_A_TOUCH},
+                {"/input/b/click", XRT_INPUT_FLIPVR_B_CLICK},
+                {"/input/b/touch", XRT_INPUT_FLIPVR_B_TOUCH},
+                {"/input/x/click", XRT_INPUT_FLIPVR_X_CLICK},
+                {"/input/x/touch", XRT_INPUT_FLIPVR_X_TOUCH},
+                {"/input/y/click", XRT_INPUT_FLIPVR_Y_CLICK},
+                {"/input/y/touch", XRT_INPUT_FLIPVR_Y_TOUCH},
+                {"/input/trigger/click", XRT_INPUT_FLIPVR_TRIGGER_CLICK},
+                {"/input/trigger/touch", XRT_INPUT_FLIPVR_TRIGGER_TOUCH},
+                {"/input/trigger/value", XRT_INPUT_FLIPVR_TRIGGER_VALUE},
+                {"/input/grip/value", XRT_INPUT_FLIPVR_SQUEEZE_VALUE},
+                {"/input/grip/click", XRT_INPUT_FLIPVR_SQUEEZE_CLICK},
+                {"/input/joystick/click", XRT_INPUT_FLIPVR_THUMBSTICK_CLICK},
+                {"/input/joystick/touch", XRT_INPUT_FLIPVR_THUMBSTICK_TOUCH},
+                {"/input/joystick", XRT_INPUT_FLIPVR_THUMBSTICK},
+            },
+        },
+    },
+    {
         "vive_tracker",
         InputClass{
             XRT_DEVICE_VIVE_TRACKER,
@@ -622,6 +651,10 @@ ControllerDevice::set_haptic_handle(vr::VRInputComponentHandle_t handle)
 	}
 	case XRT_DEVICE_INDEX_CONTROLLER: {
 		name = XRT_OUTPUT_NAME_INDEX_HAPTIC;
+		break;
+	}
+	case XRT_DEVICE_FLIPVR: {
+		name = XRT_OUTPUT_NAME_FLIPVR_HAPTIC;
 		break;
 	}
 	case XRT_DEVICE_VIVE_TRACKER: {
