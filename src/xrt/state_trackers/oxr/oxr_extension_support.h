@@ -819,6 +819,17 @@
 
 
 /*
+ * XR_MNDX_flipvr
+ */
+#if defined(XR_MNDX_flipvr) && defined(XRT_FEATURE_OPENXR_INTERACTION_MNDX)
+#define OXR_HAVE_MNDX_flipvr
+#define OXR_EXTENSION_SUPPORT_MNDX_flipvr(_) _(MNDX_flipvr, MNDX_FLIPVR)
+#else
+#define OXR_EXTENSION_SUPPORT_MNDX_flipvr(_)
+#endif
+
+
+/*
  * XR_MNDX_force_feedback_curl
  */
 #if defined(XR_MNDX_force_feedback_curl) && defined(XRT_FEATURE_OPENXR_FORCE_FEEDBACK_CURL)
@@ -977,6 +988,7 @@
     OXR_EXTENSION_SUPPORT_MNDX_ball_on_a_stick_controller(_) \
     OXR_EXTENSION_SUPPORT_MNDX_blubur_s1(_) \
     OXR_EXTENSION_SUPPORT_MNDX_egl_enable(_) \
+    OXR_EXTENSION_SUPPORT_MNDX_flipvr(_) \
     OXR_EXTENSION_SUPPORT_MNDX_force_feedback_curl(_) \
     OXR_EXTENSION_SUPPORT_MNDX_hydra(_) \
     OXR_EXTENSION_SUPPORT_MNDX_oculus_remote(_) \
