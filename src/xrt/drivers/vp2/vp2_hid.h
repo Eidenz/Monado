@@ -7,6 +7,11 @@
  * @ingroup drv_vp2
  */
 
+#pragma once
+
+
+#include <assert.h>
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -56,6 +61,20 @@ vp2_resolution_get_extents(enum vp2_resolution res, int *out_w, int *out_h)
 	}
 }
 
+static inline double
+vp2_resolution_get_refresh_rate(enum vp2_resolution res)
+{
+	switch (res) {
+	case VP2_RESOLUTION_2448_1224_90_03: return 90.03;
+	case VP2_RESOLUTION_2448_1224_120_05: return 120.05;
+	case VP2_RESOLUTION_3264_1632_90_00: return 90.0;
+	case VP2_RESOLUTION_3680_1836_90_02:
+	case VP2_RESOLUTION_4896_2448_90_02: return 90.02;
+	case VP2_RESOLUTION_4896_2448_120_02: return 120.02;
+	default: assert(!"unreachable: bad resolution"); return 0.0;
+	}
+}
+
 struct vp2_hid;
 
 int
@@ -64,8 +83,24 @@ vp2_hid_open(struct os_hid_device *hid_dev, struct vp2_hid **out_hid);
 enum vp2_resolution
 vp2_get_resolution(struct vp2_hid *vp2);
 
+struct vp2_config *
+vp2_get_config(struct vp2_hid *vpd);
+
 void
 vp2_hid_destroy(struct vp2_hid *vp2);
+
+const char *
+vp2_get_serial(struct vp2_hid *vp2);
+
+int
+vp2_set_noise_cancelling(struct vp2_hid *vp2, bool enabled);
+
+float
+vp2_get_brightness(struct vp2_hid *vp2);
+
+int
+vp2_set_brightness(struct vp2_hid *vp2, float brightness);
+
 
 #ifdef __cplusplus
 } // extern "C"
