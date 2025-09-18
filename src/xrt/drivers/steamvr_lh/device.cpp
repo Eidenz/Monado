@@ -49,6 +49,7 @@
 #define DEV_DEBUG(...) U_LOG_IFL_D(ctx->log_level, __VA_ARGS__)
 
 DEBUG_GET_ONCE_BOOL_OPTION(lh_emulate_hand, "LH_EMULATE_HAND", true)
+DEBUG_GET_ONCE_FLOAT_OPTION(lh_override_ipd, "LH_OVERRIDE_IPD_MM", -1.0f)
 
 // Each device will have its own input class.
 struct InputClass
@@ -941,7 +942,17 @@ HmdDevice::get_view_poses(const xrt_vec3 *default_eye_relation,
                           xrt_pose *out_poses)
 {
 	struct xrt_vec3 eye_relation = *default_eye_relation;
+
 	eye_relation.x = ipd;
+
+	float override_ipd_mm = debug_get_float_option_lh_override_ipd();
+	if (override_ipd_mm != -1.0f) {
+		// Convert from mm -> m
+		eye_relation.x = override_ipd_mm / 1000.0f;
+	} else if (this->variant == VIVE_VARIANT_PRO2) {
+		// Default to 63mm on Vive Pro 2, the IPD reading is completely borked and always sends 15mm
+		eye_relation.x = 0.063f;
+	}
 
 	xrt_result_t xret = u_device_get_view_poses( //
 	    this,                                    //
