@@ -765,12 +765,12 @@ flush_poses(TrackerSlam &t)
 
 		xrt_vec3 npos{data.px, data.py, data.pz};
 		xrt_quat nrot{data.ox, data.oy, data.oz, data.ow};
+		xrt_vec3 nvel{data.vx, data.vy, data.vz};
 
 		// Last relation
 		xrt_space_relation lr = XRT_SPACE_RELATION_ZERO;
 		int64_t lts;
 		t.slam_rels.get_latest(&lts, &lr);
-		xrt_vec3 lpos = lr.pose.position;
 		xrt_quat lrot = lr.pose.orientation;
 
 		double dt = time_ns_to_s(nts - lts);
@@ -778,12 +778,11 @@ flush_poses(TrackerSlam &t)
 		SLAM_TRACE("Dequeued SLAM pose ts=%ld p=[%f,%f,%f] r=[%f,%f,%f,%f]", //
 		           nts, data.px, data.py, data.pz, data.ox, data.oy, data.oz, data.ow);
 
-		// TODO linear velocity from the VIT system
 		// Compute new relation based on new pose and velocities since last pose
 		xrt_space_relation rel{};
 		rel.relation_flags = XRT_SPACE_RELATION_BITMASK_ALL;
 		rel.pose = {nrot, npos};
-		rel.linear_velocity = (npos - lpos) / dt;
+		rel.linear_velocity = nvel;
 		math_quat_finite_difference(&lrot, &nrot, dt, &rel.angular_velocity);
 
 		// Push to relationship history unless we are debugging prediction
