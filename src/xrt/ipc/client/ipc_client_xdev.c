@@ -37,9 +37,35 @@ static xrt_result_t
 ipc_client_xdev_update_inputs(struct xrt_device *xdev)
 {
 	struct ipc_client_xdev *icx = ipc_client_xdev(xdev);
+	struct ipc_connection *ipc_c = icx->ipc_c;
+	xrt_result_t xret;
 
-	xrt_result_t xret = ipc_call_device_update_input(icx->ipc_c, icx->device_id);
-	IPC_CHK_ALWAYS_RET(icx->ipc_c, xret, "ipc_call_device_update_input");
+	// Lock connection for varlen IPC
+	ipc_client_connection_lock(ipc_c);
+
+	// Send the request
+	xret = ipc_send_device_update_input_locked(ipc_c, icx->device_id);
+	IPC_CHK_WITH_GOTO(ipc_c, xret, "ipc_send_device_update_input_locked", out_unlock);
+
+	// Receive the reply (standard reply struct)
+	struct ipc_result_reply reply = {0};
+	xret = ipc_receive(&ipc_c->imc, &reply, sizeof(reply));
+	IPC_CHK_WITH_GOTO(ipc_c, xret, "ipc_receive(reply)", out_unlock);
+
+	// Check reply result
+	xret = reply.result;
+	IPC_CHK_WITH_GOTO(ipc_c, xret, "reply.result", out_unlock);
+
+	// Receive inputs as varlen data directly into our allocated array
+	if (xdev->input_count > 0) {
+		xret = ipc_receive(&ipc_c->imc, xdev->inputs, sizeof(struct xrt_input) * xdev->input_count);
+		IPC_CHK_WITH_GOTO(ipc_c, xret, "ipc_receive(inputs)", out_unlock);
+	}
+
+out_unlock:
+	ipc_client_connection_unlock(ipc_c);
+
+	return xret;
 }
 
 static xrt_result_t
@@ -418,7 +444,6 @@ ipc_client_xdev_init(struct ipc_client_xdev *icx,
                      u_device_destroy_function_t destroy_fn)
 {
 	// Helpers.
-	struct ipc_shared_memory *ism = ipc_c->ism;
 	xrt_result_t xret = XRT_SUCCESS;
 
 	// Queried later.
@@ -475,20 +500,52 @@ ipc_client_xdev_init(struct ipc_client_xdev *icx,
 	snprintf(icx->base.str, XRT_DEVICE_NAME_LEN, "%s", info.str);
 	snprintf(icx->base.serial, XRT_DEVICE_NAME_LEN, "%s", info.serial);
 
-	// Setup inputs, by pointing directly to the shared memory.
+	/*
+	 * Allocate inputs array on client side. We receive the input names
+	 * from the server, so we can use them to fill the inputs array.
+	 */
 	icx->base.input_count = info.input_count;
 	if (info.input_count > 0) {
-		assert(info.first_input_index < IPC_SHARED_MAX_INPUTS);
-		icx->base.inputs = &ism->inputs[info.first_input_index];
+		// Allocate inputs array.
+		icx->base.inputs = U_TYPED_ARRAY_CALLOC(struct xrt_input, info.input_count);
+		// Allocate input names array (temporary, freed on all paths).
+		enum xrt_input_name *input_names = U_TYPED_ARRAY_CALLOC(enum xrt_input_name, info.input_count);
+
+		// Receive input names from server.
+		xret = ipc_receive(&ipc_c->imc, input_names, sizeof(enum xrt_input_name) * info.input_count);
+		if (xret == XRT_SUCCESS) {
+			// On success, fill the inputs array with the input names.
+			for (size_t i = 0; i < info.input_count; i++) {
+				icx->base.inputs[i].name = input_names[i];
+			}
+		}
+		free(input_names);
+		IPC_CHK_WITH_GOTO(ipc_c, xret, "ipc_receive(input names)", out_free_and_unlock);
 	} else {
 		icx->base.inputs = NULL;
 	}
 
-	// Setup outputs, if any point directly into the shared memory.
+	/*
+	 * Allocate outputs array on client side. We receive the output names
+	 * from the server, so we can use them to fill the outputs array.
+	 */
 	icx->base.output_count = info.output_count;
 	if (info.output_count > 0) {
-		assert(info.first_output_index < IPC_SHARED_MAX_OUTPUTS);
-		icx->base.outputs = &ism->outputs[info.first_output_index];
+		// Allocate outputs array.
+		icx->base.outputs = U_TYPED_ARRAY_CALLOC(struct xrt_output, info.output_count);
+		// Allocate output names array (temporary, freed on all paths).
+		enum xrt_output_name *output_names = U_TYPED_ARRAY_CALLOC(enum xrt_output_name, info.output_count);
+
+		// Receive output names from server.
+		xret = ipc_receive(&ipc_c->imc, output_names, sizeof(enum xrt_output_name) * info.output_count);
+		if (xret == XRT_SUCCESS) {
+			// On success, fill the outputs array with the output names.
+			for (size_t i = 0; i < info.output_count; i++) {
+				icx->base.outputs[i].name = output_names[i];
+			}
+		}
+		free(output_names);
+		IPC_CHK_WITH_GOTO(ipc_c, xret, "ipc_receive(output names)", out_free_and_unlock);
 	} else {
 		icx->base.outputs = NULL;
 	}
@@ -593,9 +650,17 @@ err_fini:
 void
 ipc_client_xdev_fini(struct ipc_client_xdev *icx)
 {
-	// We do not own these, so don't free them.
-	icx->base.inputs = NULL;
-	icx->base.outputs = NULL;
+	// Free inputs array
+	if (icx->base.inputs != NULL) {
+		free(icx->base.inputs);
+		icx->base.inputs = NULL;
+	}
+
+	// Free outputs array
+	if (icx->base.outputs != NULL) {
+		free(icx->base.outputs);
+		icx->base.outputs = NULL;
+	}
 
 	// Free binding profiles.
 	if (icx->base.binding_profiles != NULL) {

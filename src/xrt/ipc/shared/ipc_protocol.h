@@ -42,8 +42,6 @@
 #define IPC_MAX_RAW_VIEWS 32 // Max views that we can get, artificial limit.
 #define IPC_EVENT_QUEUE_SIZE 32
 
-#define IPC_SHARED_MAX_INPUTS 1024
-#define IPC_SHARED_MAX_OUTPUTS 128
 
 // example: v21.0.0-560-g586d33b5
 #define IPC_VERSION_NAME_LEN 64
@@ -132,6 +130,8 @@ struct ipc_device_list
  * Device information sent over IPC.
  *
  * Followed by varlen data containing:
+ * - An array of input_count * enum xrt_input_name
+ * - An array of output_count * enum xrt_output_name
  * - An array of binding_profile_count * struct ipc_binding_profile_info
  * - An array of total_input_pair_count * struct xrt_binding_input_pair
  * - An array of total_output_pair_count * struct xrt_binding_output_pair
@@ -164,13 +164,9 @@ struct ipc_device_info
 
 	//! Number of inputs.
 	uint32_t input_count;
-	//! 'Offset' into the shared memory array of inputs where the inputs start.
-	uint32_t first_input_index;
 
 	//! Number of outputs.
 	uint32_t output_count;
-	//! 'Offset' into the shared memory array of outputs where the outputs start.
-	uint32_t first_output_index;
 
 	//! The supported fields.
 	struct xrt_device_supported supported;
@@ -309,10 +305,6 @@ struct ipc_shared_memory
 		enum xrt_blend_mode blend_modes[XRT_MAX_DEVICE_BLEND_MODES];
 		uint32_t blend_mode_count;
 	} hmd;
-
-	struct xrt_input inputs[IPC_SHARED_MAX_INPUTS];
-
-	struct xrt_output outputs[IPC_SHARED_MAX_OUTPUTS];
 
 	struct ipc_layer_slot slots[IPC_MAX_SLOTS];
 

@@ -84,14 +84,6 @@ struct ipc_swapchain_data
 	bool active;
 };
 
-struct ipc_client_device_state
-{
-	//! Offset to the inputs in the shared memory area.
-	uint32_t first_input_index;
-
-	//! Offset to the outputs in the shared memory area.
-	uint32_t first_output_index;
-};
 
 /*!
  * Holds the state for a single client.
@@ -125,21 +117,6 @@ struct ipc_client_state
 		 * so we don't need to lock it.
 		 */
 		struct xrt_device *xdevs[XRT_SYSTEM_MAX_DEVICES];
-
-		/*!
-		 * Array of device state, keeps calculated information needed
-		 * to handle the devices, such as the offsets to inputs.
-		 */
-		struct ipc_client_device_state states[XRT_SYSTEM_MAX_DEVICES];
-
-		//! Number of devices added to shared memory.
-		uint32_t isdev_count;
-
-		//! Current index for inputs in shared memory.
-		uint32_t input_index;
-
-		//! Current index for outputs in shared memory.
-		uint32_t output_index;
 	} objects;
 
 	//! Session for this client.

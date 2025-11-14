@@ -21,6 +21,7 @@
 	},
 
 	"device_update_input": {
+		"varlen": true,
 		"in": [
 			{"name": "id", "type": "uint32_t"}
 		]

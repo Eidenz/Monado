@@ -45,11 +45,6 @@
 		IPC_CHK_AND_RET((ICS)->server, xret, "ipc_server_objects_get_xdev_and_validate");                      \
 	} while (0)
 
-#define GET_ICDEV_STATE_OR_RETURN(ICS, ID, STATE)                                                                      \
-	do {                                                                                                           \
-		xrt_result_t xret = ipc_server_objects_get_icdev_state_and_validate((ICS), ID, &(STATE));              \
-		IPC_CHK_AND_RET((ICS)->server, xret, "ipc_server_objects_get_icdev_state_and_validate");               \
-	} while (0)
 
 static xrt_result_t
 validate_swapchain_state(volatile struct ipc_client_state *ics, uint32_t *out_index)
@@ -1935,10 +1930,7 @@ ipc_handle_tracking_origin_get_info(volatile struct ipc_client_state *ics,
  */
 
 static void
-fill_device_info(volatile struct ipc_client_device_state *state,
-                 struct xrt_device *xdev,
-                 uint32_t tracking_origin_id,
-                 struct ipc_device_info *out_info)
+fill_device_info(struct xrt_device *xdev, uint32_t tracking_origin_id, struct ipc_device_info *out_info)
 {
 	// Fill in basic device info
 	out_info->name = xdev->name;
@@ -1964,10 +1956,6 @@ fill_device_info(volatile struct ipc_client_device_state *state,
 	// Fill in input/output counts
 	out_info->input_count = xdev->input_count;
 	out_info->output_count = xdev->output_count;
-
-	// Get the indices from the shared device.
-	out_info->first_input_index = state->first_input_index;
-	out_info->first_output_index = state->first_output_index;
 }
 
 static xrt_result_t
@@ -2109,10 +2097,6 @@ ipc_handle_device_get_info(volatile struct ipc_client_state *ics, uint32_t devic
 	struct xrt_device *xdev = NULL;
 	GET_XDEV_OR_RETURN(ics, device_id, xdev);
 
-	// Validate the shared device
-	volatile struct ipc_client_device_state *state = NULL;
-	GET_ICDEV_STATE_OR_RETURN(ics, device_id, state);
-
 	// Get tracking origin ID
 	uint32_t tracking_origin_id = UINT32_MAX;
 	xret = ipc_server_objects_get_xtrack_id_or_add(ics, xdev->tracking_origin, &tracking_origin_id);
@@ -2122,15 +2106,35 @@ ipc_handle_device_get_info(volatile struct ipc_client_state *ics, uint32_t devic
 	struct ipc_device_get_info_reply reply = XRT_STRUCT_INIT;
 
 	// Use helper to fill device info
-	fill_device_info(state, xdev, tracking_origin_id, &reply.info);
-
-	// Get the indices from the shared device.
-	reply.info.first_input_index = state->first_input_index;
-	reply.info.first_output_index = state->first_output_index;
+	fill_device_info(xdev, tracking_origin_id, &reply.info);
 
 	// Send the device info.
 	xret = ipc_send(imc, &reply, sizeof(reply));
 	IPC_CHK_AND_RET(ics->server, xret, "ipc_send(device info)");
+
+	// Send input names as varlen data
+	if (xdev->input_count > 0) {
+		// Temporary, freed on all paths.
+		enum xrt_input_name *input_names = U_TYPED_ARRAY_CALLOC(enum xrt_input_name, xdev->input_count);
+		for (size_t i = 0; i < xdev->input_count; i++) {
+			input_names[i] = xdev->inputs[i].name;
+		}
+		xret = ipc_send(imc, input_names, sizeof(enum xrt_input_name) * xdev->input_count);
+		free(input_names);
+		IPC_CHK_AND_RET(ics->server, xret, "ipc_send(input names)");
+	}
+
+	// Send output names as varlen data
+	if (xdev->output_count > 0) {
+		// Temporary, freed on all paths.
+		enum xrt_output_name *output_names = U_TYPED_ARRAY_CALLOC(enum xrt_output_name, xdev->output_count);
+		for (size_t i = 0; i < xdev->output_count; i++) {
+			output_names[i] = xdev->outputs[i].name;
+		}
+		xret = ipc_send(imc, output_names, sizeof(enum xrt_output_name) * xdev->output_count);
+		free(output_names);
+		IPC_CHK_AND_RET(ics->server, xret, "ipc_send(output names)");
+	}
 
 	// Send all profiles in one go.
 	xret = send_binding_profiles(     //
@@ -2167,11 +2171,9 @@ ipc_handle_device_get_info_no_arrays(volatile struct ipc_client_state *ics,
                                      struct ipc_device_info *out_info)
 {
 	xrt_result_t xret = XRT_SUCCESS;
-	volatile struct ipc_client_device_state *state = NULL;
 	struct xrt_device *xdev = NULL;
 
 	GET_XDEV_OR_RETURN(ics, device_id, xdev);
-	GET_ICDEV_STATE_OR_RETURN(ics, device_id, state);
 
 	// Get tracking origin ID
 	uint32_t tracking_origin_id = UINT32_MAX;
@@ -2179,7 +2181,7 @@ ipc_handle_device_get_info_no_arrays(volatile struct ipc_client_state *ics,
 	IPC_CHK_AND_RET(ics->server, xret, "ipc_server_objects_get_xtrack_id_or_add");
 
 	// Use helper to fill device info
-	fill_device_info(state, xdev, tracking_origin_id, out_info);
+	fill_device_info(xdev, tracking_origin_id, out_info);
 
 	return XRT_SUCCESS;
 }
@@ -2187,60 +2189,68 @@ ipc_handle_device_get_info_no_arrays(volatile struct ipc_client_state *ics,
 xrt_result_t
 ipc_handle_device_update_input(volatile struct ipc_client_state *ics, uint32_t id)
 {
-	// To make the code a bit more readable.
+	struct ipc_message_channel *imc = (struct ipc_message_channel *)&ics->imc;
 	uint32_t device_id = id;
-	struct ipc_shared_memory *ism = get_ism(ics);
 	struct xrt_device *xdev = NULL;
-	volatile struct ipc_client_device_state *state = NULL;
 	xrt_result_t xret;
 
 	GET_XDEV_OR_RETURN(ics, device_id, xdev);
-	GET_ICDEV_STATE_OR_RETURN(ics, device_id, state);
 
 	// Update inputs.
 	xret = xrt_device_update_inputs(xdev);
-	if (xret != XRT_SUCCESS) {
-		IPC_ERROR(ics->server, "Failed to update input");
-		return xret;
-	}
 
-	// Copy data into the shared memory.
-	struct xrt_input *src = xdev->inputs;
-	struct xrt_input *dst = &ism->inputs[state->first_input_index];
-	size_t size = sizeof(struct xrt_input) * xdev->input_count;
+	/*
+	 * Reply structure, make sure to send the result. We need to tell the
+	 * client if the update was successful or not. We can not return the
+	 * result from the function call because we are sending varlen data.
+	 *
+	 * And if we return not success we disconnect the client, so we should
+	 * only do that if there is a problem with the connection.
+	 */
+	struct ipc_result_reply reply = {
+	    .result = xret,
+	};
 
+	xret = ipc_send(imc, &reply, sizeof(reply));
+	IPC_CHK_AND_RET(ics->server, xret, "ipc_send(result reply)");
+
+	// Used on both branches.
+	const size_t input_size = xdev->input_count * sizeof(struct xrt_input);
+
+	// Send inputs as varlen data
 	bool io_active = ics->io_active;
 	if (io_active) {
-		memcpy(dst, src, size);
+		// Send the full input state
+		xret = ipc_send(imc, xdev->inputs, input_size);
+		IPC_CHK_AND_RET(ics->server, xret, "ipc_send(inputs)");
 	} else {
-		memset(dst, 0, size);
+		struct xrt_input filtered[1024];
+		if (ARRAY_SIZE(filtered) < xdev->input_count) {
+			return XRT_ERROR_IPC_FAILURE;
+		}
 
 		for (uint32_t i = 0; i < xdev->input_count; i++) {
-			dst[i].name = src[i].name;
+			filtered[i].name = xdev->inputs[i].name;
 
 			// Special case the rotation of the head.
-			if (dst[i].name == XRT_INPUT_GENERIC_HEAD_POSE) {
-				dst[i].active = src[i].active;
+			if (filtered[i].name == XRT_INPUT_GENERIC_HEAD_POSE) {
+				filtered[i].active = xdev->inputs[i].active;
 			}
 		}
+
+		xret = ipc_send(imc, filtered, input_size);
+		IPC_CHK_AND_RET(ics->server, xret, "ipc_send(filtered inputs)");
 	}
 
-	// Reply.
 	return XRT_SUCCESS;
 }
 
 static struct xrt_input *
-find_input(volatile struct ipc_client_state *ics,
-           volatile struct ipc_client_device_state *state,
-           uint32_t input_count,
-           enum xrt_input_name name)
+find_input(struct xrt_device *xdev, enum xrt_input_name name)
 {
-	struct ipc_shared_memory *ism = get_ism(ics);
-	struct xrt_input *io = &ism->inputs[state->first_input_index];
-
-	for (uint32_t i = 0; i < input_count; i++) {
-		if (io[i].name == name) {
-			return &io[i];
+	for (uint32_t i = 0; i < xdev->input_count; i++) {
+		if (xdev->inputs[i].name == name) {
+			return &xdev->inputs[i];
 		}
 	}
 
@@ -2257,13 +2267,11 @@ ipc_handle_device_get_tracked_pose(volatile struct ipc_client_state *ics,
 	// To make the code a bit more readable.
 	uint32_t device_id = id;
 	struct xrt_device *xdev = NULL;
-	volatile struct ipc_client_device_state *state = NULL;
 
 	GET_XDEV_OR_RETURN(ics, device_id, xdev);
-	GET_ICDEV_STATE_OR_RETURN(ics, device_id, state);
 
 	// Find the input
-	struct xrt_input *input = find_input(ics, state, xdev->input_count, name);
+	struct xrt_input *input = find_input(xdev, name);
 	if (input == NULL) {
 		return XRT_ERROR_IPC_FAILURE;
 	}
