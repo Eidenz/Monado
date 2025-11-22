@@ -54,6 +54,7 @@
 { symbol: ["XRT_FEATURE_OPENXR_INTERACTION_EXT_HAND", "public", "\"xrt/xrt_config_build.h\"", "public"] },
 { symbol: ["XRT_FEATURE_OPENXR_INTERACTION_EXT_PALM_POSE", "public", "\"xrt/xrt_config_build.h\"", "public"] },
 { symbol: ["XRT_FEATURE_OPENXR_INTERACTION_FB_PROXIMITY", "public", "\"xrt/xrt_config_build.h\"", "public"] },
+{ symbol: ["XRT_FEATURE_OPENXR_INTERACTION_KHR_GENERIC", "public", "\"xrt/xrt_config_build.h\"", "public"] },
 { symbol: ["XRT_FEATURE_OPENXR_INTERACTION_ML2", "public", "\"xrt/xrt_config_build.h\"", "public"] },
 { symbol: ["XRT_FEATURE_OPENXR_INTERACTION_MNDX", "public", "\"xrt/xrt_config_build.h\"", "public"] },
 { symbol: ["XRT_FEATURE_OPENXR_INTERACTION_MSFT_HAND", "public", "\"xrt/xrt_config_build.h\"", "public"] },

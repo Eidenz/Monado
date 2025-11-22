@@ -796,6 +796,9 @@ enum xrt_device_name
 	XRT_DEVICE_TOUCH_CONTROLLER_QUEST_1_RIFT_S,
 	XRT_DEVICE_TOUCH_CONTROLLER_QUEST_2,
 
+	// XR_KHR_generic_controller
+	XRT_DEVICE_GENERIC_CONTROLLER,
+
 	// Hand based controller emulation.
 	XRT_DEVICE_HAND_CTRL_EMU,
 };
@@ -934,6 +937,17 @@ enum xrt_input_name
 	XRT_INPUT_SIMPLE_MENU_CLICK                                 = XRT_INPUT_NAME(0x0011, BOOLEAN),
 	XRT_INPUT_SIMPLE_GRIP_POSE                                  = XRT_INPUT_NAME(0x0012, POSE),
 	XRT_INPUT_SIMPLE_AIM_POSE                                   = XRT_INPUT_NAME(0x0013, POSE),
+
+	// XR_KHR_generic_controller
+	XRT_INPUT_GENERIC_PRIMARY_CLICK                             = XRT_INPUT_NAME(0x0014, BOOLEAN),
+	XRT_INPUT_GENERIC_SECONDARY_CLICK                           = XRT_INPUT_NAME(0x0015, BOOLEAN),
+	XRT_INPUT_GENERIC_THUMBSTICK_CLICK                          = XRT_INPUT_NAME(0x0016, BOOLEAN),
+	XRT_INPUT_GENERIC_THUMBSTICK                                = XRT_INPUT_NAME(0x0017, VEC2_MINUS_ONE_TO_ONE),
+	XRT_INPUT_GENERIC_SQUEEZE_VALUE                             = XRT_INPUT_NAME(0x0018, VEC1_ZERO_TO_ONE),
+	XRT_INPUT_GENERIC_TRIGGER_VALUE                             = XRT_INPUT_NAME(0x0019, VEC1_ZERO_TO_ONE),
+	XRT_INPUT_GENERIC_GRIP_POSE                                 = XRT_INPUT_NAME(0x001A, POSE),
+	XRT_INPUT_GENERIC_GRIP_SURFACE_POSE                         = XRT_INPUT_NAME(0x001B, POSE),
+	XRT_INPUT_GENERIC_AIM_POSE                                  = XRT_INPUT_NAME(0x001C, POSE),
 
 	XRT_INPUT_PSMV_PS_CLICK                                     = XRT_INPUT_NAME(0x0020, BOOLEAN),
 	XRT_INPUT_PSMV_MOVE_CLICK                                   = XRT_INPUT_NAME(0x0021, BOOLEAN),
@@ -1607,8 +1621,12 @@ enum xrt_output_name
 
 	XRT_OUTPUT_NAME_FLIPVR_HAPTIC                               = XRT_OUTPUT_NAME(0x0900, VIBRATION),
 
-	XRT_OUTPUT_NAME_MX_INK_HAPTIC                               = XRT_OUTPUT_NAME(0x0A00, VIBRATION)
+	XRT_OUTPUT_NAME_MX_INK_HAPTIC                               = XRT_OUTPUT_NAME(0x0A00, VIBRATION),
+
+	// XR_KHR_generic_controller
+	XRT_OUTPUT_NAME_GENERIC_VIBRATION                           = XRT_OUTPUT_NAME(0x0B00, VIBRATION),
 	// clang-format on
+	// Make sure to add a trailing comma to any new entries.
 };
 
 enum xrt_face_expression2_fb
