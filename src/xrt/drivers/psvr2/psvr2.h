@@ -34,6 +34,7 @@ extern "C" {
 #include "math/m_mathinclude.h"
 #include "math/m_relation_history.h"
 #include "math/m_filter_one_euro.h"
+#include "math/m_filter_fifo.h"
 
 #include "util/u_misc.h"
 #include "util/u_debug.h"
@@ -110,6 +111,8 @@ struct psvr2_hmd
 	struct u_var_button slam_correction_set_btn;
 	struct u_var_button slam_correction_reset_btn;
 
+	struct xrt_pose T_imu_head; //< Constant transform from SLAM tracker pose to head pose
+
 	/* Display parameters */
 	struct u_device_simple_info info;
 
@@ -156,7 +159,8 @@ struct psvr2_hmd
 	time_duration_ns hw2mono_imu;
 
 	/* Tracking state */
-	struct m_relation_history *relation_history;
+	struct m_relation_history *slam_relation_history;
+	struct m_ff_vec3_f32 *ff_gyro;
 };
 
 /// Casting helper function

@@ -222,7 +222,15 @@ if(XRT_BUILD_DRIVER_PSVR2)
 		psvr2/psvr2_protocol.h
 		psvr2/psvr2_distortion.c
 		)
-	target_link_libraries(drv_psvr2 PRIVATE xrt-interfaces aux_os aux_util ${LIBUSB1_LIBRARIES})
+	target_link_libraries(
+		drv_psvr2
+		PRIVATE
+			xrt-interfaces
+			aux_os
+			aux_util
+			aux_tracking
+			${LIBUSB1_LIBRARIES}
+		)
 	target_include_directories(drv_psvr2 PRIVATE ${LIBUSB1_INCLUDE_DIRS})
 	list(APPEND ENABLED_HEADSET_DRIVERS psvr2)
 endif()

@@ -29,6 +29,8 @@
 #include "math/m_vec3.h"
 #include "math/m_space.h"
 
+#include "tracking/t_dead_reckoning.h"
+
 #include "util/u_misc.h"
 #include "util/u_debug.h"
 #include "util/u_device.h"
@@ -95,7 +97,8 @@ psvr2_hmd_destroy(struct xrt_device *xdev)
 	// Remove the variable tracking.
 	u_var_remove_root(hmd);
 
-	m_relation_history_destroy(&hmd->relation_history);
+	m_ff_vec3_f32_free(&hmd->ff_gyro);
+	m_relation_history_destroy(&hmd->slam_relation_history);
 	os_mutex_destroy(&hmd->data_lock);
 	u_device_free(&hmd->base);
 }
@@ -125,6 +128,32 @@ psvr2_hmd_update_inputs(struct xrt_device *xdev)
 	return XRT_SUCCESS;
 }
 
+static void
+hmd_get_raw_tracker_pose(struct psvr2_hmd *hmd, timepoint_ns at_timestamp_ns, struct xrt_space_relation *out_relation)
+{
+	struct xrt_space_relation latest_relation;
+	timepoint_ns latest_relation_ts;
+	if (!m_relation_history_get_latest(hmd->slam_relation_history, &latest_relation_ts, &latest_relation)) {
+		*out_relation = (struct xrt_space_relation)XRT_SPACE_RELATION_ZERO;
+		return;
+	}
+
+	if (at_timestamp_ns <= latest_relation_ts) {
+		m_relation_history_get(hmd->slam_relation_history, at_timestamp_ns, out_relation);
+		return;
+	}
+
+	// Predict forward using dead reckoning
+	t_apply_dead_reckoning( //
+	    hmd->ff_gyro,       //
+	    NULL,               //
+	    NULL,               //
+	    at_timestamp_ns,    //
+	    &latest_relation,   //
+	    latest_relation_ts, //
+	    out_relation);      //
+}
+
 static xrt_result_t
 psvr2_hmd_get_tracked_pose(struct xrt_device *xdev,
                            enum xrt_input_name name,
@@ -148,8 +177,11 @@ psvr2_hmd_get_tracked_pose(struct xrt_device *xdev,
 
 	struct xrt_relation_chain chain = {0};
 
+	// Push the SLAM->head offset
+	m_relation_chain_push_pose(&chain, &hmd->T_imu_head);
+
 	// Push the normal head pose
-	m_relation_history_get(hmd->relation_history, prediction_ns_hw, m_relation_chain_reserve(&chain));
+	hmd_get_raw_tracker_pose(hmd, prediction_ns_hw, m_relation_chain_reserve(&chain));
 
 	// Resolve the final relation
 	m_relation_chain_resolve(&chain, out_relation);
@@ -255,8 +287,7 @@ process_imu_record(struct psvr2_hmd *hmd, int index, struct imu_usb_record *in, 
 		    .gyro_rad_secs = {hmd->last_gyro.x, hmd->last_gyro.y, hmd->last_gyro.z},
 		};
 
-		// TODO: process IMU samples into fusion
-		(void)sample;
+		m_ff_vec3_f32_push(hmd->ff_gyro, &hmd->last_gyro, sample.timestamp_ns);
 	}
 }
 
@@ -504,7 +535,7 @@ process_slam_record(struct psvr2_hmd *hmd, uint8_t *buf, int bytes_read)
 	        XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT),
 	};
 
-	m_relation_history_push_with_motion_estimation(hmd->relation_history, &relation, pose_sample.timestamp_ns);
+	m_relation_history_push_with_motion_estimation(hmd->slam_relation_history, &relation, pose_sample.timestamp_ns);
 }
 
 static void LIBUSB_CALL
@@ -1104,6 +1135,10 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 
 	struct psvr2_hmd *hmd = U_DEVICE_ALLOCATE(struct psvr2_hmd, flags, PSVR2_HMD_INPUT_COUNT, 1);
 
+	snprintf(hmd->base.tracking_origin->name, XRT_TRACKING_NAME_LEN, "PS VR2 Tracking");
+	hmd->base.tracking_origin->type = XRT_TRACKING_TYPE_EXTERNAL_SLAM;
+	hmd->base.tracking_origin->initial_offset = (struct xrt_pose)XRT_POSE_IDENTITY;
+
 	if (os_mutex_init(&hmd->data_lock) != 0) {
 		PSVR2_ERROR(hmd, "Failed to init data mutex!");
 		goto cleanup;
@@ -1114,7 +1149,7 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 		goto cleanup;
 	}
 
-	m_relation_history_create(&hmd->relation_history);
+	m_relation_history_create(&hmd->slam_relation_history);
 
 	if (!psvr2_usb_open(hmd, xpdev)) {
 		goto cleanup;
@@ -1136,6 +1171,12 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 
 	hmd->pose = (struct xrt_pose)XRT_POSE_IDENTITY;
 	hmd->log_level = debug_get_log_option_psvr2_log();
+	hmd->T_imu_head = (struct xrt_pose){
+	    .position = {.x = 0.000247f, .y = -0.000273f, .z = 0.104826f},
+	    .orientation = XRT_QUAT_IDENTITY,
+	};
+
+	m_ff_vec3_f32_alloc(&hmd->ff_gyro, 1024);
 
 	// Print name.
 	snprintf(hmd->base.str, XRT_DEVICE_NAME_LEN, "PS VR2 HMD");
