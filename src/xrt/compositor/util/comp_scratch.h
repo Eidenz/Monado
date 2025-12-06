@@ -1,5 +1,5 @@
 // Copyright 2019-2024, Collabora, Ltd.
-// Copyright 2024-2025, NVIDIA CORPORATION.
+// Copyright 2024-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -244,66 +244,6 @@ comp_scratch_single_images_clear_debug(struct comp_scratch_single_images *cssi);
  */
 void
 comp_scratch_single_images_destroy(struct comp_scratch_single_images *cssi);
-
-
-/*
- *
- * Stereo.
- *
- */
-
-/*!
- * Holds scartch images for a stereo views, designed to work with render code.
- * Also manages @ref xrt_image_native and @ref u_native_images_debug to
- * facilitate easy debugging.
- *
- * @ingroup comp_util
- */
-struct comp_scratch_stereo_images
-{
-	struct render_scratch_images rsis[COMP_SCRATCH_NUM_IMAGES];
-
-	struct xrt_swapchain_create_info info;
-
-	//! Keeping track of indices.
-	struct comp_scratch_indices indices;
-
-	struct
-	{
-		//! Debug output for each view.
-		struct u_native_images_debug unid;
-
-		//! Count always equals to the number of rsis.
-		struct xrt_image_native native_images[COMP_SCRATCH_NUM_IMAGES];
-	} views[2];
-
-	//! Process unique id, used for caching.
-	xrt_limited_unique_id_t limited_unique_id;
-};
-
-void
-comp_scratch_stereo_images_init(struct comp_scratch_stereo_images *cssi);
-
-bool
-comp_scratch_stereo_images_ensure(struct comp_scratch_stereo_images *cssi, struct vk_bundle *vk, VkExtent2D extent);
-
-void
-comp_scratch_stereo_images_free(struct comp_scratch_stereo_images *cssi, struct vk_bundle *vk);
-
-void
-comp_scratch_stereo_images_get(struct comp_scratch_stereo_images *cssi, uint32_t *out_index);
-
-void
-comp_scratch_stereo_images_done(struct comp_scratch_stereo_images *cssi);
-
-void
-comp_scratch_stereo_images_discard(struct comp_scratch_stereo_images *cssi);
-
-void
-comp_scratch_stereo_images_clear_debug(struct comp_scratch_stereo_images *cssi);
-
-void
-comp_scratch_stereo_images_destroy(struct comp_scratch_stereo_images *cssi);
 
 
 #ifdef __cplusplus
