@@ -1,5 +1,5 @@
 // Copyright 2019-2024, Collabora, Ltd.
-// Copyright 2025, NVIDIA CORPORATION.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -28,6 +28,7 @@
 #include "oxr_api_verify.h"
 #include "oxr_handle.h"
 #include "oxr_chain.h"
+#include "oxr_roles.h"
 
 
 XRAPI_ATTR XrResult XRAPI_CALL
@@ -634,7 +635,7 @@ oxr_xrCreatePlaneDetectorEXT(XrSession session,
 	OXR_VERIFY_EXTENSION(&log, sess->sys->inst, EXT_plane_detection);
 
 	//! @todo support planes on other devices
-	struct xrt_device *xdev = GET_XDEV_BY_ROLE(sess->sys, head);
+	struct xrt_device *xdev = GET_STATIC_XDEV_BY_ROLE(sess->sys, head);
 	if (!xdev->supported.planes) {
 		return XR_ERROR_FEATURE_UNSUPPORTED;
 	}

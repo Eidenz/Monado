@@ -1,5 +1,5 @@
 // Copyright 2018-2024, Collabora, Ltd.
-// Copyright 2023-2025, NVIDIA CORPORATION.
+// Copyright 2023-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -25,6 +25,7 @@
 #include "oxr_subaction.h"
 #include "oxr_conversions.h"
 #include "oxr_xret.h"
+#include "oxr_roles.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -728,7 +729,7 @@ get_binding(struct oxr_logger *log,
 #define PATH_CASE(NAME, NAMECAPS, PATH)                                                                                \
 	case OXR_SUB_ACTION_PATH_##NAMECAPS:                                                                           \
 		user_path_str = PATH;                                                                                  \
-		xdev = GET_XDEV_BY_ROLE(sess->sys, NAME);                                                              \
+		xdev = GET_XDEV_BY_ROLE(sess, NAME);                                                                   \
 		break;
 
 		OXR_FOR_EACH_VALID_SUBACTION_PATH_DETAILED(PATH_CASE)
@@ -842,8 +843,8 @@ oxr_find_profiles_from_roles(struct oxr_logger *log,
                              struct oxr_profiles_per_subaction *out_profiles)
 {
 #define FIND_PROFILE(X)                                                                                                \
-	if (!oxr_get_profile_for_device_name(log, sess, GET_PROFILE_NAME_BY_ROLE(sess->sys, X), &out_profiles->X)) {   \
-		struct xrt_device *xdev = GET_XDEV_BY_ROLE(sess->sys, X);                                              \
+	if (!oxr_get_profile_for_device_name(log, sess, GET_PROFILE_NAME_BY_ROLE(sess, X), &out_profiles->X)) {        \
+		struct xrt_device *xdev = GET_XDEV_BY_ROLE(sess, X);                                                   \
 		if (xdev != NULL) {                                                                                    \
 			oxr_find_profile_for_device(log, sess, xdev, &out_profiles->X);                                \
 		}                                                                                                      \
@@ -1818,7 +1819,7 @@ oxr_session_attach_action_sets(struct oxr_logger *log,
 	oxr_clone_profiles_to_session(log, inst, sess);
 
 	struct oxr_profiles_per_subaction profiles = {0};
-#define FIND_PROFILE(X) oxr_find_profile_for_device(log, sess, GET_XDEV_BY_ROLE(sess->sys, X), &profiles.X);
+#define FIND_PROFILE(X) oxr_find_profile_for_device(log, sess, GET_XDEV_BY_ROLE(sess, X), &profiles.X);
 	OXR_FOR_EACH_VALID_SUBACTION_PATH(FIND_PROFILE)
 #undef FIND_PROFILE
 

@@ -1,5 +1,5 @@
 // Copyright 2018-2021, Collabora, Ltd.
-// Copyright 2024-2025, NVIDIA CORPORATION.
+// Copyright 2024-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -32,6 +32,7 @@
 #include "oxr_api_verify.h"
 #include "oxr_chain.h"
 #include "oxr_xret.h"
+#include "oxr_roles.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1215,7 +1216,7 @@ handle_space(struct oxr_logger *log,
 	}
 
 	// The compositor doesn't know about spaces, so we want the space in the xdev's "space".
-	struct xrt_device *head_xdev = GET_XDEV_BY_ROLE(sess->sys, head);
+	struct xrt_device *head_xdev = GET_STATIC_XDEV_BY_ROLE(sess->sys, head);
 	struct xrt_space_relation T_space_xdev = XRT_SPACE_RELATION_ZERO;
 
 	XrResult ret = oxr_space_locate_device(log, head_xdev, spc, timestamp, &T_space_xdev);
@@ -1695,7 +1696,7 @@ oxr_session_frame_end(struct oxr_logger *log, struct oxr_session *sess, const Xr
 	 */
 
 	enum xrt_blend_mode blend_mode = convert_blend_mode(frameEndInfo->environmentBlendMode);
-	struct xrt_device *xdev = GET_XDEV_BY_ROLE(sess->sys, head);
+	struct xrt_device *xdev = GET_STATIC_XDEV_BY_ROLE(sess->sys, head);
 
 	if (!u_verify_blend_mode_valid(blend_mode)) {
 		return oxr_error(log, XR_ERROR_VALIDATION_FAILURE,

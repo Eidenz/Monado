@@ -1,4 +1,5 @@
 // Copyright 2025, Collabora, Ltd.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -43,7 +44,7 @@ oxr_face_tracker_android_create(struct oxr_logger *log,
 		return oxr_error(log, XR_ERROR_FEATURE_UNSUPPORTED, "System does not support Android face tracking");
 	}
 
-	struct xrt_device *xdev = GET_XDEV_BY_ROLE(sess->sys, face);
+	struct xrt_device *xdev = GET_STATIC_XDEV_BY_ROLE(sess->sys, face);
 	if (xdev == NULL) {
 		return oxr_error(log, XR_ERROR_FEATURE_UNSUPPORTED, "No device found for face tracking role");
 	}

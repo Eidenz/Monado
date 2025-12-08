@@ -1,5 +1,5 @@
 // Copyright 2018-2024, Collabora, Ltd.
-// Copyright 2023-2025, NVIDIA CORPORATION.
+// Copyright 2023-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -1586,104 +1586,6 @@ struct oxr_system
 	bool suggested_d3d_luid_valid;
 #endif
 };
-
-
-/*
- * Device roles helpers.
- */
-
-// static roles
-// clang-format off
-static inline struct xrt_device *get_role_head(struct oxr_system *sys) {return sys->xsysd->static_roles.head; }
-static inline struct xrt_device *get_role_eyes(struct oxr_system *sys) {return sys->xsysd->static_roles.eyes; }
-static inline struct xrt_device *get_role_face(struct oxr_system* sys) { return sys->xsysd->static_roles.face; }
-static inline struct xrt_device *get_role_body(struct oxr_system* sys) { return sys->xsysd->static_roles.body; }
-static inline struct xrt_device *get_role_hand_tracking_unobstructed_left(struct oxr_system* sys) { return sys->xsysd->static_roles.hand_tracking.unobstructed.left; }
-static inline struct xrt_device *get_role_hand_tracking_unobstructed_right(struct oxr_system* sys) { return sys->xsysd->static_roles.hand_tracking.unobstructed.right; }
-static inline struct xrt_device *get_role_hand_tracking_conforming_left(struct oxr_system* sys) { return sys->xsysd->static_roles.hand_tracking.conforming.left; }
-static inline struct xrt_device *get_role_hand_tracking_conforming_right(struct oxr_system* sys) { return sys->xsysd->static_roles.hand_tracking.conforming.right; }
-
-// clang-format on
-
-// dynamic roles
-#define MAKE_GET_DYN_ROLES_FN(ROLE)                                                                                    \
-	static inline struct xrt_device *get_role_##ROLE(struct oxr_system *sys)                                       \
-	{                                                                                                              \
-		const bool is_locked = 0 == os_mutex_trylock(&sys->sync_actions_mutex);                                \
-		const int32_t xdev_idx = sys->dynamic_roles_cache.ROLE;                                                \
-		if (is_locked) {                                                                                       \
-			os_mutex_unlock(&sys->sync_actions_mutex);                                                     \
-		}                                                                                                      \
-		if (xdev_idx < 0 || xdev_idx >= (int32_t)ARRAY_SIZE(sys->xsysd->xdevs))                                \
-			return NULL;                                                                                   \
-		return sys->xsysd->xdevs[xdev_idx];                                                                    \
-	}
-MAKE_GET_DYN_ROLES_FN(left)
-MAKE_GET_DYN_ROLES_FN(right)
-MAKE_GET_DYN_ROLES_FN(gamepad)
-#undef MAKE_GET_DYN_ROLES_FN
-
-#define GET_XDEV_BY_ROLE(SYS, ROLE) (get_role_##ROLE((SYS)))
-
-
-static inline enum xrt_device_name
-get_role_profile_head(struct oxr_system *sys)
-{
-	return XRT_DEVICE_INVALID;
-}
-static inline enum xrt_device_name
-get_role_profile_eyes(struct oxr_system *sys)
-{
-	return XRT_DEVICE_INVALID;
-}
-static inline enum xrt_device_name
-get_role_profile_face(struct oxr_system *sys)
-{
-	return XRT_DEVICE_INVALID;
-}
-static inline enum xrt_device_name
-get_role_profile_body(struct oxr_system *sys)
-{
-	return XRT_DEVICE_INVALID;
-}
-static inline enum xrt_device_name
-get_role_profile_hand_tracking_unobstructed_left(struct oxr_system *sys)
-{
-	return XRT_DEVICE_INVALID;
-}
-static inline enum xrt_device_name
-get_role_profile_hand_tracking_unobstructed_right(struct oxr_system *sys)
-{
-	return XRT_DEVICE_INVALID;
-}
-
-static inline enum xrt_device_name
-get_role_profile_hand_tracking_conforming_left(struct oxr_system *sys)
-{
-	return XRT_DEVICE_INVALID;
-}
-static inline enum xrt_device_name
-get_role_profile_hand_tracking_conforming_right(struct oxr_system *sys)
-{
-	return XRT_DEVICE_INVALID;
-}
-
-#define MAKE_GET_DYN_ROLE_PROFILE_FN(ROLE)                                                                             \
-	static inline enum xrt_device_name get_role_profile_##ROLE(struct oxr_system *sys)                             \
-	{                                                                                                              \
-		const bool is_locked = 0 == os_mutex_trylock(&sys->sync_actions_mutex);                                \
-		const enum xrt_device_name profile_name = sys->dynamic_roles_cache.ROLE##_profile;                     \
-		if (is_locked) {                                                                                       \
-			os_mutex_unlock(&sys->sync_actions_mutex);                                                     \
-		}                                                                                                      \
-		return profile_name;                                                                                   \
-	}
-MAKE_GET_DYN_ROLE_PROFILE_FN(left)
-MAKE_GET_DYN_ROLE_PROFILE_FN(right)
-MAKE_GET_DYN_ROLE_PROFILE_FN(gamepad)
-#undef MAKE_GET_DYN_ROLES_FN
-
-#define GET_PROFILE_NAME_BY_ROLE(SYS, ROLE) (get_role_profile_##ROLE((SYS)))
 
 /*
  * Extensions helpers.

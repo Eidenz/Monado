@@ -1,5 +1,5 @@
 // Copyright 2018-2024, Collabora, Ltd.
-// Copyright 2024-2025, NVIDIA CORPORATION.
+// Copyright 2024-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -47,6 +47,7 @@
 #include "oxr_pretty_print.h"
 #include "oxr_conversions.h"
 #include "oxr_xret.h"
+#include "oxr_roles.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -343,7 +344,7 @@ oxr_session_begin(struct oxr_logger *log, struct oxr_session *sess, const XrSess
 		OXR_CHECK_XRET(log, sess, xret, xrt_comp_begin_session);
 
 #ifdef OXR_HAVE_EXT_user_presence
-		struct xrt_device *xdev = GET_XDEV_BY_ROLE(sess->sys, head);
+		struct xrt_device *xdev = GET_STATIC_XDEV_BY_ROLE(sess->sys, head);
 		if (extensions->EXT_user_presence && xdev->supported.presence) {
 			bool presence = false;
 			xret = xrt_device_get_presence(xdev, &presence);
@@ -705,7 +706,7 @@ oxr_session_locate_views(struct oxr_logger *log,
 {
 	struct oxr_sink_logger slog = {0};
 	bool print = sess->sys->inst->debug_views;
-	struct xrt_device *xdev = GET_XDEV_BY_ROLE(sess->sys, head);
+	struct xrt_device *xdev = GET_STATIC_XDEV_BY_ROLE(sess->sys, head);
 	struct oxr_space *baseSpc = XRT_CAST_OXR_HANDLE_TO_PTR(struct oxr_space *, viewLocateInfo->space);
 	uint32_t view_count = xdev->hmd->view_count;
 
@@ -1567,7 +1568,7 @@ oxr_session_get_visibility_mask(struct oxr_logger *log,
                                 XrVisibilityMaskKHR *visibilityMask)
 {
 	struct oxr_system *sys = sess->sys;
-	struct xrt_device *xdev = GET_XDEV_BY_ROLE(sess->sys, head);
+	struct xrt_device *xdev = GET_STATIC_XDEV_BY_ROLE(sess->sys, head);
 	enum xrt_visibility_mask_type type = convert_mask_type(visibilityMaskType);
 	xrt_result_t xret;
 

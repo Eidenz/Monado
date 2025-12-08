@@ -1,5 +1,5 @@
 // Copyright 2018-2024, Collabora, Ltd.
-// Copyright 2024-2025, NVIDIA CORPORATION.
+// Copyright 2024-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -36,6 +36,7 @@
 #include "oxr_extension_support.h"
 #include "oxr_subaction.h"
 #include "oxr_chain.h"
+#include "oxr_roles.h"
 
 #include <sys/types.h>
 #ifdef XRT_OS_UNIX
@@ -147,12 +148,12 @@ debug_print_devices(struct oxr_logger *log, struct oxr_system *sys)
 #define P(XDEV) (XDEV != NULL ? XDEV->str : "<none>")
 
 	// Static roles.
-	struct xrt_device *h = GET_XDEV_BY_ROLE(sys, head);
-	struct xrt_device *e = GET_XDEV_BY_ROLE(sys, eyes);
-	struct xrt_device *uhl = GET_XDEV_BY_ROLE(sys, hand_tracking_unobstructed_left);
-	struct xrt_device *uhr = GET_XDEV_BY_ROLE(sys, hand_tracking_unobstructed_right);
-	struct xrt_device *chl = GET_XDEV_BY_ROLE(sys, hand_tracking_conforming_left);
-	struct xrt_device *chr = GET_XDEV_BY_ROLE(sys, hand_tracking_conforming_right);
+	struct xrt_device *h = GET_STATIC_XDEV_BY_ROLE(sys, head);
+	struct xrt_device *e = GET_STATIC_XDEV_BY_ROLE(sys, eyes);
+	struct xrt_device *uhl = GET_STATIC_XDEV_BY_ROLE(sys, hand_tracking_unobstructed_left);
+	struct xrt_device *uhr = GET_STATIC_XDEV_BY_ROLE(sys, hand_tracking_unobstructed_right);
+	struct xrt_device *chl = GET_STATIC_XDEV_BY_ROLE(sys, hand_tracking_conforming_left);
+	struct xrt_device *chr = GET_STATIC_XDEV_BY_ROLE(sys, hand_tracking_conforming_right);
 
 	// Dynamic roles, the system cache might not have been updated yet.
 	struct xrt_system_roles roles = XRT_SYSTEM_ROLES_INIT;
@@ -554,7 +555,7 @@ oxr_instance_init_system_locked(struct oxr_logger *log, struct oxr_instance *ins
 
 	// Did we find any HMD
 	// @todo Headless with only controllers?
-	struct xrt_device *dev = GET_XDEV_BY_ROLE(sys, head);
+	struct xrt_device *dev = GET_STATIC_XDEV_BY_ROLE(sys, head);
 	if (dev == NULL) {
 		ret = oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "Failed to find any HMD device");
 		return ret;

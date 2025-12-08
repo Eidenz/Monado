@@ -1,4 +1,5 @@
 # Copyright 2019-2024, Collabora, Ltd.
+# Copyright 2025-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: BSL-1.0
 
 ###
@@ -37,6 +38,7 @@ add_library(
 	oxr_path.c
 	oxr_pretty_print.c
 	oxr_pretty_print.h
+	oxr_roles.h
 	oxr_session.c
 	oxr_session_frame_end.c
 	oxr_space.c

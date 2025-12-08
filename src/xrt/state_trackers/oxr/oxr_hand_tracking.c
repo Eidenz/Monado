@@ -1,5 +1,5 @@
 // Copyright 2019-2024, Collabora, Ltd.
-// Copyright 2025, NVIDIA CORPORATION.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -23,6 +23,7 @@
 #include "oxr_logger.h"
 #include "oxr_chain.h"
 #include "oxr_xret.h"
+#include "oxr_roles.h"
 
 
 /*
@@ -97,9 +98,9 @@ oxr_hand_tracker_create(struct oxr_logger *log,
 	{                                                                                                              \
 		struct xrt_device *xdev = NULL;                                                                        \
 		if (createInfo->hand == XR_HAND_LEFT_EXT) {                                                            \
-			xdev = GET_XDEV_BY_ROLE(sess->sys, hand_tracking_##SRC##_left);                                \
+			xdev = GET_STATIC_XDEV_BY_ROLE(sess->sys, hand_tracking_##SRC##_left);                         \
 		} else if (createInfo->hand == XR_HAND_RIGHT_EXT) {                                                    \
-			xdev = GET_XDEV_BY_ROLE(sess->sys, hand_tracking_##SRC##_right);                               \
+			xdev = GET_STATIC_XDEV_BY_ROLE(sess->sys, hand_tracking_##SRC##_right);                        \
 		}                                                                                                      \
                                                                                                                        \
 		if (xdev != NULL && xdev->supported.hand_tracking) {                                                   \

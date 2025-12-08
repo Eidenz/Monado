@@ -1,5 +1,5 @@
 // Copyright 2018-2024, Collabora, Ltd.
-// Copyright 2024-2025, NVIDIA CORPORATION.
+// Copyright 2024-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -24,6 +24,7 @@
 #include "oxr_objects.h"
 #include "oxr_logger.h"
 #include "oxr_two_call.h"
+#include "oxr_roles.h"
 
 
 /*
@@ -134,7 +135,7 @@ oxr_system_get_body_tracking_support(struct oxr_logger *log,
                                      const enum xrt_input_name body_tracking_name)
 {
 	struct oxr_system *sys = &inst->system;
-	const struct xrt_device *body = GET_XDEV_BY_ROLE(sys, body);
+	const struct xrt_device *body = GET_STATIC_XDEV_BY_ROLE(sys, body);
 	if (body == NULL || !body->supported.body_tracking || body->inputs == NULL) {
 		return false;
 	}
@@ -208,7 +209,7 @@ oxr_system_select(struct oxr_logger *log,
 		                 form_factor, xrt_form_factor_to_xr(systems[0]->xsys->properties.form_factor));
 	}
 
-	struct xrt_device *xdev = GET_XDEV_BY_ROLE(selected, head);
+	struct xrt_device *xdev = GET_STATIC_XDEV_BY_ROLE(selected, head);
 	if (xdev->supported.form_factor_check &&
 	    !xrt_device_is_form_factor_available(xdev, xr_form_factor_to_xrt(form_factor))) {
 		return oxr_error(log, XR_ERROR_FORM_FACTOR_UNAVAILABLE, "request form factor %i is unavailable now",
@@ -364,7 +365,7 @@ oxr_system_get_hand_tracking_support(struct oxr_logger *log, struct oxr_instance
 	struct oxr_system *sys = &inst->system;
 #define OXR_CHECK_RET_IS_HT_SUPPORTED(HT_ROLE)                                                                         \
 	{                                                                                                              \
-		const struct xrt_device *ht = GET_XDEV_BY_ROLE(sys, hand_tracking_##HT_ROLE);                          \
+		const struct xrt_device *ht = GET_STATIC_XDEV_BY_ROLE(sys, hand_tracking_##HT_ROLE);                   \
 		if (ht && ht->supported.hand_tracking) {                                                               \
 			return true;                                                                                   \
 		}                                                                                                      \
@@ -381,7 +382,7 @@ bool
 oxr_system_get_eye_gaze_support(struct oxr_logger *log, struct oxr_instance *inst)
 {
 	struct oxr_system *sys = &inst->system;
-	struct xrt_device *eyes = GET_XDEV_BY_ROLE(sys, eyes);
+	struct xrt_device *eyes = GET_STATIC_XDEV_BY_ROLE(sys, eyes);
 
 	return eyes && eyes->supported.eye_gaze;
 }
@@ -392,7 +393,7 @@ oxr_system_get_force_feedback_support(struct oxr_logger *log, struct oxr_instanc
 	struct oxr_system *sys = &inst->system;
 #define OXR_CHECK_RET_IS_FFB_SUPPORTED(HT_ROLE)                                                                        \
 	{                                                                                                              \
-		const struct xrt_device *ffb = GET_XDEV_BY_ROLE(sys, hand_tracking_##HT_ROLE);                         \
+		const struct xrt_device *ffb = GET_STATIC_XDEV_BY_ROLE(sys, hand_tracking_##HT_ROLE);                  \
 		if (ffb && ffb->supported.force_feedback) {                                                            \
 			return true;                                                                                   \
 		}                                                                                                      \
@@ -412,7 +413,7 @@ oxr_system_get_face_tracking_android_support(struct oxr_logger *log, struct oxr_
 
 	*supported = false;
 	struct oxr_system *sys = &inst->system;
-	const struct xrt_device *face_xdev = GET_XDEV_BY_ROLE(sys, face);
+	const struct xrt_device *face_xdev = GET_STATIC_XDEV_BY_ROLE(sys, face);
 
 	if (face_xdev == NULL || !face_xdev->supported.face_tracking || face_xdev->inputs == NULL) {
 		return;
@@ -434,7 +435,7 @@ oxr_system_get_face_tracking_htc_support(struct oxr_logger *log,
                                          bool *supports_lip)
 {
 	struct oxr_system *sys = &inst->system;
-	struct xrt_device *face_xdev = GET_XDEV_BY_ROLE(sys, face);
+	struct xrt_device *face_xdev = GET_STATIC_XDEV_BY_ROLE(sys, face);
 
 	if (supports_eye)
 		*supports_eye = false;
@@ -469,7 +470,7 @@ oxr_system_get_face_tracking2_fb_support(struct oxr_logger *log,
 		*supports_visual = false;
 
 	struct oxr_system *sys = &inst->system;
-	struct xrt_device *face_xdev = GET_XDEV_BY_ROLE(sys, face);
+	struct xrt_device *face_xdev = GET_STATIC_XDEV_BY_ROLE(sys, face);
 
 	if (face_xdev == NULL || !face_xdev->supported.face_tracking || face_xdev->inputs == NULL) {
 		return;
@@ -506,7 +507,7 @@ oxr_system_get_body_tracking_calibration_meta_support(struct oxr_logger *log, st
 		return false;
 	}
 	struct oxr_system *sys = &inst->system;
-	const struct xrt_device *body = GET_XDEV_BY_ROLE(sys, body);
+	const struct xrt_device *body = GET_STATIC_XDEV_BY_ROLE(sys, body);
 	return body->supported.body_tracking_calibration;
 }
 
@@ -517,7 +518,7 @@ oxr_system_get_properties(struct oxr_logger *log, struct oxr_system *sys, XrSyst
 	properties->vendorId = sys->xsys->properties.vendor_id;
 	memcpy(properties->systemName, sys->xsys->properties.name, sizeof(properties->systemName));
 
-	struct xrt_device *xdev = GET_XDEV_BY_ROLE(sys, head);
+	struct xrt_device *xdev = GET_STATIC_XDEV_BY_ROLE(sys, head);
 
 	// Get from compositor.
 	struct xrt_system_compositor_info *info = sys->xsysc ? &sys->xsysc->info : NULL;
