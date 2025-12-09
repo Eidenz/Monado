@@ -1952,6 +1952,23 @@ oxr_action_sync_data(struct oxr_logger *log,
 	 * Side-effects allowed below, but not validation.
 	 */
 
+	struct oxr_roles roles = XRT_STRUCT_INIT;
+	XrResult result = oxr_roles_init_on_stack(log, &roles, sess->sys);
+	if (result != XR_SUCCESS) {
+		// Only returns XR_ERROR_RUNTIME_FAILURE
+		return result;
+	}
+
+	// Should we redo the bindings?
+	{
+		os_mutex_lock(&sess->sync_actions_mutex);
+		if (sess->dynamic_roles_generation_id < roles.roles.generation_id) {
+			sess->dynamic_roles_generation_id = roles.roles.generation_id;
+			oxr_session_update_action_bindings(log, sess, &roles);
+		}
+		os_mutex_unlock(&sess->sync_actions_mutex);
+	}
+
 	if (countActionSets == 0) {
 		// Nothing to do.
 		return XR_SUCCESS;

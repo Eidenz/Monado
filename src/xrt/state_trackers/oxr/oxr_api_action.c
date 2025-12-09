@@ -146,21 +146,6 @@ oxr_xrSyncActions(XrSession session, const XrActionsSyncInfo *syncInfo)
 	}
 #endif
 
-	struct oxr_roles roles = XRT_STRUCT_INIT;
-	XrResult result = oxr_roles_init_on_stack(&log, &roles, sess->sys);
-	if (result != XR_SUCCESS) {
-		return result;
-	}
-
-	{
-		os_mutex_lock(&sess->sync_actions_mutex);
-		if (sess->dynamic_roles_generation_id < roles.roles.generation_id) {
-			sess->dynamic_roles_generation_id = roles.roles.generation_id;
-			oxr_session_update_action_bindings(&log, sess, &roles);
-		}
-		os_mutex_unlock(&sess->sync_actions_mutex);
-	}
-
 	for (uint32_t i = 0; i < syncInfo->countActiveActionSets; i++) {
 		struct oxr_action_set *act_set = NULL;
 
