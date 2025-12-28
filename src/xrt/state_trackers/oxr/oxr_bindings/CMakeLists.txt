@@ -1,4 +1,5 @@
 # Copyright 2019-2025, Collabora, Ltd.
+# Copyright 2025-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: BSL-1.0
 
 # Binding generation: pass filename to generate
@@ -14,7 +15,10 @@ function(oxr_bindings_gen output)
 			${CMAKE_CURRENT_SOURCE_DIR}/oxr_bindings.py
 			${AUX_BINDINGS_DIR}/bindings.json "${CMAKE_CURRENT_BINARY_DIR}/${output}"
 		COMMAND_EXPAND_LISTS VERBATIM
-		DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/oxr_bindings.py
+		DEPENDS
+			${CMAKE_CURRENT_SOURCE_DIR}/oxr_bindings.py
+			${CMAKE_CURRENT_SOURCE_DIR}/oxr_generated_bindings.c.template
+			${CMAKE_CURRENT_SOURCE_DIR}/oxr_generated_bindings.h.template
 			${AUX_BINDINGS_DIR}/bindings.json
 		COMMENT "Generating ${output}"
 		)

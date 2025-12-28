@@ -7,6 +7,7 @@
 from bindings import *
 
 import argparse
+import os
 from operator import attrgetter
 from string import Template
 
@@ -165,10 +166,9 @@ def get_verify_functions(profile):
     return ret
 
 
-def generate_profile_template(profile):
-    """Generate a single profile_template entry. Returns a list of lines."""
+def generate_profile_template_entry(profile):
+    """Generate a single profile_template entry. Returns a string."""
     lines = []
-
     hw_name = str(profile.name.split("/")[-1])
     vendor_name = str(profile.name.split("/")[-2])
     fname = vendor_name + "_" + hw_name + "_profile.json"
@@ -284,142 +284,45 @@ def generate_profile_template(profile):
 
     lines.append('\t}, // /profile_template')
 
-    return lines
+    return '\n'.join(lines)
 
 
-def generate_bindings_c(file, b):
+def generate_bindings_c(output, b):
     """Generate the file to verify subpaths on a interaction profile."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    template_file = os.path.join(script_dir, 'oxr_generated_bindings.c.template')
+
+    with open(template_file, 'r') as f:
+        src = Template(f.read())
+
+    # Generate verify functions
     lines = []
-
-    lines.extend([
-        header.format(brief='Generated bindings data', group='oxr_main'),
-        '#include "oxr_bindings/b_oxr_generated_bindings.h"',
-        '#include <string.h>',
-        '#include "oxr_objects.h"',
-        '',
-        '// clang-format off',
-        '',
-    ])
-
-    # Add all verify functions
     for profile in b.profiles:
         lines.extend(get_verify_functions(profile))
+    verify_functions = '\n'.join(lines)
 
-    lines.extend([
-        '',
-        '',
-        f'struct profile_template profile_templates[{len(b.profiles)}] = {{ // array of profile_template',
-    ])
+    # Generate profile templates
+    profile_templates = '\n'.join(generate_profile_template_entry(profile) for profile in b.profiles)
 
-    # Add all profile templates
-    for profile in b.profiles:
-        lines.extend(generate_profile_template(profile))
-
-    lines.extend([
-        '}; // /array of profile_template',
-        '',
-        '// clang-format on',
-    ])
-
-    # Write all lines to file
-    with open(file, "w") as f:
-        f.write('\n'.join(lines) + '\n')
+    with open(output, "w", encoding="utf-8") as fp:
+        fp.write(src.substitute(
+            template_count=len(b.profiles),
+            verify_functions=verify_functions,
+            profile_templates=profile_templates
+        ))
 
 
-H_TEMPLATE = Template("""$header
-
-#pragma once
-
-#include <stddef.h>
-#include "xrt/xrt_defines.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-typedef uint64_t XrPath; // OpenXR typedef'
-typedef uint64_t XrVersion; // OpenXR typedef'
-
-struct oxr_extension_status;
-
-#define OXR_BINDINGS_PROFILE_TEMPLATE_COUNT $template_count
-
-// clang-format off
-
-$verify_protos
-
-#define PATHS_PER_BINDING_TEMPLATE 16
-
-enum oxr_dpad_binding_point
-{
-\tOXR_DPAD_BINDING_POINT_NONE,
-\tOXR_DPAD_BINDING_POINT_UP,
-\tOXR_DPAD_BINDING_POINT_DOWN,
-\tOXR_DPAD_BINDING_POINT_LEFT,
-\tOXR_DPAD_BINDING_POINT_RIGHT,
-};
-
-struct dpad_emulation
-{
-\tconst char *subaction_path;
-\tconst char *paths[PATHS_PER_BINDING_TEMPLATE];
-\tenum xrt_input_name position;
-\tenum xrt_input_name activate; // Can be zero
-};
-
-struct binding_template
-{
-\tconst char *subaction_path;
-\tconst char *steamvr_path;
-\tconst char *localized_name;
-\tconst char *paths[PATHS_PER_BINDING_TEMPLATE];
-\tenum xrt_input_name input;
-\tenum xrt_input_name dpad_activate;
-\tenum xrt_output_name output;
-};
-
-typedef bool (*path_verify_fn_t)(const struct oxr_extension_status *extensions, XrVersion openxr_version, const char *, size_t);
-typedef void (*ext_verify_fn_t)(const struct oxr_extension_status *extensions, XrVersion openxr_version, bool *out_supported, bool *out_enabled);
-
-struct profile_template
-{
-\tenum xrt_device_name name;
-\tconst char *path;
-\tconst char *localized_name;
-\tconst char *steamvr_input_profile_path;
-\tconst char *steamvr_controller_type;
-\tstruct binding_template *bindings;
-\tsize_t binding_count;
-\tstruct dpad_emulation *dpads;
-\tsize_t dpad_count;
-\tstruct {
-\t\tstruct {
-\t\t\tuint32_t major;
-\t\t\tuint32_t minor;
-\t\t} promoted;
-\t} openxr_version;
-\t//! path_cache is an INVALID value until oxr_instance_create initializes it.
-\tXrPath path_cache;
-
-\tpath_verify_fn_t subpath_fn;
-\tpath_verify_fn_t dpad_path_fn;
-\tpath_verify_fn_t dpad_emulator_fn;
-\text_verify_fn_t ext_verify_fn;
-\tconst char *extension_name;
-};
-
-extern struct profile_template profile_templates[OXR_BINDINGS_PROFILE_TEMPLATE_COUNT];
-// clang-format on")
-#ifdef __cplusplus
-}
-#endif
-""")
-
-def generate_bindings_h(file, b):
+def generate_bindings_h(output, b):
     """Generate header for the verify subpaths functions."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    template_file = os.path.join(script_dir, 'oxr_generated_bindings.h.template')
+
+    with open(template_file, 'r') as f:
+        src = Template(f.read())
+
+    # Generate function prototypes
     verify_protos = []
     fn_prefixes = ["_subpath", "_dpad_path", "_dpad_emulator"]
-
     for profile in b.profiles:
         for fn_suffix in fn_prefixes:
             verify_protos.extend([
@@ -433,18 +336,15 @@ def generate_bindings_h(file, b):
             '',
         ])
 
-    filled = H_TEMPLATE.substitute(
-        header=header.format(brief='Generated bindings data', group='oxr_main'),
-        template_count=len(b.profiles),
-        verify_protos='\n'.join(verify_protos)
-    )
-
-    with open(file, "w") as f:
-        f.write(filled)
+    with open(output, "w", encoding="utf-8") as fp:
+        fp.write(src.substitute(
+            template_count=len(b.profiles),
+            verify_protos='\n'.join(verify_protos)
+        ))
 
 
 def main():
-    """Handle command line and generate a file."""
+    """Handle command line and generate file(s)."""
     parser = argparse.ArgumentParser(description='OpenXR Bindings generator.')
     parser.add_argument(
         'bindings', help='Bindings file to use')
@@ -458,8 +358,10 @@ def main():
     for output in args.output:
         if output.endswith("oxr_generated_bindings.c"):
             generate_bindings_c(output, bindings)
-        if output.endswith("oxr_generated_bindings.h"):
+        elif output.endswith("oxr_generated_bindings.h"):
             generate_bindings_h(output, bindings)
+        else:
+            raise ValueError(f"Unknown output file: {output}")
 
 
 if __name__ == "__main__":
