@@ -238,6 +238,45 @@ u_pp_array2d_f64(u_pp_delegate_t dg, const double *arr, size_t n, size_t m, cons
 
 /*
  *
+ * String list printers.
+ *
+ */
+
+struct u_string_list;
+
+/*!
+ * @brief Print all the strings in the list with the given prefix.
+ *
+ * @param dg delegate to use for printing
+ * @param usl list of strings to print (must not be NULL)
+ * @param prefix prefix to add to each string to be printed (must not be NULL)
+ * @ingroup aux_pretty
+ */
+XRT_NONNULL_ALL void
+u_pp_string_list(struct u_pp_delegate dg, struct u_string_list *usl, const char *prefix);
+
+/*!
+ * @brief Pretty print the string list with extension information.
+ *
+ * It will start on a new line with the enabled extensions, showing which are
+ * required vs optional. Then if there are optional extensions not enabled it
+ * will list those separately, distinguishing between unsupported and skipped.
+ *
+ * @param dg delegate to use for printing
+ * @param enabled_list list of extensions that were enabled (must not be NULL)
+ * @param optional_list optional list to compare against (must not be NULL)
+ * @param skipped_list list of extensions that were skipped (must not be NULL)
+ * @ingroup aux_pretty
+ */
+XRT_NONNULL_ALL void
+u_pp_string_list_extensions(struct u_pp_delegate dg,
+                            struct u_string_list *enabled_list,
+                            struct u_string_list *optional_list,
+                            struct u_string_list *skipped_list);
+
+
+/*
+ *
  * Sinks.
  *
  */
