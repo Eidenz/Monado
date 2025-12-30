@@ -18,20 +18,21 @@
 
 #include "util/u_pretty_print.h"
 #include "vk/vk_helpers.h"
+#include "vk/vk_extensions_helpers.h"
 
 #include <stdio.h>
 
 
 /*
  *
- * Helpers.
+ * Extension skip policy callbacks.
  *
  */
 
 static bool
 should_skip_optional_instance_ext(struct vk_bundle *vk,
                                   struct u_string_list *required_instance_ext_list,
-                                  struct u_string_list *optional_instance_ext_listconst,
+                                  struct u_string_list *optional_instance_ext_list,
                                   const char *ext)
 {
 #ifdef VK_EXT_display_surface_counter
@@ -50,13 +51,23 @@ should_skip_optional_instance_ext(struct vk_bundle *vk,
 }
 
 static bool
-is_instance_ext_supported(VkExtensionProperties *props, uint32_t prop_count, const char *ext)
+should_skip_optional_device_ext(struct vk_bundle *vk,
+                                struct u_string_list *required_device_ext_list,
+                                struct u_string_list *optional_device_ext_list,
+                                const char *ext)
 {
-	for (uint32_t j = 0; j < prop_count; j++) {
-		if (strcmp(ext, props[j].extensionName) == 0) {
+#ifdef VK_EXT_display_control
+	// only enable VK_EXT_display_control when we enabled VK_EXT_display_surface_counter instance ext
+	if (strcmp(ext, VK_EXT_DISPLAY_CONTROL_EXTENSION_NAME) == 0) {
+		if (!vk->has_EXT_display_surface_counter) {
+			VK_DEBUG(vk, "Skipping optional instance extension %s because %s instance ext is not enabled",
+			         ext, VK_EXT_DISPLAY_SURFACE_COUNTER_EXTENSION_NAME);
 			return true;
 		}
+		VK_DEBUG(vk, "Not skipping optional instance extension %s because %s instance ext is enabled", ext,
+		         VK_EXT_DISPLAY_SURFACE_COUNTER_EXTENSION_NAME);
 	}
+#endif
 	return false;
 }
 
@@ -68,9 +79,22 @@ is_instance_ext_supported(VkExtensionProperties *props, uint32_t prop_count, con
  */
 
 VkResult
+vk_build_instance_extensions(struct vk_bundle *vk,
+                             struct u_string_list *required_instance_ext_list,
+                             struct u_string_list *optional_instance_ext_list,
+                             struct u_string_list **out_instance_ext_list)
+{
+	return vk_build_instance_extensions_with_skip( //
+	    vk,                                        //
+	    required_instance_ext_list,                //
+	    optional_instance_ext_list,                //
+	    should_skip_optional_instance_ext,         //
+	    out_instance_ext_list);                    //
+}
+
+VkResult
 vk_check_required_instance_extensions(struct vk_bundle *vk, struct u_string_list *required_instance_ext_list)
 {
-	struct u_pp_sink_stack_only sink;
 	VkExtensionProperties *props = NULL;
 	uint32_t prop_count = 0;
 	VkResult ret;
@@ -85,91 +109,19 @@ vk_check_required_instance_extensions(struct vk_bundle *vk, struct u_string_list
 		return ret; // Already logged.
 	}
 
-	// We want to print all missing extensions.
-	bool have_missing = false;
+	// Convert to string list for easier checking.
+	struct u_string_list *available_ext_list = vk_convert_extension_properties_to_string_list(props, prop_count);
 
-	// Used to build a nice pretty list of missing extensions.
-	u_pp_delegate_t dg = u_pp_sink_stack_only_init(&sink);
-
-	// Check if required extensions are supported.
-	uint32_t required_instance_ext_count = u_string_list_get_size(required_instance_ext_list);
-	const char *const *required_instance_exts = u_string_list_get_data(required_instance_ext_list);
-	for (uint32_t i = 0; i < required_instance_ext_count; i++) {
-		const char *required_ext = required_instance_exts[i];
-
-		if (is_instance_ext_supported(props, prop_count, required_ext)) {
-			continue;
-		}
-
-		u_pp(dg, "\n\t%s", required_ext);
-		have_missing = true;
-	}
-
-	// Clean up after us.
-	if (props != NULL) {
-		free(props);
-		props = NULL;
-		prop_count = 0;
-	}
-
-	if (!have_missing) {
-		return VK_SUCCESS;
-	}
-
-	VK_ERROR(vk, "Missing required instance extensions:%s", sink.buffer);
-
-	return VK_ERROR_EXTENSION_NOT_PRESENT;
-}
-
-struct u_string_list *
-vk_build_instance_extensions(struct vk_bundle *vk,
-                             struct u_string_list *required_instance_ext_list,
-                             struct u_string_list *optional_instance_ext_list)
-{
-	VkExtensionProperties *props = NULL;
-	uint32_t prop_count = 0;
-	VkResult ret;
-
-	// Two call.
-	ret = vk_enumerate_instance_extensions_properties( //
-	    vk,                                            // vk_bundle
-	    NULL,                                          // layer_name
-	    &prop_count,                                   // out_prop_count
-	    &props);                                       // out_props
-	if (ret != VK_SUCCESS) {
-		return NULL; // Already logged.
-	}
-
-	// Assumed to be supported.
-	struct u_string_list *list = u_string_list_create_from_list(required_instance_ext_list);
-
-	// Check any supported extensions.
-	uint32_t optional_instance_ext_count = u_string_list_get_size(optional_instance_ext_list);
-	const char *const *optional_instance_exts = u_string_list_get_data(optional_instance_ext_list);
-	for (uint32_t i = 0; i < optional_instance_ext_count; i++) {
-		const char *optional_ext = optional_instance_exts[i];
-
-		if (should_skip_optional_instance_ext(vk, required_instance_ext_list, optional_instance_ext_list,
-		                                      optional_ext)) {
-			continue;
-		}
-
-		if (!is_instance_ext_supported(props, prop_count, optional_ext)) {
-			VK_DEBUG(vk, "Optional instance extension %s not enabled, unsupported", optional_ext);
-			continue;
-		}
-
-		int added = u_string_list_append_unique(list, optional_ext);
-		if (added == 1) {
-			VK_DEBUG(vk, "Using optional instance ext %s", optional_ext);
-		} else {
-			VK_WARN(vk, "Duplicate instance extension %s not added twice", optional_ext);
-		}
-	}
-
+	// Clean up props.
 	free(props);
 
-	return list;
+	// Check if all required extensions are available.
+	ret = vk_check_required_extensions(vk, available_ext_list, required_instance_ext_list, "instance");
+
+	// Clean up.
+	u_string_list_destroy(&available_ext_list);
+
+	return ret;
 }
 
 void
@@ -698,110 +650,10 @@ err_free:
 	return VK_ERROR_INITIALIZATION_FAILED;
 }
 
-static bool
-check_extension(struct vk_bundle *vk, VkExtensionProperties *props, uint32_t prop_count, const char *ext)
-{
-	for (uint32_t i = 0; i < prop_count; i++) {
-		if (strcmp(props[i].extensionName, ext) == 0) {
-			return true;
-		}
-	}
-
-	return false;
-}
-
 static void
 fill_in_has_device_extensions(struct vk_bundle *vk, struct u_string_list *ext_list)
 {
 #include "vk_bundle_init_device_ext.c.inc"
-}
-
-static bool
-should_skip_optional_device_ext(struct vk_bundle *vk,
-                                struct u_string_list *required_device_ext_list,
-                                struct u_string_list *optional_device_ext_listconst,
-                                const char *ext)
-{
-#ifdef VK_EXT_display_control
-	// only enable VK_EXT_display_control when we enabled VK_EXT_display_surface_counter instance ext
-	if (strcmp(ext, VK_EXT_DISPLAY_CONTROL_EXTENSION_NAME) == 0) {
-		if (!vk->has_EXT_display_surface_counter) {
-			VK_DEBUG(vk, "Skipping optional instance extension %s because %s instance ext is not enabled",
-			         ext, VK_EXT_DISPLAY_SURFACE_COUNTER_EXTENSION_NAME);
-			return true;
-		}
-		VK_DEBUG(vk, "Not skipping optional instance extension %s because %s instance ext is enabled", ext,
-		         VK_EXT_DISPLAY_SURFACE_COUNTER_EXTENSION_NAME);
-	}
-#endif
-	return false;
-}
-
-static VkResult
-build_device_extensions(struct vk_bundle *vk,
-                        VkPhysicalDevice physical_device,
-                        struct u_string_list *required_device_ext_list,
-                        struct u_string_list *optional_device_ext_list,
-                        struct u_string_list **out_device_ext_list)
-{
-	VkExtensionProperties *props = NULL;
-	uint32_t prop_count = 0;
-	VkResult ret;
-
-	ret = vk_enumerate_physical_device_extension_properties( //
-	    vk,                                                  // vk_bundle
-	    physical_device,                                     // physical_device
-	    NULL,                                                // layer_name
-	    &prop_count,                                         // out_prop_count
-	    &props);                                             // out_props
-	VK_CHK_AND_RET(ret, "vk_enumerate_physical_device_extension_properties");
-
-	uint32_t required_device_ext_count = u_string_list_get_size(required_device_ext_list);
-	const char *const *required_device_exts = u_string_list_get_data(required_device_ext_list);
-
-	// error out if we don't support one of the required extensions
-	for (uint32_t i = 0; i < required_device_ext_count; i++) {
-		const char *ext = required_device_exts[i];
-		if (!check_extension(vk, props, prop_count, ext)) {
-			VK_ERROR(vk, "VkPhysicalDevice does not support required extension %s", ext);
-			free(props);
-			return VK_ERROR_EXTENSION_NOT_PRESENT;
-		}
-		VK_DEBUG(vk, "Using required device ext %s", ext);
-	}
-
-
-	*out_device_ext_list = u_string_list_create_from_list(required_device_ext_list);
-
-
-	uint32_t optional_device_ext_count = u_string_list_get_size(optional_device_ext_list);
-	const char *const *optional_device_exts = u_string_list_get_data(optional_device_ext_list);
-
-	for (uint32_t i = 0; i < optional_device_ext_count; i++) {
-		const char *ext = optional_device_exts[i];
-
-		if (should_skip_optional_device_ext(vk, required_device_ext_list, optional_device_ext_list, ext)) {
-			continue;
-		}
-
-		if (check_extension(vk, props, prop_count, ext)) {
-			VK_DEBUG(vk, "Using optional device ext %s", ext);
-			int added = u_string_list_append_unique(*out_device_ext_list, ext);
-			if (added == 0) {
-				VK_WARN(vk, "Duplicate device extension %s not added twice", ext);
-			}
-		} else {
-			VK_DEBUG(vk, "NOT using optional device ext %s", ext);
-			continue;
-		}
-	}
-
-	// Fill this out here.
-	fill_in_has_device_extensions(vk, *out_device_ext_list);
-
-	free(props);
-
-	return VK_SUCCESS;
 }
 
 /*!
@@ -1089,13 +941,17 @@ vk_create_device(struct vk_bundle *vk,
 	ret = select_physical_device(vk, forced_index);
 	VK_CHK_WITH_GOTO(ret, "select_physical_device", err_destroy);
 
-	ret = build_device_extensions( //
-	    vk,                        //
-	    vk->physical_device,       //
-	    required_device_ext_list,  //
-	    optional_device_ext_list,  //
-	    &device_ext_list);         //
-	VK_CHK_WITH_GOTO(ret, "build_device_extensions", err_destroy);
+	ret = vk_build_device_extensions_with_skip( //
+	    vk,                                     //
+	    vk->physical_device,                    //
+	    required_device_ext_list,               //
+	    optional_device_ext_list,               //
+	    should_skip_optional_device_ext,        //
+	    &device_ext_list);                      //
+	VK_CHK_WITH_GOTO(ret, "vk_build_device_extensions_with_skip", err_destroy);
+
+	// Fill in has_* fields based on the extension list.
+	fill_in_has_device_extensions(vk, device_ext_list);
 
 
 	/*

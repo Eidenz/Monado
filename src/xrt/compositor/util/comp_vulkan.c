@@ -1,4 +1,5 @@
 // Copyright 2019-2023, Collabora, Ltd.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -187,24 +188,18 @@ create_instance(struct vk_bundle *vk, const struct comp_vulkan_arguments *vk_arg
 	 * Extension handling.
 	 */
 
-	// Check required extensions, results in clearer error message.
-	ret = vk_check_required_instance_extensions(vk, vk_args->required_instance_extensions);
+	// Build extension list.
+	ret = vk_build_instance_extensions(        //
+	    vk,                                    //
+	    vk_args->required_instance_extensions, //
+	    vk_args->optional_instance_extensions, //
+	    &instance_ext_list);                   //
 	if (ret == VK_ERROR_EXTENSION_NOT_PRESENT) {
 		return ret; // Already printed.
 	}
 	if (ret != VK_SUCCESS) {
-		VK_ERROR_RET(vk, "vk_check_required_instance_extensions", "Failed to check required extension(s)", ret);
+		VK_ERROR_RET(vk, "vk_build_instance_extensions", "Failed to build extension list", ret);
 		return ret;
-	}
-
-	// Build extension list.
-	instance_ext_list = vk_build_instance_extensions( //
-	    vk,                                           //
-	    vk_args->required_instance_extensions,        //
-	    vk_args->optional_instance_extensions);       //
-	if (!instance_ext_list) {
-		VK_ERROR(vk, "vk_build_instance_extensions: Failed to be list");
-		return VK_ERROR_EXTENSION_NOT_PRESENT;
 	}
 
 

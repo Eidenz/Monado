@@ -1,4 +1,5 @@
 # Copyright 2019-2023, Collabora, Ltd.
+# Copyright 2025-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: BSL-1.0
 
 ###
@@ -45,6 +46,8 @@ add_library(
 	vk_debug.c
 	vk_documentation.h
 	vk_enumerate.c
+	vk_extensions_helpers.c
+	vk_extensions_helpers.h
 	vk_function_loaders.c
 	vk_helpers.c
 	vk_helpers.h

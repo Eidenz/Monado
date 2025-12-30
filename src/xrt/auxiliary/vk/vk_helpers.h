@@ -784,14 +784,18 @@ VkResult
 vk_check_required_instance_extensions(struct vk_bundle *vk, struct u_string_list *required_instance_ext_list);
 
 /*!
+ * Build instance extensions from required and optional instance extensions.
+ * This function enumerates available instance extensions, checks required ones,
+ * and builds a final list. Returns VK_SUCCESS if successful.
  * Only requires @ref vk_get_loader_functions to have been called.
  *
  * @ingroup aux_vk
  */
-struct u_string_list *
+VkResult
 vk_build_instance_extensions(struct vk_bundle *vk,
                              struct u_string_list *required_instance_ext_list,
-                             struct u_string_list *optional_instance_ext_list);
+                             struct u_string_list *optional_instance_ext_list,
+                             struct u_string_list **out_instance_ext_list);
 
 /*!
  * Fills in has_* in vk_bundle given a string of prefiltered instance extensions
