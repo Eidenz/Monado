@@ -22,15 +22,15 @@ extern "C" {
  * Callback type for checking if an optional extension should be skipped.
  */
 typedef bool (*vk_should_skip_ext_func_t)(struct vk_bundle *vk,
-                                          struct u_string_list *required_ext_list,
-                                          struct u_string_list *optional_ext_list,
+                                          struct u_extension_list *required_ext_list,
+                                          struct u_extension_list *optional_ext_list,
                                           const char *ext);
 
 
 /*!
- * Convert VkExtensionProperties array to u_string_list.
+ * Convert VkExtensionProperties array to u_extension_list.
  */
-struct u_string_list *
+struct u_extension_list *
 vk_convert_extension_properties_to_string_list(VkExtensionProperties *props, uint32_t prop_count);
 
 /*!
@@ -41,9 +41,9 @@ vk_convert_extension_properties_to_string_list(VkExtensionProperties *props, uin
  */
 void
 vk_log_extension_list(struct vk_bundle *vk,
-                      struct u_string_list *ext_list,
-                      struct u_string_list *optional_ext_list,
-                      struct u_string_list *skipped_ext_list,
+                      struct u_extension_list *ext_list,
+                      struct u_extension_list *optional_ext_list,
+                      struct u_extension_list *skipped_ext_list,
                       const char *ext_type_name,
                       enum u_logging_level log_level);
 
@@ -55,8 +55,8 @@ vk_log_extension_list(struct vk_bundle *vk,
  */
 VkResult
 vk_check_required_extensions(struct vk_bundle *vk,
-                             struct u_string_list *available_ext_list,
-                             struct u_string_list *required_ext_list,
+                             struct u_extension_list *available_ext_list,
+                             struct u_extension_list *required_ext_list,
                              const char *ext_type_name);
 
 /*!
@@ -74,10 +74,10 @@ vk_check_required_extensions(struct vk_bundle *vk,
  */
 VkResult
 vk_build_instance_extensions_with_skip(struct vk_bundle *vk,
-                                       struct u_string_list *required_instance_ext_list,
-                                       struct u_string_list *optional_instance_ext_list,
+                                       struct u_extension_list *required_instance_ext_list,
+                                       struct u_extension_list *optional_instance_ext_list,
                                        vk_should_skip_ext_func_t skip_func,
-                                       struct u_string_list **out_instance_ext_list);
+                                       struct u_extension_list **out_instance_ext_list);
 
 /*!
  * Build device extensions from required and optional device extensions with
@@ -92,10 +92,10 @@ vk_build_instance_extensions_with_skip(struct vk_bundle *vk,
 VkResult
 vk_build_device_extensions_with_skip(struct vk_bundle *vk,
                                      VkPhysicalDevice physical_device,
-                                     struct u_string_list *required_device_ext_list,
-                                     struct u_string_list *optional_device_ext_list,
+                                     struct u_extension_list *required_device_ext_list,
+                                     struct u_extension_list *optional_device_ext_list,
                                      vk_should_skip_ext_func_t skip_func,
-                                     struct u_string_list **out_device_ext_list);
+                                     struct u_extension_list **out_device_ext_list);
 
 
 #ifdef __cplusplus

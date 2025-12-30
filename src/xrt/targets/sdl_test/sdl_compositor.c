@@ -1,4 +1,5 @@
 // Copyright 2019-2023, Collabora, Ltd.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -133,10 +134,12 @@ static const char *optional_device_extensions[] = {
 };
 
 static VkResult
-select_instances_extensions(struct sdl_compositor *c, struct u_string_list *required, struct u_string_list *optional)
+select_instances_extensions(struct sdl_compositor *c,
+                            struct u_extension_list_builder *required_builder,
+                            struct u_extension_list_builder *optional_builder)
 {
 #ifdef VK_EXT_display_surface_counter
-	u_string_list_append(optional, VK_EXT_DISPLAY_SURFACE_COUNTER_EXTENSION_NAME);
+	u_extension_list_builder_append(optional_builder, VK_EXT_DISPLAY_SURFACE_COUNTER_EXTENSION_NAME);
 #endif
 
 	return VK_SUCCESS;
@@ -149,25 +152,32 @@ compositor_init_vulkan(struct sdl_compositor *c, enum u_logging_level log_level)
 	VkResult ret;
 
 	// every backend needs at least the common extensions
-	struct u_string_list *required_instance_ext_list =
-	    u_string_list_create_from_array(instance_extensions_common, ARRAY_SIZE(instance_extensions_common));
+	struct u_extension_list_builder *required_instance_ext_builder = u_extension_list_builder_create_from_array( //
+	    instance_extensions_common,                                                                              //
+	    ARRAY_SIZE(instance_extensions_common));                                                                 //
 
-	struct u_string_list *optional_instance_ext_list = u_string_list_create();
+	struct u_extension_list_builder *optional_instance_ext_builder = u_extension_list_builder_create();
 
-	ret = select_instances_extensions(c, required_instance_ext_list, optional_instance_ext_list);
+	ret = select_instances_extensions(c, required_instance_ext_builder, optional_instance_ext_builder);
 	if (ret != VK_SUCCESS) {
 		VK_ERROR(vk, "select_instances_extensions: %s\n\tFailed to select instance extensions.",
 		         vk_result_string(ret));
-		u_string_list_destroy(&required_instance_ext_list);
-		u_string_list_destroy(&optional_instance_ext_list);
+		u_extension_list_builder_destroy(&required_instance_ext_builder);
+		u_extension_list_builder_destroy(&optional_instance_ext_builder);
 		return ret;
 	}
 
-	struct u_string_list *required_device_extension_list =
-	    u_string_list_create_from_array(required_device_extensions, ARRAY_SIZE(required_device_extensions));
+	// Consumes the builder and returns a new list.
+	struct u_extension_list *required_instance_ext_list =
+	    u_extension_list_builder_build(&required_instance_ext_builder);
+	struct u_extension_list *optional_instance_ext_list =
+	    u_extension_list_builder_build(&optional_instance_ext_builder);
 
-	struct u_string_list *optional_device_extension_list =
-	    u_string_list_create_from_array(optional_device_extensions, ARRAY_SIZE(optional_device_extensions));
+	struct u_extension_list *required_device_extension_list =
+	    u_extension_list_create_from_array(required_device_extensions, ARRAY_SIZE(required_device_extensions));
+
+	struct u_extension_list *optional_device_extension_list =
+	    u_extension_list_create_from_array(optional_device_extensions, ARRAY_SIZE(optional_device_extensions));
 
 	struct comp_vulkan_arguments vk_args = {
 	    .get_instance_proc_address = vkGetInstanceProcAddr,
@@ -186,10 +196,10 @@ compositor_init_vulkan(struct sdl_compositor *c, enum u_logging_level log_level)
 	struct comp_vulkan_results vk_res = {0};
 	bool bundle_ret = comp_vulkan_init_bundle(vk, &vk_args, &vk_res);
 
-	u_string_list_destroy(&required_instance_ext_list);
-	u_string_list_destroy(&optional_instance_ext_list);
-	u_string_list_destroy(&required_device_extension_list);
-	u_string_list_destroy(&optional_device_extension_list);
+	u_extension_list_destroy(&required_instance_ext_list);
+	u_extension_list_destroy(&optional_instance_ext_list);
+	u_extension_list_destroy(&required_device_extension_list);
+	u_extension_list_destroy(&optional_device_extension_list);
 
 	if (!bundle_ret) {
 		return false;

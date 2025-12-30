@@ -11,7 +11,7 @@
 
 #include "xrt/xrt_macro_lists.h"
 #include "util/u_misc.h"
-#include "util/u_string_list.h"
+#include "util/u_extension_list.h"
 #include "util/u_pretty_print.h"
 
 #include <assert.h>
@@ -87,14 +87,14 @@ stack_only_sink(void *ptr, const char *str, size_t length)
 }
 
 int
-update_longest_extension_name_length(struct u_string_list *list, int current_longest_extension)
+update_longest_extension_name_length(struct u_extension_list *list, int current_longest_extension)
 {
 	if (list == NULL) {
 		return current_longest_extension;
 	}
 
-	size_t count = u_string_list_get_size(list);
-	const char *const *data = u_string_list_get_data(list);
+	size_t count = u_extension_list_get_size(list);
+	const char *const *data = u_extension_list_get_data(list);
 
 	for (size_t i = 0; i < count; i++) {
 		int len = (int)strlen(data[i]);
@@ -498,15 +498,15 @@ u_pp_array2d_f64(u_pp_delegate_t dg, const double *arr, size_t n, size_t m, cons
 
 /*
  *
- * String list printers.
+ * Extension list printers.
  *
  */
 
 void
-u_pp_string_list(struct u_pp_delegate dg, struct u_string_list *usl, const char *prefix)
+u_pp_string_list(struct u_pp_delegate dg, struct u_extension_list *usl, const char *prefix)
 {
-	uint32_t count = u_string_list_get_size(usl);
-	const char *const *data = u_string_list_get_data(usl);
+	uint32_t count = u_extension_list_get_size(usl);
+	const char *const *data = u_extension_list_get_data(usl);
 
 	for (uint32_t i = 0; i < count; i++) {
 		u_pp(dg, "%s%s", prefix, data[i]);
@@ -515,15 +515,15 @@ u_pp_string_list(struct u_pp_delegate dg, struct u_string_list *usl, const char 
 
 void
 u_pp_string_list_extensions(struct u_pp_delegate dg,
-                            struct u_string_list *enabled_list,
-                            struct u_string_list *optional_list,
-                            struct u_string_list *skipped_list)
+                            struct u_extension_list *enabled_list,
+                            struct u_extension_list *optional_list,
+                            struct u_extension_list *skipped_list)
 {
 	assert(optional_list != NULL);
 	assert(skipped_list != NULL);
 
-	uint32_t count = u_string_list_get_size(enabled_list);
-	const char *const *data = u_string_list_get_data(enabled_list);
+	uint32_t count = u_extension_list_get_size(enabled_list);
+	const char *const *data = u_extension_list_get_data(enabled_list);
 
 	// Find the longest extension name for alignment
 	int longest_extension = update_longest_extension_name_length(enabled_list, 0);
@@ -536,7 +536,7 @@ u_pp_string_list_extensions(struct u_pp_delegate dg,
 	uint32_t optional_enabled_count = 0;
 	for (uint32_t i = 0; i < count; i++) {
 		const char *ext = data[i];
-		bool is_optional = u_string_list_contains(optional_list, ext);
+		bool is_optional = u_extension_list_contains(optional_list, ext);
 		if (is_optional) {
 			optional_enabled_count++;
 		}
@@ -545,22 +545,22 @@ u_pp_string_list_extensions(struct u_pp_delegate dg,
 	}
 
 	// All optional extensions have been enabled.
-	uint32_t optional_count = u_string_list_get_size(optional_list);
+	uint32_t optional_count = u_extension_list_get_size(optional_list);
 	if (optional_enabled_count == optional_count) {
 		return;
 	}
 
 	// Print optional extensions that were not enabled
 	u_pp(dg, "\n\tNot enabled optional extensions:");
-	const char *const *optional_data = u_string_list_get_data(optional_list);
+	const char *const *optional_data = u_extension_list_get_data(optional_list);
 	for (uint32_t i = 0; i < optional_count; i++) {
 		const char *ext = optional_data[i];
-		if (u_string_list_contains(enabled_list, ext)) {
+		if (u_extension_list_contains(enabled_list, ext)) {
 			continue;
 		}
 
 		// Check if this extension was skipped or unsupported
-		bool was_skipped = u_string_list_contains(skipped_list, ext);
+		bool was_skipped = u_extension_list_contains(skipped_list, ext);
 		const char *reason = was_skipped ? "skipped" : "unsupported";
 
 		u_pp(dg, "\n\t\t%-*s    %s", longest_extension, ext, reason);

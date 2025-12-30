@@ -1,5 +1,5 @@
 // Copyright 2018-2024, Collabora, Ltd.
-// Copyright 2024-2025, NVIDIA CORPORATION.
+// Copyright 2024-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -15,7 +15,7 @@
 
 #include "util/u_misc.h"
 #include "util/u_debug.h"
-#include "util/u_string_list.h"
+#include "util/u_extension_list.h"
 
 #include "vk/vk_helpers.h"
 
@@ -249,7 +249,7 @@ oxr_vk_create_vulkan_instance(struct oxr_logger *log,
 		return res;
 	}
 
-	struct u_string_list *instance_ext_list = u_string_list_create_from_array(
+	struct u_extension_list_builder *instance_ext_builder = u_extension_list_builder_create_from_array(
 	    required_vk_instance_extensions, ARRAY_SIZE(required_vk_instance_extensions));
 
 #if defined(VK_EXT_debug_utils)
@@ -263,7 +263,7 @@ oxr_vk_create_vulkan_instance(struct oxr_logger *log,
 			continue;
 		}
 
-		u_string_list_append_unique(instance_ext_list, optional_vk_instance_extensions[i]);
+		u_extension_list_builder_append_unique(instance_ext_builder, optional_vk_instance_extensions[i]);
 
 #if defined(VK_EXT_debug_utils)
 		if (strcmp(optional_vk_instance_extensions[i], VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0) {
@@ -273,13 +273,15 @@ oxr_vk_create_vulkan_instance(struct oxr_logger *log,
 	}
 
 	for (uint32_t i = 0; i < createInfo->vulkanCreateInfo->enabledExtensionCount; i++) {
-		u_string_list_append_unique(instance_ext_list,
-		                            createInfo->vulkanCreateInfo->ppEnabledExtensionNames[i]);
+		u_extension_list_builder_append_unique(instance_ext_builder,
+		                                       createInfo->vulkanCreateInfo->ppEnabledExtensionNames[i]);
 	}
 
+	struct u_extension_list *instance_ext_list = u_extension_list_builder_build(&instance_ext_builder);
+
 	VkInstanceCreateInfo modified_info = *createInfo->vulkanCreateInfo;
-	modified_info.ppEnabledExtensionNames = u_string_list_get_data(instance_ext_list);
-	modified_info.enabledExtensionCount = u_string_list_get_size(instance_ext_list);
+	modified_info.ppEnabledExtensionNames = u_extension_list_get_data(instance_ext_list);
+	modified_info.enabledExtensionCount = u_extension_list_get_size(instance_ext_list);
 
 	*vulkanResult = loaded_CreateInstance(&modified_info, createInfo->vulkanAllocator, vulkanInstance);
 
@@ -305,7 +307,7 @@ oxr_vk_create_vulkan_instance(struct oxr_logger *log,
 	}
 #endif
 
-	u_string_list_destroy(&instance_ext_list);
+	u_extension_list_destroy(&instance_ext_list);
 
 	return XR_SUCCESS;
 }
@@ -400,12 +402,12 @@ oxr_vk_create_vulkan_device(struct oxr_logger *log,
 
 	VkPhysicalDevice physical_device = createInfo->vulkanPhysicalDevice;
 
-	struct u_string_list *device_extension_list =
-	    u_string_list_create_from_array(required_vk_device_extensions, ARRAY_SIZE(required_vk_device_extensions));
+	struct u_extension_list_builder *device_extension_builder = u_extension_list_builder_create_from_array(
+	    required_vk_device_extensions, ARRAY_SIZE(required_vk_device_extensions));
 
 	for (uint32_t i = 0; i < createInfo->vulkanCreateInfo->enabledExtensionCount; i++) {
-		u_string_list_append_unique(device_extension_list,
-		                            createInfo->vulkanCreateInfo->ppEnabledExtensionNames[i]);
+		u_extension_list_builder_append_unique(device_extension_builder,
+		                                       createInfo->vulkanCreateInfo->ppEnabledExtensionNames[i]);
 	}
 
 
@@ -431,7 +433,7 @@ oxr_vk_create_vulkan_device(struct oxr_logger *log,
 			continue;
 		}
 
-		u_string_list_append_unique(device_extension_list, optional_device_extensions[i]);
+		u_extension_list_builder_append_unique(device_extension_builder, optional_device_extensions[i]);
 
 #if defined(XRT_GRAPHICS_SYNC_HANDLE_IS_FD)
 		if (strcmp(optional_device_extensions[i], VK_KHR_EXTERNAL_FENCE_FD_EXTENSION_NAME) == 0) {
@@ -449,6 +451,7 @@ oxr_vk_create_vulkan_device(struct oxr_logger *log,
 
 	free(props);
 
+	struct u_extension_list *device_extension_list = u_extension_list_builder_build(&device_extension_builder);
 
 	VkPhysicalDeviceFeatures2KHR physical_device_features = {
 	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR,
@@ -462,7 +465,7 @@ oxr_vk_create_vulkan_device(struct oxr_logger *log,
 	    .timelineSemaphore = VK_FALSE,
 	};
 
-	if (u_string_list_contains(device_extension_list, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME)) {
+	if (u_extension_list_contains(device_extension_list, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME)) {
 		physical_device_features.pNext = &timeline_semaphore_info;
 	}
 #endif
@@ -475,8 +478,8 @@ oxr_vk_create_vulkan_device(struct oxr_logger *log,
 
 
 	VkDeviceCreateInfo modified_info = *createInfo->vulkanCreateInfo;
-	modified_info.ppEnabledExtensionNames = u_string_list_get_data(device_extension_list);
-	modified_info.enabledExtensionCount = u_string_list_get_size(device_extension_list);
+	modified_info.ppEnabledExtensionNames = u_extension_list_get_data(device_extension_list);
+	modified_info.enabledExtensionCount = u_extension_list_get_size(device_extension_list);
 
 #ifdef VK_KHR_timeline_semaphore
 	VkPhysicalDeviceTimelineSemaphoreFeatures timeline_semaphore = {
@@ -554,7 +557,7 @@ oxr_vk_create_vulkan_device(struct oxr_logger *log,
 	}
 #endif
 
-	u_string_list_destroy(&device_extension_list);
+	u_extension_list_destroy(&device_extension_list);
 
 	return XR_SUCCESS;
 }

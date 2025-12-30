@@ -1,5 +1,5 @@
 # Copyright 2019-2024, Collabora, Ltd.
-# Copyright 2024-2025, NVIDIA CORPORATION.
+# Copyright 2024-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: BSL-1.0
 
 ####
@@ -89,9 +89,9 @@ add_library(
 	u_session.h
 	u_space_overseer.c
 	u_space_overseer.h
-	u_string_list.cpp
-	u_string_list.h
-	u_string_list.hpp
+	u_extension_list.cpp
+	u_extension_list.h
+	u_extension_list.hpp
 	u_system.c
 	u_system.h
 	u_system_helpers.c

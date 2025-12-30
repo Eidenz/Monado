@@ -178,7 +178,7 @@ fill_in_results(struct vk_bundle *vk, const struct comp_vulkan_arguments *vk_arg
 static VkResult
 create_instance(struct vk_bundle *vk, const struct comp_vulkan_arguments *vk_args)
 {
-	struct u_string_list *instance_ext_list = NULL;
+	struct u_extension_list *instance_ext_list = NULL;
 	VkResult ret;
 
 	assert(vk_args->required_instance_version != 0);
@@ -217,8 +217,8 @@ create_instance(struct vk_bundle *vk, const struct comp_vulkan_arguments *vk_arg
 	VkInstanceCreateInfo instance_info = {
 	    .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
 	    .pApplicationInfo = &app_info,
-	    .enabledExtensionCount = u_string_list_get_size(instance_ext_list),
-	    .ppEnabledExtensionNames = u_string_list_get_data(instance_ext_list),
+	    .enabledExtensionCount = u_extension_list_get_size(instance_ext_list),
+	    .ppEnabledExtensionNames = u_extension_list_get_data(instance_ext_list),
 	};
 
 	ret = vk->vkCreateInstance(&instance_info, NULL, &vk->instance);
@@ -239,7 +239,7 @@ create_instance(struct vk_bundle *vk, const struct comp_vulkan_arguments *vk_arg
 	// Needs to be filled in before getting functions.
 	vk_fill_in_has_instance_extensions(vk, instance_ext_list);
 
-	u_string_list_destroy(&instance_ext_list);
+	u_extension_list_destroy(&instance_ext_list);
 
 	ret = vk_get_instance_functions(vk);
 	if (ret != VK_SUCCESS) {

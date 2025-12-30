@@ -1,4 +1,5 @@
 // Copyright 2022, Collabora, Ltd.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -19,7 +20,7 @@
 #include "xrt/xrt_vulkan_includes.h"
 
 #include "util/u_logging.h"
-#include "util/u_string_list.h"
+#include "util/u_extension_list.h"
 
 #include "vk/vk_helpers.h"
 

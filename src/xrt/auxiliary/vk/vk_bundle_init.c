@@ -31,14 +31,14 @@
 
 static bool
 should_skip_optional_instance_ext(struct vk_bundle *vk,
-                                  struct u_string_list *required_instance_ext_list,
-                                  struct u_string_list *optional_instance_ext_list,
+                                  struct u_extension_list *required_instance_ext_list,
+                                  struct u_extension_list *optional_instance_ext_list,
                                   const char *ext)
 {
 #ifdef VK_EXT_display_surface_counter
 	if (strcmp(ext, VK_EXT_DISPLAY_SURFACE_COUNTER_EXTENSION_NAME) == 0) {
 		// it does not make sense to enable surface counter on anything that does not use a VkDisplayKHR
-		if (!u_string_list_contains(required_instance_ext_list, VK_KHR_DISPLAY_EXTENSION_NAME)) {
+		if (!u_extension_list_contains(required_instance_ext_list, VK_KHR_DISPLAY_EXTENSION_NAME)) {
 			VK_DEBUG(vk, "Skipping optional instance extension %s because %s is not enabled", ext,
 			         VK_KHR_DISPLAY_EXTENSION_NAME);
 			return true;
@@ -52,8 +52,8 @@ should_skip_optional_instance_ext(struct vk_bundle *vk,
 
 static bool
 should_skip_optional_device_ext(struct vk_bundle *vk,
-                                struct u_string_list *required_device_ext_list,
-                                struct u_string_list *optional_device_ext_list,
+                                struct u_extension_list *required_device_ext_list,
+                                struct u_extension_list *optional_device_ext_list,
                                 const char *ext)
 {
 #ifdef VK_EXT_display_control
@@ -80,9 +80,9 @@ should_skip_optional_device_ext(struct vk_bundle *vk,
 
 VkResult
 vk_build_instance_extensions(struct vk_bundle *vk,
-                             struct u_string_list *required_instance_ext_list,
-                             struct u_string_list *optional_instance_ext_list,
-                             struct u_string_list **out_instance_ext_list)
+                             struct u_extension_list *required_instance_ext_list,
+                             struct u_extension_list *optional_instance_ext_list,
+                             struct u_extension_list **out_instance_ext_list)
 {
 	return vk_build_instance_extensions_with_skip( //
 	    vk,                                        //
@@ -93,7 +93,7 @@ vk_build_instance_extensions(struct vk_bundle *vk,
 }
 
 VkResult
-vk_check_required_instance_extensions(struct vk_bundle *vk, struct u_string_list *required_instance_ext_list)
+vk_check_required_instance_extensions(struct vk_bundle *vk, struct u_extension_list *required_instance_ext_list)
 {
 	VkExtensionProperties *props = NULL;
 	uint32_t prop_count = 0;
@@ -109,8 +109,8 @@ vk_check_required_instance_extensions(struct vk_bundle *vk, struct u_string_list
 		return ret; // Already logged.
 	}
 
-	// Convert to string list for easier checking.
-	struct u_string_list *available_ext_list = vk_convert_extension_properties_to_string_list(props, prop_count);
+	// Convert to extension list for easier checking.
+	struct u_extension_list *available_ext_list = vk_convert_extension_properties_to_string_list(props, prop_count);
 
 	// Clean up props.
 	free(props);
@@ -119,13 +119,13 @@ vk_check_required_instance_extensions(struct vk_bundle *vk, struct u_string_list
 	ret = vk_check_required_extensions(vk, available_ext_list, required_instance_ext_list, "instance");
 
 	// Clean up.
-	u_string_list_destroy(&available_ext_list);
+	u_extension_list_destroy(&available_ext_list);
 
 	return ret;
 }
 
 void
-vk_fill_in_has_instance_extensions(struct vk_bundle *vk, struct u_string_list *ext_list)
+vk_fill_in_has_instance_extensions(struct vk_bundle *vk, struct u_extension_list *ext_list)
 {
 	// Include the generated extension detection code.
 #include "vk_bundle_init_instance_ext.c.inc"
@@ -651,7 +651,7 @@ err_free:
 }
 
 static void
-fill_in_has_device_extensions(struct vk_bundle *vk, struct u_string_list *ext_list)
+fill_in_has_device_extensions(struct vk_bundle *vk, struct u_extension_list *ext_list)
 {
 #include "vk_bundle_init_device_ext.c.inc"
 }
@@ -931,11 +931,11 @@ vk_create_device(struct vk_bundle *vk,
                  int forced_index,
                  bool only_compute,
                  VkQueueGlobalPriorityEXT global_priority,
-                 struct u_string_list *required_device_ext_list,
-                 struct u_string_list *optional_device_ext_list,
+                 struct u_extension_list *required_device_ext_list,
+                 struct u_extension_list *optional_device_ext_list,
                  const struct vk_device_features *optional_device_features)
 {
-	struct u_string_list *device_ext_list = NULL;
+	struct u_extension_list *device_ext_list = NULL;
 	VkResult ret;
 
 	ret = select_physical_device(vk, forced_index);
@@ -1021,7 +1021,7 @@ vk_create_device(struct vk_bundle *vk,
 #ifdef VK_KHR_video_encode_queue
 	// Video encode queue
 	struct vk_queue_pair encode_queue = VK_NULL_QUEUE_PAIR;
-	if (u_string_list_contains(device_ext_list, VK_KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME)) {
+	if (u_extension_list_contains(device_ext_list, VK_KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME)) {
 		struct vk_queue_family encode_queue_family = {0};
 		ret = find_queue_family(vk, VK_QUEUE_VIDEO_ENCODE_BIT_KHR, &encode_queue_family);
 		if (ret == VK_SUCCESS) {
@@ -1131,8 +1131,8 @@ vk_create_device(struct vk_bundle *vk,
 	    .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
 	    .queueCreateInfoCount = queue_create_info_count,
 	    .pQueueCreateInfos = queue_create_info,
-	    .enabledExtensionCount = u_string_list_get_size(device_ext_list),
-	    .ppEnabledExtensionNames = u_string_list_get_data(device_ext_list),
+	    .enabledExtensionCount = u_extension_list_get_size(device_ext_list),
+	    .ppEnabledExtensionNames = u_extension_list_get_data(device_ext_list),
 	    .pEnabledFeatures = &enabled_features,
 	};
 
@@ -1191,7 +1191,7 @@ vk_create_device(struct vk_bundle *vk,
 	ret = vk->vkCreateDevice(vk->physical_device, &device_create_info, NULL, &vk->device);
 
 	// Destroy the list now.
-	u_string_list_destroy(&device_ext_list);
+	u_extension_list_destroy(&device_ext_list);
 
 	if (ret == VK_ERROR_NOT_PERMITTED_EXT) {
 		// Don't spam the not permitted returns as we try all of the different priorities.
@@ -1230,7 +1230,7 @@ err_destroy:
 	}
 
 	// Safe to call even if null.
-	u_string_list_destroy(&device_ext_list);
+	u_extension_list_destroy(&device_ext_list);
 
 	return ret;
 }

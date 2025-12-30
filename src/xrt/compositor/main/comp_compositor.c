@@ -1,5 +1,5 @@
 // Copyright 2019-2024, Collabora, Ltd.
-// Copyright 2025, NVIDIA CORPORATION.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -613,10 +613,12 @@ static const char *optional_device_extensions[] = {
 };
 
 static bool
-select_instances_extensions(struct comp_compositor *c, struct u_string_list *required, struct u_string_list *optional)
+select_instances_extensions(struct comp_compositor *c,
+                            struct u_extension_list_builder *required_builder,
+                            struct u_extension_list_builder *optional_builder)
 {
 #ifdef XRT_FEATURE_WINDOW_PEEK
-	if (!comp_window_peek_get_vk_instance_exts(required)) {
+	if (!comp_window_peek_get_vk_instance_exts(required_builder)) {
 		COMP_ERROR(c, "Failed to get required vulkan instance extensions for peek window.");
 		return false;
 	}
@@ -638,61 +640,75 @@ compositor_init_vulkan(struct comp_compositor *c)
 	 * Instance extensions.
 	 */
 
-	struct u_string_list *required_instance_ext_list = u_string_list_create();
-	struct u_string_list *optional_instance_ext_list = u_string_list_create();
+	struct u_extension_list_builder *required_instance_ext_builder = u_extension_list_builder_create();
+	struct u_extension_list_builder *optional_instance_ext_builder = u_extension_list_builder_create();
 
 	// Every backend needs at least the common extensions.
-	u_string_list_append_array(                  //
-	    required_instance_ext_list,              //
+	u_extension_list_builder_append_array(       //
+	    required_instance_ext_builder,           //
 	    instance_extensions_common,              //
 	    ARRAY_SIZE(instance_extensions_common)); //
 
 	// Add per target required extensions.
-	u_string_list_append_array(                                //
-	    required_instance_ext_list,                            //
+	u_extension_list_builder_append_array(                     //
+	    required_instance_ext_builder,                         //
 	    c->target_factory->required_instance_extensions,       //
 	    c->target_factory->required_instance_extension_count); //
 
 	// Optional instance extensions.
-	u_string_list_append_array(                    //
-	    optional_instance_ext_list,                //
+	u_extension_list_builder_append_array(         //
+	    optional_instance_ext_builder,             //
 	    optional_instance_extensions,              //
 	    ARRAY_SIZE(optional_instance_extensions)); //
 
-	if (!select_instances_extensions(c, required_instance_ext_list, optional_instance_ext_list)) {
+	if (!select_instances_extensions(c, required_instance_ext_builder, optional_instance_ext_builder)) {
 		COMP_ERROR(c, "Failed to select additional instance extensions.");
-		u_string_list_destroy(&required_instance_ext_list);
-		u_string_list_destroy(&optional_instance_ext_list);
+		u_extension_list_builder_destroy(&required_instance_ext_builder);
+		u_extension_list_builder_destroy(&optional_instance_ext_builder);
 		return false;
 	}
+
+	// Consumes the builder and returns a new list.
+	struct u_extension_list *required_instance_ext_list =
+	    u_extension_list_builder_build(&required_instance_ext_builder);
+	struct u_extension_list *optional_instance_ext_list =
+	    u_extension_list_builder_build(&optional_instance_ext_builder);
+
 
 	/*
 	 * Device extensions.
 	 */
 
-	struct u_string_list *required_device_extension_list = u_string_list_create();
-	struct u_string_list *optional_device_extension_list = u_string_list_create();
+	struct u_extension_list_builder *required_device_ext_builder = u_extension_list_builder_create();
+	struct u_extension_list_builder *optional_device_ext_builder = u_extension_list_builder_create();
 
 	// Required device extensions.
-	u_string_list_append_array(                  //
-	    required_device_extension_list,          //
+	u_extension_list_builder_append_array(       //
+	    required_device_ext_builder,             //
 	    required_device_extensions,              //
 	    ARRAY_SIZE(required_device_extensions)); //
 
 	// Optional device extensions.
-	u_string_list_append_array(                  //
-	    optional_device_extension_list,          //
+	u_extension_list_builder_append_array(       //
+	    optional_device_ext_builder,             //
 	    optional_device_extensions,              //
 	    ARRAY_SIZE(optional_device_extensions)); //
 
 	// Add per target optional device extensions.
-	u_string_list_append_array(                              //
-	    optional_device_extension_list,                      //
+	u_extension_list_builder_append_array(                   //
+	    optional_device_ext_builder,                         //
 	    c->target_factory->optional_device_extensions,       //
 	    c->target_factory->optional_device_extension_count); //
 
+	// Consumes the builder and returns a new list.
+	struct u_extension_list *required_device_ext_list =
+	    u_extension_list_builder_build(&required_device_ext_builder);
+	struct u_extension_list *optional_device_ext_list =
+	    u_extension_list_builder_build(&optional_device_ext_builder);
+
 	// Select required Vulkan version, suitable for both compositor and target
 	uint32_t required_instance_version = MAX(c->target_factory->required_instance_version, VK_API_VERSION_1_0);
+
 
 	/*
 	 * Create the device.
@@ -703,8 +719,8 @@ compositor_init_vulkan(struct comp_compositor *c)
 	    .required_instance_version = required_instance_version,
 	    .required_instance_extensions = required_instance_ext_list,
 	    .optional_instance_extensions = optional_instance_ext_list,
-	    .required_device_extensions = required_device_extension_list,
-	    .optional_device_extensions = optional_device_extension_list,
+	    .required_device_extensions = required_device_ext_list,
+	    .optional_device_extensions = optional_device_ext_list,
 	    .log_level = c->settings.log_level,
 	    .only_compute_queue = c->settings.use_compute,
 	    .selected_gpu_index = c->settings.selected_gpu_index,
@@ -715,10 +731,10 @@ compositor_init_vulkan(struct comp_compositor *c)
 	struct comp_vulkan_results vk_res = {0};
 	bool bundle_ret = comp_vulkan_init_bundle(vk, &vk_args, &vk_res);
 
-	u_string_list_destroy(&required_instance_ext_list);
-	u_string_list_destroy(&optional_instance_ext_list);
-	u_string_list_destroy(&required_device_extension_list);
-	u_string_list_destroy(&optional_device_extension_list);
+	u_extension_list_destroy(&required_instance_ext_list);
+	u_extension_list_destroy(&optional_instance_ext_list);
+	u_extension_list_destroy(&required_device_ext_list);
+	u_extension_list_destroy(&optional_device_ext_list);
 
 	if (!bundle_ret) {
 		return false;

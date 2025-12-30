@@ -238,11 +238,11 @@ u_pp_array2d_f64(u_pp_delegate_t dg, const double *arr, size_t n, size_t m, cons
 
 /*
  *
- * String list printers.
+ * Extension list printers.
  *
  */
 
-struct u_string_list;
+struct u_extension_list;
 
 /*!
  * @brief Print all the strings in the list with the given prefix.
@@ -253,10 +253,10 @@ struct u_string_list;
  * @ingroup aux_pretty
  */
 XRT_NONNULL_ALL void
-u_pp_string_list(struct u_pp_delegate dg, struct u_string_list *usl, const char *prefix);
+u_pp_string_list(struct u_pp_delegate dg, struct u_extension_list *usl, const char *prefix);
 
 /*!
- * @brief Pretty print the string list with extension information.
+ * @brief Pretty print the extension list with extension information.
  *
  * It will start on a new line with the enabled extensions, showing which are
  * required vs optional. Then if there are optional extensions not enabled it
@@ -270,9 +270,9 @@ u_pp_string_list(struct u_pp_delegate dg, struct u_string_list *usl, const char 
  */
 XRT_NONNULL_ALL void
 u_pp_string_list_extensions(struct u_pp_delegate dg,
-                            struct u_string_list *enabled_list,
-                            struct u_string_list *optional_list,
-                            struct u_string_list *skipped_list);
+                            struct u_extension_list *enabled_list,
+                            struct u_extension_list *optional_list,
+                            struct u_extension_list *skipped_list);
 
 
 /*

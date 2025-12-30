@@ -465,7 +465,7 @@ def generate_ext_check(exts):
         condition_line = conditional.process_condition(compute_condition((ext,)))
         if condition_line:
             yield condition_line
-        yield "\tvk->{} = u_string_list_contains(ext_list, {});".format(
+        yield "\tvk->{} = u_extension_list_contains(ext_list, {});".format(
             make_ext_member_name(ext), make_ext_name_define(ext))
     # close any trailing conditions
     condition_line = conditional.finish()

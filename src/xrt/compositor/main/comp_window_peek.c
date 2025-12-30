@@ -1,5 +1,6 @@
 // Copyright 2022, Simon Zeni <simon@bl4ckb0ne.ca>
 // Copyright 2022-2023, Collabora, Ltd.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -13,7 +14,7 @@
 #include "main/comp_window_peek.h"
 
 #include "util/u_debug.h"
-#include "util/u_string_list.h"
+#include "util/u_extension_list.h"
 
 #ifdef XRT_HAVE_SDL2
 #include <SDL2/SDL.h>
@@ -473,10 +474,10 @@ comp_window_peek_get_eye(struct comp_window_peek *w)
 }
 
 bool
-comp_window_peek_get_vk_instance_exts(struct u_string_list *out_required_list)
+comp_window_peek_get_vk_instance_exts(struct u_extension_list_builder *out_required_builder)
 {
-	if (out_required_list == NULL) {
-		U_LOG_E("comp_window_peek: out_required_list is null.");
+	if (out_required_builder == NULL) {
+		U_LOG_E("comp_window_peek: out_required_builder is null.");
 		return false;
 	}
 
@@ -532,7 +533,7 @@ comp_window_peek_get_vk_instance_exts(struct u_string_list *out_required_list)
 	}
 
 	for (uint32_t i = 0; i < size; ++i) {
-		if (u_string_list_append_unique(out_required_list, instance_ext_names[i]) == 0) {
+		if (u_extension_list_builder_append_unique(out_required_builder, instance_ext_names[i]) == 0) {
 			U_LOG_T("comp_window_peek: required instance extension: %s already exits, ignored.",
 			        instance_ext_names[i]);
 		} else {

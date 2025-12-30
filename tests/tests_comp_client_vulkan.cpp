@@ -1,4 +1,5 @@
 // Copyright 2022-2024, Collabora, Ltd.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -20,7 +21,7 @@
 #include "catch_amalgamated.hpp"
 #include "util/comp_vulkan.h"
 #include "util/u_logging.h"
-#include "util/u_string_list.h"
+#include "util/u_extension_list.h"
 #include "vk/vk_helpers.h"
 #include "xrt/xrt_compositor.h"
 #include <xrt/xrt_deleters.hpp>
@@ -85,7 +86,7 @@ static const char *required_device_extensions[] = {
 
 
 using unique_string_list =
-    std::unique_ptr<u_string_list, xrt::deleters::ptr_ptr_deleter<u_string_list, &u_string_list_destroy>>;
+    std::unique_ptr<u_extension_list, xrt::deleters::ptr_ptr_deleter<u_extension_list, &u_extension_list_destroy>>;
 
 static void
 xrt_comp_vk_destroy(struct xrt_compositor_vk **ptr_xcvk)
@@ -108,14 +109,14 @@ TEST_CASE("client_compositor", "[.][needgpu]")
 
 	// every backend needs at least the common extensions
 	unique_string_list required_instance_ext_list{
-	    u_string_list_create_from_array(instance_extensions_common, ARRAY_SIZE(instance_extensions_common))};
+	    u_extension_list_create_from_array(instance_extensions_common, ARRAY_SIZE(instance_extensions_common))};
 
-	unique_string_list optional_instance_ext_list{u_string_list_create()};
+	unique_string_list optional_instance_ext_list{u_extension_list_create()};
 
 	unique_string_list required_device_extension_list{
-	    u_string_list_create_from_array(required_device_extensions, ARRAY_SIZE(required_device_extensions))};
+	    u_extension_list_create_from_array(required_device_extensions, ARRAY_SIZE(required_device_extensions))};
 
-	unique_string_list optional_device_extension_list{u_string_list_create()};
+	unique_string_list optional_device_extension_list{u_extension_list_create()};
 
 	comp_vulkan_arguments args{VK_MAKE_VERSION(1, 0, 0),
 	                           vkGetInstanceProcAddr,
