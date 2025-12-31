@@ -884,6 +884,12 @@ vk_create_device(struct vk_bundle *vk,
 	// To builde the queue create
 	struct vk_queue_builder builder = {0};
 
+	// Always get a graphics queue.
+	struct vk_queue_family graphics_queue_family = {0};
+	ret = vk_queue_family_find_graphics(vk, &graphics_queue_family);
+	VK_CHK_WITH_GOTO(ret, "vk_queue_family_find_graphics", err_destroy);
+
+	// In compute-only mode, get a separate compute queue as the main queue.
 	struct vk_queue_pair main_queue = {0};
 	if (only_compute) {
 		struct vk_queue_family compute_queue_family = {0};
@@ -894,14 +900,22 @@ vk_create_device(struct vk_bundle *vk,
 
 		main_queue = vk_queue_builder_add(&builder, compute_queue_family.family_index);
 	} else {
-		struct vk_queue_family graphics_queue_family = {0};
-		ret = vk_queue_family_find_graphics(vk, &graphics_queue_family);
-		VK_CHK_WITH_GOTO(ret, "vk_queue_family_find_graphics", err_destroy);
-
 		assert(graphics_queue_family.queue_family.queueCount > 0);
 
+		// In normal mode, main queue is the graphics queue.
 		main_queue = vk_queue_builder_add(&builder, graphics_queue_family.family_index);
 	}
+
+	// Assume that the graphics queue family has at least one queue.
+	assert(graphics_queue_family.queue_family.queueCount > 0);
+
+	/*
+	 * Do this after the main queue is added, so that it comes before
+	 * graphics queue in the list of queues, this is important for the
+	 * priority info. If graphics is main the add function will reuse the
+	 * main queue index.
+	 */
+	const struct vk_queue_pair graphics_queue = vk_queue_builder_add(&builder, graphics_queue_family.family_index);
 
 	VkDeviceQueueGlobalPriorityCreateInfoEXT priority_info = {
 	    .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO_EXT,
@@ -1093,6 +1107,9 @@ vk_create_device(struct vk_bundle *vk,
 	vk->main_queue = vk_insert_get_queue(vk, &main_queue);
 	assert(vk->main_queue != NULL);
 
+	vk->graphics_queue = vk_insert_get_queue(vk, &graphics_queue);
+	assert(vk->graphics_queue != NULL);
+
 #if defined(VK_KHR_video_encode_queue)
 	vk->encode_queue = vk_insert_get_queue(vk, &encode_queue);
 #endif
@@ -1236,6 +1253,10 @@ vk_init_from_given(struct vk_bundle *vk,
 
 	vk->main_queue = vk_insert_get_queue(vk, &main_queue);
 	assert(vk->main_queue != NULL);
+
+	// In vk_init_from_given, we don't know if the queue is graphics or not.
+	// Assume it's graphics-capable as a best guess.
+	vk->graphics_queue = vk->main_queue;
 
 	vk->has_EXT_debug_utils = false;
 	if (debug_utils_enabled) {

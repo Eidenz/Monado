@@ -30,7 +30,7 @@
 extern "C" {
 #endif
 
-#define VK_BUNDLE_MAX_QUEUES 2
+#define VK_BUNDLE_MAX_QUEUES 3
 
 /*
  *
@@ -87,7 +87,7 @@ struct vk_bundle
 	 * One per uniquely identifiable vk queue (family x instance index),
 	 * duplicate entries must not be stored.
 	 *
-	 * Should not be used directly, @see main_queue, encode_queue
+	 * Should not be used directly, @see main_queue, graphics_queue, encode_queue
 	 */
 	struct vk_bundle_queue queues[VK_BUNDLE_MAX_QUEUES];
 
@@ -100,6 +100,16 @@ struct vk_bundle
 	 * May alias with graphics_queue.
 	 */
 	struct vk_bundle_queue *main_queue;
+
+	/*!
+	 * @brief Graphics queue.
+	 *
+	 * Always a graphics queue, even in compute-only mode.
+	 * In normal mode, aliases with main_queue.
+	 * In compute-only mode, this is a separate graphics queue.
+	 */
+	struct vk_bundle_queue *graphics_queue;
+
 #if defined(VK_KHR_video_encode_queue)
 	/*!
 	 * @brief Video encode queue.

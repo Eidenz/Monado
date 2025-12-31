@@ -1,4 +1,5 @@
 // Copyright 2019-2022, Collabora, Ltd.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -311,6 +312,9 @@ vk_print_queues_info(const struct vk_bundle *vk, enum u_logging_level log_level)
 
 	P("Selected Queues/Families:");
 	print_queue(dg, "main_", vk->main_queue);
+	if (vk->graphics_queue != vk->main_queue) {
+		print_queue(dg, "graphics_", vk->graphics_queue);
+	}
 #if defined(VK_KHR_video_encode_queue)
 	print_queue(dg, "encode_", vk->encode_queue);
 #endif
