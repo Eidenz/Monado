@@ -47,7 +47,8 @@
 #define IN_REPORT_DK2 11
 
 // asserts the size of a type is equal to the byte size provided
-#define SIZE_ASSERT(type, size) static_assert(sizeof(type) == (size))
+#define SIZE_ASSERT(type, size)                                                                                        \
+	static_assert(sizeof(type) == (size), "Size of " #type " is not " #size " bytes as was expected")
 
 enum rift_feature_reports
 {
