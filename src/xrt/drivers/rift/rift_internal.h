@@ -303,7 +303,7 @@ SIZE_ASSERT(struct rift_dk2_version_data, 6);
 struct rift_cv1_version_data
 {
 	uint16_t presence_sensor;
-	uint16_t iad_value;
+	uint16_t iad_adc_value;
 	uint16_t unk;
 };
 
@@ -320,9 +320,10 @@ struct dk2_in_report
 	uint16_t temperature;
 	uint32_t sample_timestamp;
 	struct rift_dk2_sample_pack samples[DK2_MAX_SAMPLES];
-	int16_t mag_x;
-	int16_t mag_y;
-	int16_t mag_z;
+	union {
+		struct rift_dk2_version_data dk2;
+		struct rift_cv1_version_data cv1;
+	};
 	uint16_t frame_count;
 	uint32_t frame_timestamp;
 	uint8_t frame_id;
@@ -456,6 +457,9 @@ struct rift_hmd
 	uint16_t distortion_in_use;
 
 	struct rift_extra_display_info extra_display_info;
+	float icd_override_m;
+
+	bool presence;
 
 	bool imu_needs_calibration;
 	struct rift_imu_calibration imu_calibration;

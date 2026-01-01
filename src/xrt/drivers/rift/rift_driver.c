@@ -50,7 +50,7 @@
  */
 
 DEBUG_GET_ONCE_LOG_OPTION(rift_log, "RIFT_LOG", U_LOGGING_WARN)
-DEBUG_GET_ONCE_FLOAT_OPTION(rift_override_icd_mm, "RIFT_OVERRIDE_ICD", 0.0f)
+DEBUG_GET_ONCE_FLOAT_OPTION(rift_override_icd_mm, "RIFT_OVERRIDE_ICD", -1.0f)
 DEBUG_GET_ONCE_BOOL_OPTION(rift_use_firmware_distortion, "RIFT_USE_FIRMWARE_DISTORTION", false)
 DEBUG_GET_ONCE_BOOL_OPTION(rift_power_override, "RIFT_POWER_OVERRIDE", false)
 DEBUG_GET_ONCE_FLOAT_OPTION(rift_startup_wait_time, "RIFT_STARTUP_WAIT_TIME", 5.0f)
@@ -98,7 +98,7 @@ rift_sensor_thread_tick(struct rift_hmd *hmd)
 		// skip unknown commands
 		if (buf[0] != IN_REPORT_DK2) {
 			HMD_WARN(hmd, "Skipping unknown IN command %d", buf[0]);
-			return 0;
+			break;
 		}
 
 		struct dk2_in_report report;
@@ -106,15 +106,28 @@ rift_sensor_thread_tick(struct rift_hmd *hmd)
 		// don't treat invalid IN reports as fatal, just ignore them
 		if (result < (int)sizeof(report)) {
 			HMD_WARN(hmd, "Got malformed DK2 IN report with size %d", result);
-			return 0;
+			break;
 		}
 
 		// TODO: handle endianness
 		memcpy(&report, buf + 1, sizeof(report));
 
+		if (hmd->variant == RIFT_VARIANT_CV1) {
+			hmd->presence = report.cv1.presence_sensor > 3;
+
+			// TODO: figure out the actual algorithm for this, this one is too silly
+			float iad_mm = (float)(report.cv1.iad_adc_value - 400) / 300.0f + 59.0f;
+
+			// round to nearest half mm
+			iad_mm = roundf(iad_mm * 2.0f) / 2.0f;
+
+			// convert to meters
+			hmd->extra_display_info.icd = iad_mm / 1000.0f;
+		}
+
 		// if there's no samples, just do nothing.
 		if (report.num_samples == 0) {
-			return 0;
+			break;
 		}
 
 		if (!hmd->processed_sample_packet) {
@@ -135,7 +148,7 @@ rift_sensor_thread_tick(struct rift_hmd *hmd)
 		// if we haven't synchronized our clocks, just do nothing
 		if (!m_clock_windowed_skew_tracker_to_local(hmd->clock_tracker, hmd->last_remote_sample_time_ns,
 		                                            &local_timestamp_ns)) {
-			return 0;
+			break;
 		}
 
 		if (report.num_samples > 1)
@@ -310,14 +323,21 @@ rift_hmd_get_view_poses(struct xrt_device *xdev,
 {
 	struct rift_hmd *hmd = rift_hmd(xdev);
 
-	return u_device_get_view_poses(                                  //
-	    xdev,                                                        //
-	    &(struct xrt_vec3){hmd->extra_display_info.icd, 0.0f, 0.0f}, //
-	    at_timestamp_ns,                                             //
-	    view_type,                                                   //
-	    view_count,                                                  //
-	    out_head_relation,                                           //
-	    out_fovs,                                                    //
+	struct xrt_vec3 eye_relation = XRT_VEC3_ZERO;
+	if (hmd->icd_override_m >= 0.0f) {
+		eye_relation.x = hmd->icd_override_m;
+	} else {
+		eye_relation.x = hmd->extra_display_info.icd;
+	}
+
+	return u_device_get_view_poses( //
+	    xdev,                       //
+	    &eye_relation,              //
+	    at_timestamp_ns,            //
+	    view_type,                  //
+	    view_count,                 //
+	    out_head_relation,          //
+	    out_fovs,                   //
 	    out_poses);
 }
 
@@ -329,6 +349,21 @@ rift_hmd_get_visibility_mask(struct xrt_device *xdev,
 {
 	struct xrt_fov fov = xdev->hmd->distortion.fov[view_index];
 	u_visibility_mask_get_default(type, &fov, out_mask);
+	return XRT_SUCCESS;
+}
+
+static xrt_result_t
+rift_hmd_get_presence(struct xrt_device *xdev, bool *out_presence)
+{
+	struct rift_hmd *hmd = rift_hmd(xdev);
+
+	// Only the CV1 has a presence sensor, and this should never be called on DK2 given we don't mark this as
+	// supported on non-CV1 headsets
+	if (hmd->variant != RIFT_VARIANT_CV1) {
+		return XRT_ERROR_FEATURE_NOT_SUPPORTED;
+	}
+
+	*out_presence = hmd->presence;
 	return XRT_SUCCESS;
 }
 
@@ -443,8 +478,8 @@ rift_devices_create(struct os_hid_device *dev,
 
 		rift_parse_distortion_report(&lens_distortion_report,
 		                             &lens_distortions[lens_distortion_report.distortion_idx]);
-		// TODO: actually verify we initialize all the distortions. if the headset is working correctly, this
-		// should have happened, but you never know.
+		// TODO: actually verify we initialize all the distortions. if the headset is working correctly,
+		// this should have happened, but you never know.
 		for (uint16_t i = 1; i < hmd->num_lens_distortions; i++) {
 			result = rift_get_lens_distortion(hmd, &lens_distortion_report);
 			if (result < 0) {
@@ -496,6 +531,7 @@ rift_devices_create(struct os_hid_device *dev,
 	hmd->base.get_view_poses = rift_hmd_get_view_poses;
 	hmd->base.get_visibility_mask = rift_hmd_get_visibility_mask;
 	hmd->base.destroy = rift_hmd_destroy;
+	hmd->base.get_presence = rift_hmd_get_presence;
 
 	hmd->base.hmd->distortion.models = XRT_DISTORTION_MODEL_COMPUTE;
 	hmd->base.hmd->distortion.preferred = XRT_DISTORTION_MODEL_COMPUTE;
@@ -517,6 +553,7 @@ rift_devices_create(struct os_hid_device *dev,
 	hmd->base.inputs[0].name = XRT_INPUT_GENERIC_HEAD_POSE;
 	hmd->base.supported.orientation_tracking = true;
 	hmd->base.supported.position_tracking = false; // set to true once we are trying to get the sensor 6dof to work
+	hmd->base.supported.presence = variant == RIFT_VARIANT_CV1;
 
 	// Set up display details
 	switch (hmd->variant) {
@@ -527,10 +564,9 @@ rift_devices_create(struct os_hid_device *dev,
 
 	hmd->extra_display_info.icd = MICROMETERS_TO_METERS(hmd->display_info.lens_separation);
 
-	float icd_override_mm = debug_get_float_option_rift_override_icd_mm();
-	if (icd_override_mm > 0.0f) {
-		hmd->extra_display_info.icd = icd_override_mm / 1000.0f;
-		HMD_INFO(hmd, "Forcing ICD to %f", hmd->extra_display_info.icd);
+	hmd->icd_override_m = debug_get_float_option_rift_override_icd_mm() / 1000.0f;
+	if (hmd->icd_override_m >= 0.0f) {
+		HMD_INFO(hmd, "Applying ICD override of %f", hmd->icd_override_m);
 	} else {
 		HMD_DEBUG(hmd, "Using default ICD of %f", hmd->extra_display_info.icd);
 	}
@@ -639,6 +675,7 @@ rift_devices_create(struct os_hid_device *dev,
 	u_var_add_log_level(hmd, &hmd->log_level, "log_level");
 	u_var_add_f32(hmd, &hmd->extra_display_info.icd, "ICD");
 	m_imu_3dof_add_vars(&hmd->fusion, hmd, "3dof_");
+	u_var_add_bool(hmd, &hmd->presence, "presence");
 
 	u_var_add_bool(hmd, &hmd->imu_needs_calibration, "imu_needs_calibration");
 	u_var_add_gui_header(hmd, NULL, "IMU Calibration");
