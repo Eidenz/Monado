@@ -179,8 +179,10 @@ rift_sensor_thread_tick(struct rift_hmd *hmd)
 			// push the pose of the IMU for that sample, doing so per sample
 			struct xrt_space_relation relation = XRT_SPACE_RELATION_ZERO;
 			relation.relation_flags = (enum xrt_space_relation_flags)(
-			    XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT | XRT_SPACE_RELATION_ORIENTATION_VALID_BIT);
+			    XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT | XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
+			    XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT);
 			relation.pose.orientation = hmd->fusion.rot;
+			relation.angular_velocity = gyro;
 			m_relation_history_push(hmd->relation_hist, &relation, sample_local_timestamp_ns);
 		}
 
