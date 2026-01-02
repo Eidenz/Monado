@@ -76,7 +76,13 @@ configure_file(
 
 set(XRT_ENUM_HEADERS xrt_defines.h xrt_device.h xrt_results.h)
 
-set(XRT_ENUM_NAMES xrt_device_feature_type xrt_result)
+set(XRT_ENUM_NAMES
+    xrt_device_feature_type
+    xrt_result
+    xrt_device_name
+    xrt_input_name
+    xrt_output_name
+	)
 
 # Generate X_macro lists from enum declarations
 generate_macro_lists(

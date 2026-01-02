@@ -95,15 +95,10 @@ stack_only_sink(void *ptr, const char *str, size_t length)
 const char *
 u_str_xrt_input_name_or_null(enum xrt_input_name name)
 {
-#define XRT_INPUT_LIST_TO_CASE(NAME, _)                                                                                \
-	case NAME: return #NAME;
-
 	// No default case so we get warnings of missing entries.
 	switch (name) {
-		XRT_INPUT_LIST(XRT_INPUT_LIST_TO_CASE)
+		XRT_INPUT_NAME_LIST(X_MACRO_ENUM_CASE_RETURN_STRING)
 	}
-
-#undef XRT_INPUT_LIST_TO_CASE
 
 	return NULL;
 }
@@ -111,15 +106,10 @@ u_str_xrt_input_name_or_null(enum xrt_input_name name)
 const char *
 u_str_xrt_output_name_or_null(enum xrt_output_name name)
 {
-#define XRT_OUTPUT_LIST_TO_CASE(NAME, _)                                                                               \
-	case NAME: return #NAME;
-
 	// No default case so we get warnings of missing entries.
 	switch (name) {
-		XRT_OUTPUT_LIST(XRT_OUTPUT_LIST_TO_CASE)
+		XRT_OUTPUT_NAME_LIST(X_MACRO_ENUM_CASE_RETURN_STRING)
 	}
-
-#undef XRT_OUTPUT_LIST_TO_CASE
 
 	return NULL;
 }
@@ -127,15 +117,10 @@ u_str_xrt_output_name_or_null(enum xrt_output_name name)
 const char *
 u_str_xrt_device_name_or_null(enum xrt_device_name name)
 {
-#define XRT_DEVICE_NAME_LIST_TO_CASE(NAME)                                                                             \
-	case NAME: return #NAME;
-
 	// No default case so we get warnings of missing entries.
 	switch (name) {
-		XRT_DEVICE_NAME_LIST(XRT_DEVICE_NAME_LIST_TO_CASE)
+		XRT_DEVICE_NAME_LIST(X_MACRO_ENUM_CASE_RETURN_STRING)
 	}
-
-#undef XRT_DEVICE_NAME_LIST_TO_CASE
 
 	return NULL;
 }
