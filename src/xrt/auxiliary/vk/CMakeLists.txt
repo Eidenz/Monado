@@ -62,6 +62,8 @@ add_library(
 	vk_queue_family.h
 	vk_print.c
 	vk_state_creators.c
+	vk_submit_helpers.c
+	vk_submit_helpers.h
 	vk_surface_info.c
 	vk_surface_info.h
 	vk_sync_objects.c
