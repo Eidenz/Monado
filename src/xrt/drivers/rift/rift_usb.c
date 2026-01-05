@@ -7,12 +7,24 @@
  * @ingroup drv_rift
  */
 
+#include <errno.h>
+
 #include "rift_usb.h"
 
 
+/*
+ *
+ * HMD commands
+ *
+ */
+
 static int
-rift_send_report(struct rift_hmd *hmd, uint8_t report_id, void *data, size_t data_length)
+rift_send_report(struct rift_hmd *hmd, bool radio_hid, uint8_t report_id, void *data, size_t data_length)
 {
+	if (radio_hid) {
+		assert(hmd->radio_dev != NULL);
+	}
+
 	int result;
 
 	if (data_length > REPORT_MAX_SIZE - 1) {
@@ -23,7 +35,7 @@ rift_send_report(struct rift_hmd *hmd, uint8_t report_id, void *data, size_t dat
 	buffer[0] = report_id;
 	memcpy(buffer + 1, data, data_length);
 
-	result = os_hid_set_feature(hmd->hid_dev, buffer, data_length + 1);
+	result = os_hid_set_feature(radio_hid ? hmd->radio_dev : hmd->hmd_dev, buffer, data_length + 1);
 	if (result < 0) {
 		return result;
 	}
@@ -32,9 +44,13 @@ rift_send_report(struct rift_hmd *hmd, uint8_t report_id, void *data, size_t dat
 }
 
 static int
-rift_get_report(struct rift_hmd *hmd, uint8_t report_id, uint8_t *out, size_t out_len)
+rift_get_report(struct rift_hmd *hmd, bool radio_hid, uint8_t report_id, uint8_t *out, size_t out_len)
 {
-	return os_hid_get_feature(hmd->hid_dev, report_id, out, out_len);
+	if (radio_hid) {
+		assert(hmd->radio_dev != NULL);
+	}
+
+	return os_hid_get_feature(radio_hid ? hmd->radio_dev : hmd->hmd_dev, report_id, out, out_len);
 }
 
 int
@@ -43,7 +59,7 @@ rift_send_keepalive(struct rift_hmd *hmd)
 	struct rift_dk2_keepalive_mux_report report = {0, IN_REPORT_DK2,
 	                                               KEEPALIVE_INTERVAL_NS / 1000000}; // convert ns to ms
 
-	int result = rift_send_report(hmd, FEATURE_REPORT_KEEPALIVE_MUX, &report, sizeof(report));
+	int result = rift_send_report(hmd, false, FEATURE_REPORT_KEEPALIVE_MUX, &report, sizeof(report));
 
 	if (result < 0) {
 		return result;
@@ -60,7 +76,7 @@ rift_get_config(struct rift_hmd *hmd, struct rift_config_report *config)
 {
 	uint8_t buf[REPORT_MAX_SIZE] = {0};
 
-	int result = rift_get_report(hmd, FEATURE_REPORT_CONFIG, buf, sizeof(buf));
+	int result = rift_get_report(hmd, false, FEATURE_REPORT_CONFIG, buf, sizeof(buf));
 	if (result < 0) {
 		return result;
 	}
@@ -84,7 +100,7 @@ rift_get_display_info(struct rift_hmd *hmd, struct rift_display_info_report *dis
 {
 	uint8_t buf[REPORT_MAX_SIZE] = {0};
 
-	int result = rift_get_report(hmd, FEATURE_REPORT_DISPLAY_INFO, buf, sizeof(buf));
+	int result = rift_get_report(hmd, false, FEATURE_REPORT_DISPLAY_INFO, buf, sizeof(buf));
 	if (result < 0) {
 		return result;
 	}
@@ -100,7 +116,7 @@ rift_get_lens_distortion(struct rift_hmd *hmd, struct rift_lens_distortion_repor
 {
 	uint8_t buf[REPORT_MAX_SIZE] = {0};
 
-	int result = rift_get_report(hmd, FEATURE_REPORT_LENS_DISTORTION, buf, sizeof(buf));
+	int result = rift_get_report(hmd, false, FEATURE_REPORT_LENS_DISTORTION, buf, sizeof(buf));
 	if (result < 0) {
 		return result;
 	}
@@ -113,7 +129,7 @@ rift_get_lens_distortion(struct rift_hmd *hmd, struct rift_lens_distortion_repor
 int
 rift_set_config(struct rift_hmd *hmd, struct rift_config_report *config)
 {
-	return rift_send_report(hmd, FEATURE_REPORT_CONFIG, config, sizeof(*config));
+	return rift_send_report(hmd, false, FEATURE_REPORT_CONFIG, config, sizeof(*config));
 }
 
 static float
@@ -158,7 +174,8 @@ rift_parse_distortion_report(struct rift_lens_distortion_report *report, struct 
 int
 rift_enable_components(struct rift_hmd *hmd, struct rift_enable_components_report *enable_components)
 {
-	return rift_send_report(hmd, FEATURE_REPORT_ENABLE_COMPONENTS, enable_components, sizeof(*enable_components));
+	return rift_send_report(hmd, false, FEATURE_REPORT_ENABLE_COMPONENTS, enable_components,
+	                        sizeof(*enable_components));
 }
 
 int
@@ -166,7 +183,7 @@ rift_get_imu_calibration(struct rift_hmd *hmd, struct rift_imu_calibration *imu_
 {
 	uint8_t buf[REPORT_MAX_SIZE] = {0};
 
-	int result = rift_get_report(hmd, FEATURE_REPORT_CALIBRATE, buf, sizeof buf);
+	int result = rift_get_report(hmd, false, FEATURE_REPORT_CALIBRATE, buf, sizeof buf);
 	if (result < 0) {
 		return result;
 	}
@@ -196,6 +213,90 @@ rift_get_imu_calibration(struct rift_hmd *hmd, struct rift_imu_calibration *imu_
 
 	return 0;
 }
+
+/*
+ *
+ * Radio commands
+ *
+ */
+
+int
+rift_send_radio_cmd(struct rift_hmd *hmd, bool radio_hid, struct rift_radio_cmd_report *radio_cmd)
+{
+	return rift_send_report(hmd, radio_hid, FEATURE_REPORT_RADIO_CONTROL, radio_cmd, sizeof(*radio_cmd));
+}
+
+int
+rift_get_radio_cmd_response(struct rift_hmd *hmd, bool wait, bool radio_hid)
+{
+	unsigned char buffer[REPORT_MAX_SIZE] = {0};
+	int result;
+
+	do {
+		result = rift_get_report(hmd, radio_hid, FEATURE_REPORT_RADIO_CONTROL, buffer, sizeof(buffer));
+		if (result < 1) {
+			HMD_ERROR(hmd, "HMD radio command failed - response too small");
+			return -EIO;
+		}
+
+		// If this isn't a blocking wait and we got an "in progress" response, early return
+		if (!wait && (buffer[3] & 0x80)) {
+			return -EINPROGRESS;
+		}
+	} while (buffer[3] & 0x80);
+
+	// 0x08 means the device isn't responding, so return a timeout
+	if (buffer[3] & 0x08)
+		return -ETIMEDOUT;
+
+	return 0;
+}
+
+int
+rift_get_radio_address(struct rift_hmd *hmd, uint8_t out_address[])
+{
+	unsigned char buffer[REPORT_MAX_SIZE] = {0};
+	int result;
+
+	result = rift_send_radio_cmd(hmd, false, &(struct rift_radio_cmd_report){0, 0x05, 0x03, 0x05});
+	if (result < 0) {
+		HMD_ERROR(hmd, "Failed to send radio command. reason %d", result);
+		return result;
+	}
+
+	// wait for a response
+	result = rift_get_radio_cmd_response(hmd, true, false);
+	if (result < 0) {
+		HMD_ERROR(hmd, "Failed to get radio command response. reason %d", result);
+		return result;
+	}
+
+	result = rift_get_report(hmd, false, FEATURE_REPORT_RADIO_READ_DATA_CMD, buffer, sizeof(buffer));
+	if (result < 0) {
+		HMD_ERROR(hmd, "Failed to read radio data for radio address, reason %d", result);
+		return result;
+	}
+
+	struct rift_radio_address_radio_report radio_address;
+	if (result < (int)(sizeof(radio_address) + 1)) {
+		HMD_ERROR(hmd, "Got too small of a response to be a radio address, got size %d", result);
+		return -1;
+	}
+
+	// TODO: handle endianness
+	memcpy(&radio_address, buffer + 1, sizeof(radio_address));
+
+	// Copy out the radio address into the HMD
+	memcpy(out_address, radio_address.radio_address, sizeof(radio_address.radio_address));
+
+	return 0;
+}
+
+/*
+ *
+ * Parsing
+ *
+ */
 
 /*
  * Decode 3 tightly packed 21 bit values from 4 bytes.

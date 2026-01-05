@@ -51,7 +51,8 @@ rift_found(struct xrt_prober *xp,
            struct xrt_device **out_xdev);
 
 int
-rift_devices_create(struct os_hid_device *dev,
+rift_devices_create(struct os_hid_device *hmd_dev,
+                    struct os_hid_device *radio_dev,
                     enum rift_variant variant,
                     const char *device_name,
                     const char *serial_number,

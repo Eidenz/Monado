@@ -45,6 +45,7 @@
 #define DEFAULT_EXTRA_EYE_ROTATION DEG_TO_RAD(30.0f)
 
 #define IN_REPORT_DK2 11
+#define IN_REPORT_CV1_RADIO_KEEPALIVE 13
 
 // asserts the size of a type is equal to the byte size provided
 #define SIZE_ASSERT(type, size)                                                                                        \
@@ -354,6 +355,24 @@ struct rift_imu_calibration_report
 
 SIZE_ASSERT(struct rift_imu_calibration_report, sizeof(struct rift_dk2_sample_pack) * 4 + 4);
 
+struct rift_radio_cmd_report
+{
+	uint16_t command_id;
+	uint8_t a;
+	uint8_t b;
+	uint8_t c;
+};
+
+SIZE_ASSERT(struct rift_radio_cmd_report, 5);
+
+struct rift_radio_address_radio_report
+{
+	uint16_t command_id;
+	uint8_t radio_address[5];
+};
+
+SIZE_ASSERT(struct rift_radio_address_radio_report, 7);
+
 #pragma pack(pop)
 
 /*
@@ -436,7 +455,9 @@ struct rift_hmd
 	// has built-in mutex so thread safe
 	struct m_relation_history *relation_hist;
 
-	struct os_hid_device *hid_dev;
+	struct os_hid_device *hmd_dev;
+	struct os_hid_device *radio_dev;
+
 	struct os_thread_helper sensor_thread;
 	bool processed_sample_packet;
 	uint32_t last_remote_sample_time_us;
@@ -462,6 +483,8 @@ struct rift_hmd
 
 	bool imu_needs_calibration;
 	struct rift_imu_calibration imu_calibration;
+
+	uint8_t radio_address[5];
 };
 
 /// Casting helper function

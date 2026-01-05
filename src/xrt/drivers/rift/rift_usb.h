@@ -34,12 +34,14 @@ rift_enable_components(struct rift_hmd *hmd, struct rift_enable_components_repor
 int
 rift_get_imu_calibration(struct rift_hmd *hmd, struct rift_imu_calibration *imu_calibration);
 
+int
+rift_get_radio_address(struct rift_hmd *hmd, uint8_t out_address[]);
+
 void
 rift_unpack_int_sample(const uint8_t *in, struct xrt_vec3_i32 *out);
 
 void
 rift_unpack_float_sample(const uint8_t *in, float scale, struct xrt_vec3 *out);
-
 
 void
 rift_sample_to_imu_space(const int32_t *in, struct xrt_vec3 *out);

@@ -61,14 +61,23 @@ rift_found(struct xrt_prober *xp,
 
 	U_LOG_I("%s - Found at least the tracker of some Rift (%s) -- opening\n", __func__, name);
 
-	struct os_hid_device *hid = NULL;
-	result = xrt_prober_open_hid_interface(xp, dev, 0, &hid);
+	struct os_hid_device *hmd_dev = NULL;
+	result = xrt_prober_open_hid_interface(xp, dev, 0, &hmd_dev);
 	if (result != 0) {
 		return -1;
 	}
 
+	struct os_hid_device *radio_dev = NULL;
+	if (variant == RIFT_VARIANT_CV1) {
+		result = xrt_prober_open_hid_interface(xp, dev, 1, &radio_dev);
+		if (result != 0) {
+			return -1;
+		}
+	}
+
 	struct rift_hmd *hd = NULL;
-	int created_devices = rift_devices_create(hid, variant, (char *)name, (char *)serial_number, &hd, out_xdevs);
+	int created_devices =
+	    rift_devices_create(hmd_dev, radio_dev, variant, (char *)name, (char *)serial_number, &hd, out_xdevs);
 	if (created_devices < 0) {
 		return -1;
 	}

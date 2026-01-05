@@ -78,7 +78,7 @@ rift_sensor_thread_tick(struct rift_hmd *hmd)
 		}
 	}
 
-	result = os_hid_read(hmd->hid_dev, buf, sizeof(buf), IMU_SAMPLE_RATE);
+	result = os_hid_read(hmd->hmd_dev, buf, sizeof(buf), IMU_SAMPLE_RATE);
 	timepoint_ns recv_time_ns = os_monotonic_get_ns();
 
 	if (result < 0) {
@@ -95,6 +95,11 @@ rift_sensor_thread_tick(struct rift_hmd *hmd)
 	switch (hmd->variant) {
 	case RIFT_VARIANT_CV1:
 	case RIFT_VARIANT_DK2: {
+		// CV1 sends this every couple seconds when there's nothing connected to the radio
+		if (buf[0] == IN_REPORT_CV1_RADIO_KEEPALIVE && hmd->variant == RIFT_VARIANT_CV1) {
+			break;
+		}
+
 		// skip unknown commands
 		if (buf[0] != IN_REPORT_DK2) {
 			HMD_WARN(hmd, "Skipping unknown IN command %d", buf[0]);
@@ -276,6 +281,11 @@ rift_hmd_destroy(struct xrt_device *xdev)
 	if (hmd->lens_distortions && debug_get_bool_option_rift_use_firmware_distortion())
 		free((void *)hmd->lens_distortions);
 
+	os_hid_destroy(hmd->hmd_dev);
+	if (hmd->radio_dev != NULL) {
+		os_hid_destroy(hmd->radio_dev);
+	}
+
 	u_device_free(&hmd->base);
 }
 
@@ -368,7 +378,8 @@ rift_hmd_get_presence(struct xrt_device *xdev, bool *out_presence)
 }
 
 int
-rift_devices_create(struct os_hid_device *dev,
+rift_devices_create(struct os_hid_device *hmd_dev,
+                    struct os_hid_device *radio_dev,
                     enum rift_variant variant,
                     const char *device_name,
                     const char *serial_number,
@@ -384,7 +395,8 @@ rift_devices_create(struct os_hid_device *dev,
 	struct rift_hmd *hmd = U_DEVICE_ALLOCATE(struct rift_hmd, flags, 1, 0);
 
 	hmd->variant = variant;
-	hmd->hid_dev = dev;
+	hmd->hmd_dev = hmd_dev;
+	hmd->radio_dev = radio_dev;
 
 	result = rift_send_keepalive(hmd);
 	if (result < 0) {
@@ -397,6 +409,16 @@ rift_devices_create(struct os_hid_device *dev,
 		rift_enable_components(hmd, &(struct rift_enable_components_report){.flags = RIFT_COMPONENT_DISPLAY |
 		                                                                             RIFT_COMPONENT_AUDIO |
 		                                                                             RIFT_COMPONENT_LEDS});
+
+		// Read the radio address, this also enables the radio
+		result = rift_get_radio_address(hmd, hmd->radio_address);
+		if (result < 0) {
+			HMD_ERROR(hmd, "Failed to get radio address, reason %d", result);
+			goto error;
+		}
+
+		HMD_DEBUG(hmd, "Got radio address %02X:%02X:%02X:%02X:%02X", hmd->radio_address[0],
+		          hmd->radio_address[1], hmd->radio_address[2], hmd->radio_address[3], hmd->radio_address[4]);
 	}
 
 	result = rift_get_display_info(hmd, &hmd->display_info);
