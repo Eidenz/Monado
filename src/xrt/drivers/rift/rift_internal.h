@@ -442,6 +442,16 @@ struct rift_imu_calibration
 };
 
 /*!
+ * A Rift Touch controller device.
+ *
+ * @implements xrt_device
+ */
+struct rift_touch_controller
+{
+	struct xrt_device base;
+};
+
+/*!
  * A rift HMD device.
  *
  * @implements xrt_device
@@ -485,6 +495,14 @@ struct rift_hmd
 	struct rift_imu_calibration imu_calibration;
 
 	uint8_t radio_address[5];
+
+	//! Generic state for the radio state machine
+	struct
+	{
+		struct os_thread_helper thread;
+
+		struct rift_touch_controller touch_controllers[3];
+	} radio_state;
 };
 
 /// Casting helper function

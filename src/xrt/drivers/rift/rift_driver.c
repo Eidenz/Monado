@@ -34,6 +34,7 @@
 #include "util/u_var.h"
 #include "util/u_visibility_mask.h"
 #include "util/u_trace_marker.h"
+#include "util/u_linux.h"
 
 #include <stdio.h>
 #include <assert.h>
@@ -255,6 +256,45 @@ rift_sensor_thread(void *ptr)
 	return NULL;
 }
 
+void *
+rift_radio_thread(void *ptr)
+{
+	struct rift_hmd *hmd = (struct rift_hmd *)ptr;
+
+	const char *thread_name = "Rift Radio";
+
+	U_TRACE_SET_THREAD_NAME(thread_name);
+	os_thread_helper_name(&hmd->radio_state.thread, thread_name);
+
+#ifdef XRT_OS_LINUX
+	// Try to raise priority of this thread.
+	u_linux_try_to_set_realtime_priority_on_thread(hmd->log_level, thread_name);
+#endif
+
+	os_thread_helper_lock(&hmd->radio_state.thread);
+
+	int result = 0;
+#if 0
+	int ticks = 0;
+#endif
+
+	while (os_thread_helper_is_running_locked(&hmd->radio_state.thread) && result >= 0) {
+		os_thread_helper_unlock(&hmd->radio_state.thread);
+
+		// result = rift_usb_thread_radio_tick(hmd);
+		os_nanosleep(OS_NS_PER_USEC * 1000 * 10); // TODO: replace with actual work
+
+		os_thread_helper_lock(&hmd->radio_state.thread);
+#if 0
+		ticks += 1;
+#endif
+	}
+
+	os_thread_helper_unlock(&hmd->radio_state.thread);
+
+	return NULL;
+}
+
 /*
  *
  * Driver functions
@@ -270,7 +310,7 @@ rift_hmd_destroy(struct xrt_device *xdev)
 	u_var_remove_root(hmd);
 
 	if (hmd->sensor_thread.initialized)
-		os_thread_helper_stop_and_wait(&hmd->sensor_thread);
+		os_thread_helper_destroy(&hmd->sensor_thread);
 
 	if (hmd->clock_tracker)
 		m_clock_windowed_skew_tracker_destroy(hmd->clock_tracker);
@@ -283,6 +323,10 @@ rift_hmd_destroy(struct xrt_device *xdev)
 
 	os_hid_destroy(hmd->hmd_dev);
 	if (hmd->radio_dev != NULL) {
+		if (hmd->radio_state.thread.initialized) {
+			os_thread_helper_destroy(&hmd->radio_state.thread);
+		}
+
 		os_hid_destroy(hmd->radio_dev);
 	}
 
@@ -674,6 +718,9 @@ rift_devices_create(struct os_hid_device *hmd_dev,
 	uint64_t now = os_monotonic_get_ns();
 	m_relation_history_push(hmd->relation_hist, &identity, now);
 
+	m_imu_3dof_init(&hmd->fusion, M_IMU_3DOF_USE_GRAVITY_DUR_20MS);
+	hmd->clock_tracker = m_clock_windowed_skew_tracker_alloc(64);
+
 	result = os_thread_helper_init(&hmd->sensor_thread);
 
 	if (result < 0) {
@@ -681,14 +728,27 @@ rift_devices_create(struct os_hid_device *hmd_dev,
 		goto error;
 	}
 
-	m_imu_3dof_init(&hmd->fusion, M_IMU_3DOF_USE_GRAVITY_DUR_20MS);
-	hmd->clock_tracker = m_clock_windowed_skew_tracker_alloc(64);
-
 	result = os_thread_helper_start(&hmd->sensor_thread, rift_sensor_thread, hmd);
 
 	if (result < 0) {
 		HMD_ERROR(hmd, "Failed to start sensor thread");
 		goto error;
+	}
+
+	if (hmd->radio_dev != NULL) {
+		result = os_thread_helper_init(&hmd->radio_state.thread);
+
+		if (result < 0) {
+			HMD_ERROR(hmd, "Failed to init os thread helper for radio");
+			goto error;
+		}
+
+		result = os_thread_helper_start(&hmd->radio_state.thread, rift_radio_thread, hmd);
+
+		if (result < 0) {
+			HMD_ERROR(hmd, "Failed to start radio thread");
+			goto error;
+		}
 	}
 
 	// Setup variable tracker: Optional but useful for debugging
