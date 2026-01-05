@@ -254,6 +254,8 @@ if(XRT_BUILD_DRIVER_RIFT)
 		drv_rift STATIC
 		rift/rift_interface.h
 		rift/rift_internal.h
+		rift/rift_bindings.c
+		rift/rift_bindings.h
 		rift/rift_driver.c
 		rift/rift_distortion.c
 		rift/rift_prober.c

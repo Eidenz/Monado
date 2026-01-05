@@ -11,7 +11,18 @@
 #include "util/u_var.h"
 
 #include "rift_radio.h"
+#include "rift_bindings.h"
 
+
+static void
+rift_touch_update_input(struct rift_touch_controller *controller,
+                        enum rift_touch_controller_input input,
+                        union xrt_input_value value,
+                        int64_t now)
+{
+	controller->base.inputs[input].value = value;
+	controller->base.inputs[input].timestamp = now;
+}
 
 /*
  * Rift Touch Controller device functions
@@ -42,7 +53,60 @@ rift_touch_controller_destroy(struct xrt_device *xdev)
 
 	u_var_remove_root(controller);
 
+	if (controller->input_mutex_created) {
+		os_mutex_destroy(&controller->input_mutex);
+	}
+
 	u_device_free(&controller->base);
+}
+
+static xrt_result_t
+rift_touch_controller_update_inputs(struct xrt_device *xdev)
+{
+	struct rift_touch_controller *controller = rift_touch_controller(xdev);
+
+	os_mutex_lock(&controller->input_mutex);
+	struct rift_touch_controller_input_state input_state = controller->input_state;
+	os_mutex_unlock(&controller->input_mutex);
+
+	uint64_t now = os_monotonic_get_ns();
+
+	rift_touch_update_input(
+	    controller, RIFT_TOUCH_CONTROLLER_INPUT_A_CLICK,
+	    (union xrt_input_value){.boolean = input_state.buttons & RIFT_TOUCH_CONTROLLER_BUTTON_A}, now);
+	rift_touch_update_input(
+	    controller, RIFT_TOUCH_CONTROLLER_INPUT_B_CLICK,
+	    (union xrt_input_value){.boolean = input_state.buttons & RIFT_TOUCH_CONTROLLER_BUTTON_B}, now);
+	rift_touch_update_input(
+	    controller, RIFT_TOUCH_CONTROLLER_INPUT_SYSTEM_CLICK,
+	    (union xrt_input_value){.boolean = input_state.buttons & RIFT_TOUCH_CONTROLLER_BUTTON_MENU}, now);
+	rift_touch_update_input(
+	    controller, RIFT_TOUCH_CONTROLLER_INPUT_THUMBSTICK_CLICK,
+	    (union xrt_input_value){.boolean = input_state.buttons & RIFT_TOUCH_CONTROLLER_BUTTON_STICK}, now);
+
+	rift_touch_update_input(controller, RIFT_TOUCH_CONTROLLER_INPUT_THUMBSTICK,
+	                        (union xrt_input_value){.vec2 = {CLAMP(input_state.stick[0], -1.0f, 1.0f),
+	                                                         CLAMP(input_state.stick[1], -1.0f, 1.0f)}},
+	                        now);
+
+	rift_touch_update_input(controller, RIFT_TOUCH_CONTROLLER_INPUT_TRIGGER_VALUE,
+	                        (union xrt_input_value){.vec1 = {CLAMP(input_state.trigger, 0.0f, 1.0f)}}, now);
+	rift_touch_update_input(controller, RIFT_TOUCH_CONTROLLER_INPUT_SQUEEZE_VALUE,
+	                        (union xrt_input_value){.vec1 = {CLAMP(input_state.grip, 0.0f, 1.0f)}}, now);
+
+	rift_touch_update_input(controller, RIFT_TOUCH_CONTROLLER_INPUT_A_TOUCH,
+	                        (union xrt_input_value){.boolean = input_state.cap_a_x >= 1}, now);
+	rift_touch_update_input(controller, RIFT_TOUCH_CONTROLLER_INPUT_B_TOUCH,
+	                        (union xrt_input_value){.boolean = input_state.cap_b_y >= 1}, now);
+	rift_touch_update_input(controller, RIFT_TOUCH_CONTROLLER_INPUT_TRIGGER_TOUCH,
+	                        (union xrt_input_value){.boolean = input_state.cap_trigger >= 1}, now);
+	rift_touch_update_input(controller, RIFT_TOUCH_CONTROLLER_INPUT_THUMBSTICK_TOUCH,
+	                        (union xrt_input_value){.boolean = input_state.cap_stick >= 1}, now);
+	rift_touch_update_input(controller, RIFT_TOUCH_CONTROLLER_INPUT_THUMBREST_TOUCH,
+	                        (union xrt_input_value){.boolean = input_state.cap_thumbrest >= 1}, now);
+
+
+	return XRT_SUCCESS;
 }
 
 /*
@@ -52,6 +116,8 @@ rift_touch_controller_destroy(struct xrt_device *xdev)
 static struct rift_touch_controller *
 rift_touch_controller_create(struct rift_hmd *hmd, enum rift_radio_device_type device_type)
 {
+	int result;
+
 	struct rift_touch_controller *controller = U_DEVICE_ALLOCATE(
 	    struct rift_touch_controller, U_DEVICE_ALLOC_NO_FLAGS, RIFT_TOUCH_CONTROLLER_INPUT_COUNT, 1);
 	if (controller == NULL) {
@@ -81,19 +147,23 @@ rift_touch_controller_create(struct rift_hmd *hmd, enum rift_radio_device_type d
 
 #define SET_INPUT(NAME, ACTIVE)                                                                                        \
 	do {                                                                                                           \
-		controller->base.inputs[RIFT_TOUCH_CONTROLLER_INPUT_##NAME].name = XRT_INPUT_TOUCH_##NAME;             \
-		controller->base.inputs[RIFT_TOUCH_CONTROLLER_INPUT_##NAME].active = ACTIVE;                           \
+		if (ACTIVE) {                                                                                          \
+			controller->base.inputs[RIFT_TOUCH_CONTROLLER_INPUT_##NAME].name = XRT_INPUT_TOUCH_##NAME;     \
+			controller->base.inputs[RIFT_TOUCH_CONTROLLER_INPUT_##NAME].active = ACTIVE;                   \
+		}                                                                                                      \
 	} while (0)
 	SET_INPUT(X_CLICK, device_type == RIFT_RADIO_DEVICE_LEFT_TOUCH);
 	SET_INPUT(X_TOUCH, device_type == RIFT_RADIO_DEVICE_LEFT_TOUCH);
 	SET_INPUT(Y_CLICK, device_type == RIFT_RADIO_DEVICE_LEFT_TOUCH);
 	SET_INPUT(Y_TOUCH, device_type == RIFT_RADIO_DEVICE_LEFT_TOUCH);
+	SET_INPUT(MENU_CLICK, device_type == RIFT_RADIO_DEVICE_LEFT_TOUCH);
+
 	SET_INPUT(A_CLICK, device_type == RIFT_RADIO_DEVICE_RIGHT_TOUCH);
 	SET_INPUT(A_TOUCH, device_type == RIFT_RADIO_DEVICE_RIGHT_TOUCH);
 	SET_INPUT(B_CLICK, device_type == RIFT_RADIO_DEVICE_RIGHT_TOUCH);
 	SET_INPUT(B_TOUCH, device_type == RIFT_RADIO_DEVICE_RIGHT_TOUCH);
-	SET_INPUT(MENU_CLICK, true);
-	SET_INPUT(SYSTEM_CLICK, true);
+	SET_INPUT(SYSTEM_CLICK, device_type == RIFT_RADIO_DEVICE_RIGHT_TOUCH);
+
 	SET_INPUT(SQUEEZE_VALUE, true);
 	SET_INPUT(TRIGGER_TOUCH, true);
 	SET_INPUT(TRIGGER_VALUE, true);
@@ -111,8 +181,21 @@ rift_touch_controller_create(struct rift_hmd *hmd, enum rift_radio_device_type d
 
 	u_device_populate_function_pointers(&controller->base, rift_touch_controller_get_tracked_pose,
 	                                    rift_touch_controller_destroy);
+	controller->base.update_inputs = rift_touch_controller_update_inputs;
+
+	controller->base.binding_profile_count = touch_profile_bindings_count;
+	controller->base.binding_profiles = touch_profile_bindings;
+
+	result = os_mutex_init(&controller->input_mutex);
+	if (result < 0) {
+		HMD_ERROR(hmd, "Failed to init touch controller input mutex");
+		u_device_free(&controller->base);
+		return NULL;
+	}
+	controller->input_mutex_created = true;
 
 	u_var_add_root(controller, "Rift Touch Controller", true);
+	u_var_add_u8(controller, &controller->input_state.buttons, "buttons");
 
 	return controller;
 }
@@ -194,6 +277,10 @@ rift_radio_handle_read(struct rift_hmd *hmd)
 				hmd->devices[hmd->device_count++] = &controller->base;
 				os_mutex_unlock(&hmd->device_mutex);
 			}
+
+			os_mutex_lock(&controller->input_mutex);
+			controller->input_state.buttons = message.touch.buttons & 0x0F;
+			os_mutex_unlock(&controller->input_mutex);
 		}
 		}
 	}
