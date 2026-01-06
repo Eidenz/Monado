@@ -1,5 +1,5 @@
 // Copyright 2019-2024, Collabora, Ltd.
-// Copyright 2024-2025, NVIDIA CORPORATION.
+// Copyright 2024-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -44,6 +44,7 @@
 #include "vk/vk_helpers.h"
 #include "vk/vk_cmd.h"
 #include "vk/vk_image_readback_to_xf_pool.h"
+#include "vk/vk_submit_helpers.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -56,14 +57,32 @@ DEBUG_GET_ONCE_LOG_OPTION(comp_frame_lag_level, "XRT_COMP_FRAME_LAG_LOG_AS_LEVEL
 
 /*
  *
- * Small internal helpers.
+ * Helper macros for adding semaphores to lists.
  *
  */
 
-#define CHAIN(STRUCT, NEXT)                                                                                            \
+#define ADD_WAIT(LIST, SEMAPHORE, STAGE, IS_TIMELINE)                                                                  \
 	do {                                                                                                           \
-		(STRUCT).pNext = NEXT;                                                                                 \
-		NEXT = (VkBaseInStructure *)&(STRUCT);                                                                 \
+		VkSemaphore _semaphore = SEMAPHORE;                                                                    \
+		if (_semaphore != VK_NULL_HANDLE) {                                                                    \
+			if (IS_TIMELINE) {                                                                             \
+				vk_semaphore_list_wait_add_timeline(&LIST, _semaphore, (uint64_t)frame_id, STAGE);     \
+			} else {                                                                                       \
+				vk_semaphore_list_wait_add_binary(&LIST, _semaphore, STAGE);                           \
+			}                                                                                              \
+		}                                                                                                      \
+	} while (false)
+
+#define ADD_SIGNAL(LIST, SEMAPHORE, IS_TIMELINE)                                                                       \
+	do {                                                                                                           \
+		VkSemaphore _semaphore = SEMAPHORE;                                                                    \
+		if (_semaphore != VK_NULL_HANDLE) {                                                                    \
+			if (IS_TIMELINE) {                                                                             \
+				vk_semaphore_list_signal_add_timeline(&LIST, _semaphore, (uint64_t)frame_id);          \
+			} else {                                                                                       \
+				vk_semaphore_list_signal_add_binary(&LIST, _semaphore);                                \
+			}                                                                                              \
+		}                                                                                                      \
 	} while (false)
 
 
@@ -657,69 +676,28 @@ renderer_submit_queue(struct comp_renderer *r, VkCommandBuffer cmd, VkPipelineSt
 
 
 	/*
-	 * Regular semaphore setup.
+	 * Semaphore and queue submit info setup.
 	 */
 
-	// Convenience.
 	struct comp_target *ct = r->c->target;
-#define WAIT_SEMAPHORE_COUNT 1
+	struct vk_semaphore_list_wait wait_sems = XRT_STRUCT_INIT;
+	struct vk_semaphore_list_signal signal_sems = XRT_STRUCT_INIT;
+	struct vk_submit_info_builder builder = XRT_STRUCT_INIT;
 
-	VkSemaphore wait_sems[WAIT_SEMAPHORE_COUNT] = {ct->semaphores.present_complete};
-	VkPipelineStageFlags stage_flags[WAIT_SEMAPHORE_COUNT] = {pipeline_stage_flag};
+	// Add wait semaphore (present_complete from target).
+	ADD_WAIT(wait_sems, ct->semaphores.present_complete, pipeline_stage_flag, false);
 
-	VkSemaphore *wait_sems_ptr = NULL;
-	VkPipelineStageFlags *stage_flags_ptr = NULL;
-	uint32_t wait_sem_count = 0;
-	if (wait_sems[0] != VK_NULL_HANDLE) {
-		wait_sems_ptr = wait_sems;
-		stage_flags_ptr = stage_flags;
-		wait_sem_count = WAIT_SEMAPHORE_COUNT;
-	}
+	// Add signal semaphore (render_complete to target).
+	ADD_SIGNAL(signal_sems, ct->semaphores.render_complete, ct->semaphores.render_complete_is_timeline);
 
-#define SIGNAL_SEMAPHRE_COUNT 1
-	VkSemaphore signal_sems[SIGNAL_SEMAPHRE_COUNT] = {ct->semaphores.render_complete};
-
-	uint32_t signal_sem_count = 0;
-	VkSemaphore *signal_sems_ptr = NULL;
-	if (signal_sems[0] != VK_NULL_HANDLE) {
-		signal_sems_ptr = signal_sems;
-		signal_sem_count = SIGNAL_SEMAPHRE_COUNT;
-	}
-
-	// Next pointer for VkSubmitInfo
-	const void *next = NULL;
-
-#ifdef VK_KHR_timeline_semaphore
-	assert(!comp_frame_is_invalid_locked(&r->c->frame.rendering));
-	uint64_t render_complete_signal_values[SIGNAL_SEMAPHRE_COUNT] = {(uint64_t)frame_id};
-
-	VkTimelineSemaphoreSubmitInfoKHR timeline_info = {
-	    .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO_KHR,
-	};
-
-	if (ct->semaphores.render_complete_is_timeline) {
-		timeline_info = (VkTimelineSemaphoreSubmitInfoKHR){
-		    .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO_KHR,
-		    .signalSemaphoreValueCount = signal_sem_count,
-		    .pSignalSemaphoreValues = render_complete_signal_values,
-		};
-
-		CHAIN(timeline_info, next);
-	}
-#endif
-
-
-	VkSubmitInfo comp_submit_info = {
-	    .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-	    .pNext = next,
-	    .pWaitDstStageMask = stage_flags_ptr,
-	    .pWaitSemaphores = wait_sems_ptr,
-	    .waitSemaphoreCount = wait_sem_count,
-	    .commandBufferCount = 1,
-	    .pCommandBuffers = &cmd,
-	    .signalSemaphoreCount = signal_sem_count,
-	    .pSignalSemaphores = signal_sems_ptr,
-	};
+	// Build the submit info struct, handles all of the semaphores for us.
+	vk_submit_info_builder_prepare( //
+	    &builder,                   //
+	    &wait_sems,                 //
+	    &cmd,                       //
+	    1,                          //
+	    &signal_sems,               //
+	    NULL);                      //
 
 	// Everything prepared, now we are submitting.
 	comp_target_mark_submit_begin(ct, frame_id, os_monotonic_get_ns());
@@ -730,7 +708,7 @@ renderer_submit_queue(struct comp_renderer *r, VkCommandBuffer cmd, VkPipelineSt
 	 * us avoid taking a lot of locks. The queue lock will be taken by
 	 * @ref vk_cmd_submit_locked tho.
 	 */
-	ret = vk_cmd_submit_locked(vk, vk->main_queue, 1, &comp_submit_info, r->fences[r->acquired_buffer]);
+	ret = vk_cmd_submit_locked(vk, vk->main_queue, 1, &builder.submit_info, r->fences[r->acquired_buffer]);
 
 	// We have now completed the submit, even if we failed.
 	comp_target_mark_submit_end(ct, frame_id, os_monotonic_get_ns());
