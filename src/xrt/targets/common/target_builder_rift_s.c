@@ -169,13 +169,13 @@ rift_s_open_system_impl(struct xrt_builder *xb,
 
 	// Create and add to list.
 	struct xrt_device *hmd_xdev = rift_s_system_get_hmd(sys);
-	xsysd->xdevs[xsysd->xdev_count++] = hmd_xdev;
+	xsysd->static_xdevs[xsysd->static_xdev_count++] = hmd_xdev;
 
 	struct xrt_device *left_xdev = rift_s_system_get_controller(sys, 0);
-	xsysd->xdevs[xsysd->xdev_count++] = left_xdev;
+	xsysd->static_xdevs[xsysd->static_xdev_count++] = left_xdev;
 
 	struct xrt_device *right_xdev = rift_s_system_get_controller(sys, 1);
-	xsysd->xdevs[xsysd->xdev_count++] = right_xdev;
+	xsysd->static_xdevs[xsysd->static_xdev_count++] = right_xdev;
 
 
 	struct xrt_device *left_ht = NULL;
@@ -193,8 +193,8 @@ rift_s_open_system_impl(struct xrt_builder *xb,
 		left_ht = two_hands[0];
 		right_ht = two_hands[1];
 
-		xsysd->xdevs[xsysd->xdev_count++] = two_hands[0];
-		xsysd->xdevs[xsysd->xdev_count++] = two_hands[1];
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = two_hands[0];
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = two_hands[1];
 
 		if (debug_get_bool_option_rift_s_hand_tracking_as_controller()) {
 			left_xdev = two_hands[0];

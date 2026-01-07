@@ -78,8 +78,8 @@ u_system_devices_get_ht_device(struct xrt_system_devices *xsysd, enum xrt_input_
 	default: break;
 	}
 
-	for (uint32_t i = 0; i < xsysd->xdev_count; i++) {
-		struct xrt_device *xdev = xsysd->xdevs[i];
+	for (uint32_t i = 0; i < xsysd->static_xdev_count; i++) {
+		struct xrt_device *xdev = xsysd->static_xdevs[i];
 
 		if (xdev == NULL || !xdev->supported.hand_tracking ||
 		    (ht_serial != NULL && (strncmp(xdev->serial, ht_serial, XRT_DEVICE_NAME_LEN) != 0))) {

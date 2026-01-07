@@ -1,5 +1,5 @@
 // Copyright 2019-2024, Collabora, Ltd.
-// Copyright 2024-2025, NVIDIA CORPORATION.
+// Copyright 2024-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -180,7 +180,7 @@ sdl2_loop_events(struct u_debug_gui *p)
 #ifdef XRT_BUILD_DRIVER_QWERTY
 		// Caution here, qwerty driver is being accessed by the main thread as well
 		if (p->qwerty_enabled) {
-			qwerty_process_event(p->base.xsysd->xdevs, p->base.xsysd->xdev_count, event);
+			qwerty_process_event(p->base.xsysd->static_xdevs, p->base.xsysd->static_xdev_count, event);
 		}
 #endif
 

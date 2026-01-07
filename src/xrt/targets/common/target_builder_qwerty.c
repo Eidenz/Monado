@@ -88,12 +88,12 @@ qwerty_open_system_impl(struct xrt_builder *xb,
 	}
 
 	// Add to device list.
-	xsysd->xdevs[xsysd->xdev_count++] = head;
+	xsysd->static_xdevs[xsysd->static_xdev_count++] = head;
 	if (left != NULL) {
-		xsysd->xdevs[xsysd->xdev_count++] = left;
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = left;
 	}
 	if (right != NULL) {
-		xsysd->xdevs[xsysd->xdev_count++] = right;
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = right;
 	}
 
 	// Assign to role(s).

@@ -134,8 +134,8 @@ xrt_system_destroy(struct xrt_system **xsys_ptr)
  */
 
 /*!
- * Data associating a device index (in @ref xrt_system_devices::xdevs) with a
- * given "role" for dynamic role switching.
+ * Data associating a device index (in @ref xrt_system_devices::static_xdevs)
+ * with a given "role" for dynamic role switching.
  *
  * For each of the named roles, a negative value means unpopulated/not available.
  *
@@ -167,19 +167,19 @@ struct xrt_system_roles
 	XRT_ALIGNAS(8) uint64_t generation_id;
 
 	/*!
-	 * Index in @ref xrt_system_devices::xdevs for the user's left
+	 * Index in @ref xrt_system_devices::static_xdevs for the user's left
 	 * controller/hand, or negative if none available.
 	 */
 	int32_t left;
 
 	/*!
-	 * Index in @ref xrt_system_devices::xdevs for the user's right
+	 * Index in @ref xrt_system_devices::static_xdevs for the user's right
 	 * controller/hand, or negative if none available.
 	 */
 	int32_t right;
 
 	/*!
-	 * Index in @ref xrt_system_devices::xdevs for the user's gamepad
+	 * Index in @ref xrt_system_devices::static_xdevs for the user's gamepad
 	 * device, or negative if none available.
 	 */
 	int32_t gamepad;
@@ -218,18 +218,19 @@ struct xrt_system_devices
 	 * This is conventionally considered the "owning" reference to the devices.
 	 * Valid entries are contiguous.
 	 */
-	struct xrt_device *xdevs[XRT_SYSTEM_MAX_DEVICES];
+	struct xrt_device *static_xdevs[XRT_SYSTEM_MAX_DEVICES];
 
 	/*!
-	 * The number of elements in @ref xdevs that are valid.
+	 * The number of elements in @ref static_xdevs that are valid in the
+	 * static device list.
 	 */
-	size_t xdev_count;
+	size_t static_xdev_count;
 
 	/*!
 	 * Observing pointers for devices in some static (unchangeable) roles.
 	 *
-	 * All pointers in this struct must also exist in @ref xdevs. The
-	 * association between a member of this struct and a given device
+	 * All pointers in this struct must also exist in @ref static_xdevs.
+	 * The association between a member of this struct and a given device
 	 * cannot change during runtime.
 	 */
 	struct

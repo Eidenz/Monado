@@ -229,12 +229,13 @@ rift_open_system_impl(struct xrt_builder *xb,
 		}
 
 		// Just clamp instead of overflowing the buffer
-		if (created_devices + xsysd->xdev_count > XRT_SYSTEM_MAX_DEVICES) {
-			created_devices = XRT_SYSTEM_MAX_DEVICES - xsysd->xdev_count;
+		if (created_devices + (int)xsysd->static_xdev_count > XRT_SYSTEM_MAX_DEVICES) {
+			created_devices = XRT_SYSTEM_MAX_DEVICES - (int)xsysd->static_xdev_count;
 		}
 
-		memcpy(xsysd->xdevs + xsysd->xdev_count, xdevs, sizeof(struct xrt_device *) * created_devices);
-		xsysd->xdev_count += created_devices;
+		memcpy(xsysd->static_xdevs + xsysd->static_xdev_count, xdevs,
+		       sizeof(struct xrt_device *) * created_devices);
+		xsysd->static_xdev_count += (size_t)created_devices;
 
 		for (int i = 0; i < created_devices; i++) {
 			struct xrt_device *xdev = xdevs[i];

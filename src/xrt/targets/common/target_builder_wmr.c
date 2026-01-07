@@ -274,18 +274,18 @@ wmr_open_system_impl(struct xrt_builder *xb,
 	assert(xret_unlock == XRT_SUCCESS);
 	(void)xret_unlock;
 
-	xsysd->xdevs[xsysd->xdev_count++] = head;
+	xsysd->static_xdevs[xsysd->static_xdev_count++] = head;
 	if (left != NULL) {
-		xsysd->xdevs[xsysd->xdev_count++] = left;
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = left;
 	}
 	if (right != NULL) {
-		xsysd->xdevs[xsysd->xdev_count++] = right;
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = right;
 	}
 	if (ht_left != NULL) {
-		xsysd->xdevs[xsysd->xdev_count++] = ht_left;
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = ht_left;
 	}
 	if (ht_right != NULL) {
-		xsysd->xdevs[xsysd->xdev_count++] = ht_right;
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = ht_right;
 	}
 
 	// Use hand tracking if no controllers.

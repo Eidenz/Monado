@@ -222,7 +222,7 @@ svr_open_system_impl(struct xrt_builder *xb,
 	    XRT_TRACKING_OVERRIDE_ATTACHED, svr_dev, t265_dev, XRT_INPUT_GENERIC_TRACKER_POSE, &ident);
 
 	// Add to device list.
-	xsysd->xdevs[xsysd->xdev_count++] = head_device;
+	xsysd->static_xdevs[xsysd->static_xdev_count++] = head_device;
 
 	// Assign to role(s).
 	tbrh->head = head_device;

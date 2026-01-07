@@ -206,7 +206,7 @@ xreal_air_open_system_impl(struct xrt_builder *xb,
 	}
 
 	// Add to device list.
-	xsysd->xdevs[xsysd->xdev_count++] = xreal_air_device;
+	xsysd->static_xdevs[xsysd->static_xdev_count++] = xreal_air_device;
 
 	// Assign to role(s).
 	tbrh->head = xreal_air_device;

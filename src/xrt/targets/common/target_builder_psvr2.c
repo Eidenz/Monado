@@ -147,7 +147,7 @@ psvr2_open_system_impl(struct xrt_builder *xb,
 			goto unlock_and_fail;
 		}
 
-		xsysd->xdevs[xsysd->xdev_count++] = head_xdev;
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = head_xdev;
 	}
 
 	tbrh->head = head_xdev;
@@ -163,7 +163,7 @@ psvr2_open_system_impl(struct xrt_builder *xb,
 		if (left_xdev == NULL) {
 			PSVR2_ERROR(psvr2_builder(xb), "PS Sense left controller device creation failed");
 		} else {
-			xsysd->xdevs[xsysd->xdev_count++] = left_xdev;
+			xsysd->static_xdevs[xsysd->static_xdev_count++] = left_xdev;
 		}
 	}
 
@@ -175,7 +175,7 @@ psvr2_open_system_impl(struct xrt_builder *xb,
 		if (right_xdev == NULL) {
 			PSVR2_ERROR(psvr2_builder(xb), "PS Sense right controller device creation failed");
 		} else {
-			xsysd->xdevs[xsysd->xdev_count++] = right_xdev;
+			xsysd->static_xdevs[xsysd->static_xdev_count++] = right_xdev;
 		}
 	}
 

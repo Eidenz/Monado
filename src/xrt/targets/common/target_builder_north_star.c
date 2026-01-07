@@ -555,11 +555,11 @@ ns_open_system_impl(struct xrt_builder *xb,
 	// Add the device now.
 	struct xrt_device *left = NULL, *right = NULL;
 	struct xrt_device *left_ht = NULL, *right_ht = NULL;
-	xsysd->xdevs[xsysd->xdev_count++] = head_wrap;
+	xsysd->static_xdevs[xsysd->static_xdev_count++] = head_wrap;
 
 	// Add slam device after HMD:
 	if (slam_device != NULL)
-		xsysd->xdevs[xsysd->xdev_count++] = slam_device;
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = slam_device;
 
 	if (hand_device != NULL) {
 		// note: hand_parented_to_head_tracker is always false when slam_device is NULL
@@ -571,8 +571,8 @@ ns_open_system_impl(struct xrt_builder *xb,
 		struct xrt_device *two_hands[2];
 		cemu_devices_create(head_wrap, hand_wrap, two_hands);
 
-		xsysd->xdevs[xsysd->xdev_count++] = two_hands[0];
-		xsysd->xdevs[xsysd->xdev_count++] = two_hands[1];
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = two_hands[0];
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = two_hands[1];
 
 		left_ht = two_hands[0];
 		right_ht = two_hands[1];

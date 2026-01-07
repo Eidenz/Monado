@@ -375,8 +375,8 @@ r_hub_system_devices_destroy(struct xrt_system_devices *xsysd)
 	os_thread_helper_stop_and_wait(&r->oth);
 
 	// Destroy all of the devices now.
-	for (uint32_t i = 0; i < ARRAY_SIZE(r->base.xdevs); i++) {
-		xrt_device_destroy(&r->base.xdevs[i]);
+	for (uint32_t i = 0; i < ARRAY_SIZE(r->base.static_xdevs); i++) {
+		xrt_device_destroy(&r->base.static_xdevs[i]);
 	}
 
 	// Should be safe to destroy the sockets now.
@@ -466,11 +466,11 @@ r_create_devices(uint16_t port, uint32_t view_count, struct xrt_system_devices *
 	struct xrt_device *left = r_device_create(r, true);
 	struct xrt_device *right = r_device_create(r, false);
 
-	r->base.xdevs[r->base.xdev_count++] = head;
-	r->left_index = (int32_t)r->base.xdev_count;
-	r->base.xdevs[r->base.xdev_count++] = left;
-	r->right_index = (int32_t)r->base.xdev_count;
-	r->base.xdevs[r->base.xdev_count++] = right;
+	r->base.static_xdevs[r->base.static_xdev_count++] = head;
+	r->left_index = (int32_t)r->base.static_xdev_count;
+	r->base.static_xdevs[r->base.static_xdev_count++] = left;
+	r->right_index = (int32_t)r->base.static_xdev_count;
+	r->base.static_xdevs[r->base.static_xdev_count++] = right;
 
 	r->base.static_roles.head = head;
 	r->base.static_roles.hand_tracking.conforming.left = left;

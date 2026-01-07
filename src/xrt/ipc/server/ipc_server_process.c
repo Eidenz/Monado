@@ -87,7 +87,7 @@ find_xdev_index(struct ipc_server *s, struct xrt_device *xdev)
 	}
 
 	for (int32_t i = 0; i < XRT_SYSTEM_MAX_DEVICES; i++) {
-		if (s->xsysd->xdevs[i] == xdev) {
+		if (s->xsysd->static_xdevs[i] == xdev) {
 			return i;
 		}
 	}
@@ -226,7 +226,7 @@ init_system_shm_state(struct ipc_server *s, volatile struct ipc_client_state *ic
 	 * this also populates the tracking origins.
 	 */
 	for (size_t i = 0; i < XRT_SYSTEM_MAX_DEVICES; i++) {
-		struct xrt_device *xdev = s->xsysd->xdevs[i];
+		struct xrt_device *xdev = s->xsysd->static_xdevs[i];
 		if (xdev == NULL) {
 			continue;
 		}

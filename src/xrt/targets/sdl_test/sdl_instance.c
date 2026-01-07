@@ -47,8 +47,8 @@ sdl_system_devices_destroy(struct xrt_system_devices *xsysd)
 {
 	struct sdl_program *sp = from_xsysd(xsysd);
 
-	for (size_t i = 0; i < xsysd->xdev_count; i++) {
-		xrt_device_destroy(&xsysd->xdevs[i]);
+	for (size_t i = 0; i < xsysd->static_xdev_count; i++) {
+		xrt_device_destroy(&xsysd->static_xdevs[i]);
 	}
 
 	(void)sp; // We are apart of sdl_program, do not free.
@@ -144,8 +144,8 @@ sdl_system_devices_init(struct sdl_program *sp)
 #endif
 
 	// Setup the device base as the only device.
-	sp->xsysd_base.xdevs[0] = head;
-	sp->xsysd_base.xdev_count = 1;
+	sp->xsysd_base.static_xdevs[0] = head;
+	sp->xsysd_base.static_xdev_count = 1;
 	sp->xsysd_base.static_roles.head = head;
 
 	t_builder_create_space_overseer_legacy( //
@@ -155,8 +155,8 @@ sdl_system_devices_init(struct sdl_program *sp)
 	    NULL,                               // left
 	    NULL,                               // right
 	    NULL,                               // gamepad
-	    sp->xsysd_base.xdevs,               // xdevs
-	    sp->xsysd_base.xdev_count,          // xdev_count
+	    sp->xsysd_base.static_xdevs,        // xdevs
+	    sp->xsysd_base.static_xdev_count,   // xdev_count
 	    false,                              // root_is_unbounded
 	    true,                               // per_app_local_spaces
 	    &sp->xso);                          // out_xso

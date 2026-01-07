@@ -52,8 +52,8 @@ remote_builder_setup_space_overseer(struct b_space_overseer *bso, struct xrt_sys
 	struct xrt_space *offset = NULL;
 	b_space_overseer_create_offset_space(bso, root, &head->tracking_origin->initial_offset, &offset);
 
-	for (uint32_t i = 0; i < xsysd->xdev_count; i++) {
-		b_space_overseer_link_space_to_device(bso, offset, xsysd->xdevs[i]);
+	for (uint32_t i = 0; i < xsysd->static_xdev_count; i++) {
+		b_space_overseer_link_space_to_device(bso, offset, xsysd->static_xdevs[i]);
 	}
 
 	// Unreference now

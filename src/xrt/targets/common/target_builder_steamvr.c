@@ -175,8 +175,8 @@ steamvr_open_system(struct xrt_builder *xb,
 
 	b_space_overseer_legacy_setup( //
 	    uso,                       // uso
-	    xsysd->xdevs,              // xdevs
-	    xsysd->xdev_count,         // xdev_count
+	    xsysd->static_xdevs,       // xdevs
+	    xsysd->static_xdev_count,  // xdev_count
 	    svrb->head,                // head
 	    &T_stage_local,            // local_offset
 	    false,                     // root_is_unbounded

@@ -1591,11 +1591,11 @@ CServerDriver_Monado::Init(vr::IVRDriverContext *pDriverContext)
 
 	struct xrt_device *left_xdev = nullptr;
 	if (system_roles.left >= 0 && system_roles.left < XRT_SYSTEM_MAX_DEVICES) {
-		left_xdev = m_xsysd->xdevs[system_roles.left];
+		left_xdev = m_xsysd->static_xdevs[system_roles.left];
 	}
 	struct xrt_device *right_xdev = nullptr;
 	if (system_roles.right >= 0 && system_roles.right < XRT_SYSTEM_MAX_DEVICES) {
-		right_xdev = m_xsysd->xdevs[system_roles.right];
+		right_xdev = m_xsysd->static_xdevs[system_roles.right];
 	}
 
 	// use steamvr room setup instead

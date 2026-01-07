@@ -177,24 +177,24 @@ ipc_client_instance_create_system(struct xrt_instance *xinst,
 
 		// Create the appropriate device type
 		if (entry->device_type == XRT_DEVICE_TYPE_HMD) {
-			xsysd->xdevs[count] = ipc_client_hmd_create(&ii->ipc_c, ictom, entry->id);
+			xsysd->static_xdevs[count] = ipc_client_hmd_create(&ii->ipc_c, ictom, entry->id);
 		} else {
-			xsysd->xdevs[count] = ipc_client_device_create(&ii->ipc_c, ictom, entry->id);
+			xsysd->static_xdevs[count] = ipc_client_device_create(&ii->ipc_c, ictom, entry->id);
 		}
 
 		// Check if device creation succeeded
-		if (xsysd->xdevs[count] != NULL) {
+		if (xsysd->static_xdevs[count] != NULL) {
 			count++;
 		} else {
 			IPC_ERROR(&ii->ipc_c, "Failed to create device %u", i);
 		}
 	}
-	xsysd->xdev_count = count;
+	xsysd->static_xdev_count = count;
 
 #define SET_ROLE(ROLE)                                                                                                 \
 	do {                                                                                                           \
 		int32_t index = ii->ipc_c.ism->roles.ROLE;                                                             \
-		xsysd->static_roles.ROLE = index >= 0 ? xsysd->xdevs[index] : NULL;                                    \
+		xsysd->static_roles.ROLE = index >= 0 ? xsysd->static_xdevs[index] : NULL;                             \
 	} while (false)
 
 	SET_ROLE(head);

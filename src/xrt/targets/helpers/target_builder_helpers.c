@@ -152,8 +152,8 @@ t_builder_roles_helper_open_system(struct xrt_builder *xb,
 	    tbrh.left,                          // left
 	    tbrh.right,                         // right
 	    tbrh.gamepad,                       // gamepad
-	    xsysd->xdevs,                       // xdevs
-	    xsysd->xdev_count,                  // xdev_count
+	    xsysd->static_xdevs,                // xdevs
+	    xsysd->static_xdev_count,           // xdev_count
 	    false,                              // root_is_unbounded
 	    true,                               // per_app_local_spaces
 	    out_xso);                           // out_xso

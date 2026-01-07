@@ -556,7 +556,8 @@ lighthouse_open_system_impl(struct xrt_builder *xb,
 	}
 	case DRIVER_SURVIVE: {
 #ifdef XRT_BUILD_DRIVER_SURVIVE
-		xsysd->xdev_count += survive_get_devices(xp, &xsysd->xdevs[xsysd->xdev_count], &lhs->hmd_config);
+		xsysd->static_xdev_count +=
+		    survive_get_devices(xp, &xsysd->static_xdevs[xsysd->static_xdev_count], &lhs->hmd_config);
 #endif
 		break;
 	}
@@ -584,28 +585,28 @@ lighthouse_open_system_impl(struct xrt_builder *xb,
 			case VIVE_PRO2_MAINBOARD_PID:
 			case VIVE_PRO_LHR_PID: {
 				struct vive_source *vs = vive_source_create(xfctx);
-				int num_devices = vive_found(          //
-				    xp,                                //
-				    xpdevs,                            //
-				    xpdev_count,                       //
-				    i,                                 //
-				    NULL,                              //
-				    lhs->vive_tstatus,                 //
-				    vs,                                //
-				    &lhs->hmd_config,                  //
-				    &xsysd->xdevs[xsysd->xdev_count]); //
-				xsysd->xdev_count += num_devices;
+				int num_devices = vive_found(                        //
+				    xp,                                              //
+				    xpdevs,                                          //
+				    xpdev_count,                                     //
+				    i,                                               //
+				    NULL,                                            //
+				    lhs->vive_tstatus,                               //
+				    vs,                                              //
+				    &lhs->hmd_config,                                //
+				    &xsysd->static_xdevs[xsysd->static_xdev_count]); //
+				xsysd->static_xdev_count += num_devices;
 			} break;
 			case VIVE_WATCHMAN_DONGLE:
 			case VIVE_WATCHMAN_DONGLE_GEN2: {
-				int num_devices = vive_controller_found( //
-				    xp,                                  //
-				    xpdevs,                              //
-				    xpdev_count,                         //
-				    i,                                   //
-				    NULL,                                //
-				    &xsysd->xdevs[xsysd->xdev_count]);   //
-				xsysd->xdev_count += num_devices;
+				int num_devices = vive_controller_found(             //
+				    xp,                                              //
+				    xpdevs,                                          //
+				    xpdev_count,                                     //
+				    i,                                               //
+				    NULL,                                            //
+				    &xsysd->static_xdevs[xsysd->static_xdev_count]); //
+				xsysd->static_xdev_count += num_devices;
 			} break;
 			}
 		}
@@ -627,8 +628,8 @@ lighthouse_open_system_impl(struct xrt_builder *xb,
 	int right_idx = -1;
 	int gamepad_idx = -1;
 
-	u_device_assign_xdev_roles(xsysd->xdevs, xsysd->xdev_count, &head_idx, &eyes_idx, &face_idx, &left_idx,
-	                           &right_idx, &gamepad_idx);
+	u_device_assign_xdev_roles(xsysd->static_xdevs, xsysd->static_xdev_count, &head_idx, &eyes_idx, &face_idx,
+	                           &left_idx, &right_idx, &gamepad_idx);
 
 	if (head_idx < 0) {
 		LH_ERROR("Unable to find HMD");
@@ -641,23 +642,23 @@ lighthouse_open_system_impl(struct xrt_builder *xb,
 	struct xrt_device *left = NULL, *right = NULL;
 	struct xrt_device *unobstructed_left_ht = NULL, *unobstructed_right_ht = NULL;
 	struct xrt_device *conforming_left_ht = NULL, *conforming_right_ht = NULL;
-	struct xrt_device *face = (face_idx >= 0) ? xsysd->xdevs[face_idx] : NULL;
-	struct xrt_device *eyes = (eyes_idx >= 0) ? xsysd->xdevs[eyes_idx] : NULL;
+	struct xrt_device *face = (face_idx >= 0) ? xsysd->static_xdevs[face_idx] : NULL;
+	struct xrt_device *eyes = (eyes_idx >= 0) ? xsysd->static_xdevs[eyes_idx] : NULL;
 
 	// Always have a head.
-	head = xsysd->xdevs[head_idx];
+	head = xsysd->static_xdevs[head_idx];
 
 	// It's okay if we didn't find controllers
 	if (left_idx >= 0) {
 		lhs->vive_tstatus.controllers_found = true;
-		left = xsysd->xdevs[left_idx];
+		left = xsysd->static_xdevs[left_idx];
 		unobstructed_left_ht = u_system_devices_get_ht_device_unobstructed_left(xsysd);
 		conforming_left_ht = u_system_devices_get_ht_device_conforming_left(xsysd);
 	}
 
 	if (right_idx >= 0) {
 		lhs->vive_tstatus.controllers_found = true;
-		right = xsysd->xdevs[right_idx];
+		right = xsysd->static_xdevs[right_idx];
 		unobstructed_right_ht = u_system_devices_get_ht_device_unobstructed_right(xsysd);
 		conforming_right_ht = u_system_devices_get_ht_device_conforming_right(xsysd);
 	}
@@ -715,13 +716,13 @@ lighthouse_open_system_impl(struct xrt_builder *xb,
 
 		if (lhs->vive_tstatus.hand_enabled) {
 			if (hand_devices[0] != NULL) {
-				xsysd->xdevs[xsysd->xdev_count++] = hand_devices[0];
+				xsysd->static_xdevs[xsysd->static_xdev_count++] = hand_devices[0];
 				left = hand_devices[0];
 				unobstructed_left_ht = hand_devices[0];
 			}
 
 			if (hand_devices[1] != NULL) {
-				xsysd->xdevs[xsysd->xdev_count++] = hand_devices[1];
+				xsysd->static_xdevs[xsysd->static_xdev_count++] = hand_devices[1];
 				right = hand_devices[1];
 				unobstructed_right_ht = hand_devices[1];
 			}

@@ -385,16 +385,16 @@ rgb_open_system_impl(struct xrt_builder *xb,
 	}
 
 	// Add to devices.
-	xsysd->xdevs[xsysd->xdev_count++] = head;
+	xsysd->static_xdevs[xsysd->static_xdev_count++] = head;
 
 	struct xrt_device *left = NULL, *right = NULL;
 	if (psmv_red != NULL) {
-		xsysd->xdevs[xsysd->xdev_count++] = psmv_red;
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = psmv_red;
 		right = psmv_red; // Notice right.
 	}
 
 	if (psmv_purple != NULL) {
-		xsysd->xdevs[xsysd->xdev_count++] = psmv_purple;
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = psmv_purple;
 		left = psmv_purple; // Notice left.
 	}
 

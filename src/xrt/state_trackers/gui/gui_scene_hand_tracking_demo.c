@@ -92,7 +92,7 @@ gui_scene_hand_tracking_demo(struct gui_program *p)
 		return;
 	}
 
-	xsysd->xdevs[xsysd->xdev_count++] = ht_dev;
+	xsysd->static_xdevs[xsysd->static_xdev_count++] = ht_dev;
 
 	struct xrt_slam_sinks gen_lock = {0};
 	u_sink_force_genlock_create( //

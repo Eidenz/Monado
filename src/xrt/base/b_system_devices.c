@@ -29,15 +29,15 @@
 static int32_t
 get_index_for_device(const struct xrt_system_devices *xsysd, const struct xrt_device *xdev)
 {
-	assert(xsysd->xdev_count <= ARRAY_SIZE(xsysd->xdevs));
-	assert(xsysd->xdev_count < INT_MAX);
+	assert(xsysd->static_xdev_count <= ARRAY_SIZE(xsysd->static_xdevs));
+	assert(xsysd->static_xdev_count < INT_MAX);
 
 	if (xdev == NULL) {
 		return -1;
 	}
 
-	for (int32_t i = 0; i < (int32_t)xsysd->xdev_count; i++) {
-		if (xsysd->xdevs[i] == xdev) {
+	for (int32_t i = 0; i < (int32_t)xsysd->static_xdev_count; i++) {
+		if (xsysd->static_xdevs[i] == xdev) {
 			return i;
 		}
 	}
@@ -220,8 +220,8 @@ b_system_devices_close(struct xrt_system_devices *xsysd)
 {
 	struct b_system_devices *bsysd = b_system_devices(xsysd);
 
-	for (uint32_t i = 0; i < ARRAY_SIZE(bsysd->base.xdevs); i++) {
-		xrt_device_destroy(&bsysd->base.xdevs[i]);
+	for (uint32_t i = 0; i < ARRAY_SIZE(bsysd->base.static_xdevs); i++) {
+		xrt_device_destroy(&bsysd->base.static_xdevs[i]);
 	}
 
 	xrt_frame_context_destroy_nodes(&bsysd->xfctx);

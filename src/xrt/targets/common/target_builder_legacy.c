@@ -133,18 +133,18 @@ legacy_open_system_impl(struct xrt_builder *xb,
 		return xret;
 	}
 
-	ret = xrt_prober_select(xp, xsysd->xdevs, ARRAY_SIZE(xsysd->xdevs));
+	ret = xrt_prober_select(xp, xsysd->static_xdevs, ARRAY_SIZE(xsysd->static_xdevs));
 	if (ret < 0) {
 		return XRT_ERROR_DEVICE_CREATION_FAILED;
 	}
 
 	// Count the xdevs.
-	for (uint32_t i = 0; i < ARRAY_SIZE(xsysd->xdevs); i++) {
-		if (xsysd->xdevs[i] == NULL) {
+	for (uint32_t i = 0; i < ARRAY_SIZE(xsysd->static_xdevs); i++) {
+		if (xsysd->static_xdevs[i] == NULL) {
 			break;
 		}
 
-		xsysd->xdev_count++;
+		xsysd->static_xdev_count++;
 	}
 
 
@@ -153,8 +153,8 @@ legacy_open_system_impl(struct xrt_builder *xb,
 	 */
 
 	int head_idx, eyes_idx, face_idx, left_idx, right_idx, gamepad_idx;
-	u_device_assign_xdev_roles(xsysd->xdevs, xsysd->xdev_count, &head_idx, &eyes_idx, &face_idx, &left_idx,
-	                           &right_idx, &gamepad_idx);
+	u_device_assign_xdev_roles(xsysd->static_xdevs, xsysd->static_xdev_count, &head_idx, &eyes_idx, &face_idx,
+	                           &left_idx, &right_idx, &gamepad_idx);
 
 	struct xrt_device *head = NULL;
 	struct xrt_device *eyes = NULL, *face = NULL;
@@ -163,22 +163,22 @@ legacy_open_system_impl(struct xrt_builder *xb,
 	struct xrt_device *conforming_left_ht = NULL, *conforming_right_ht = NULL;
 
 	if (head_idx >= 0) {
-		head = xsysd->xdevs[head_idx];
+		head = xsysd->static_xdevs[head_idx];
 	}
 	if (eyes_idx >= 0) {
-		eyes = xsysd->xdevs[eyes_idx];
+		eyes = xsysd->static_xdevs[eyes_idx];
 	}
 	if (face_idx >= 0) {
-		face = xsysd->xdevs[face_idx];
+		face = xsysd->static_xdevs[face_idx];
 	}
 	if (left_idx >= 0) {
-		left = xsysd->xdevs[left_idx];
+		left = xsysd->static_xdevs[left_idx];
 	}
 	if (right_idx >= 0) {
-		right = xsysd->xdevs[right_idx];
+		right = xsysd->static_xdevs[right_idx];
 	}
 	if (gamepad_idx >= 0) {
-		gamepad = xsysd->xdevs[gamepad_idx];
+		gamepad = xsysd->static_xdevs[gamepad_idx];
 	}
 
 	// Find hand tracking devices.

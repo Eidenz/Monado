@@ -1,5 +1,5 @@
 // Copyright 2019-2024, Collabora, Ltd.
-// Copyright 2024-2025, NVIDIA CORPORATION.
+// Copyright 2024-2026, NVIDIA CORPORATION.
 // Copyright 2026, Beyley Cardellio
 // SPDX-License-Identifier: BSL-1.0
 /*!
@@ -863,14 +863,14 @@ print_system_devices(u_pp_delegate_t dg, struct xrt_system_devices *xsysd)
 
 	u_pp(dg, "\n\tGot devices:");
 
-	for (uint32_t i = 0; i < xsysd->xdev_count; i++) {
-		u_pp(dg, "\n\t\t%u: %s", i, xsysd->xdevs[i]->str);
+	for (uint32_t i = 0; i < xsysd->static_xdev_count; i++) {
+		u_pp(dg, "\n\t\t%u: %s", i, xsysd->static_xdevs[i]->str);
 	}
 
 	u_pp(dg, "\n\tIn roles:");
 
 #define GET(IDENT, FIELD, DEFAULT) xsysd->static_roles.IDENT ? xsysd->static_roles.IDENT->FIELD : DEFAULT
-#define GET_XDEV(IDENT, FIELD, DEFAULT) roles.IDENT >= 0 ? xsysd->xdevs[roles.IDENT]->FIELD : DEFAULT
+#define GET_XDEV(IDENT, FIELD, DEFAULT) roles.IDENT >= 0 ? xsysd->static_xdevs[roles.IDENT]->FIELD : DEFAULT
 
 #define PH(IDENT)                                                                                                      \
 	u_pp(dg, "\n\t\t%s: %s (%s), view count: %zu", #IDENT, GET(IDENT, str, "<none>"),                              \
