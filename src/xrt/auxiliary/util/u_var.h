@@ -38,6 +38,12 @@ struct u_var_f32_arr
 	int length;
 };
 
+struct u_var_u16_arr
+{
+	void *data;
+	int length;
+};
+
 /*!
  * Used to plot a graph of timing information.
  *
@@ -222,6 +228,7 @@ enum u_var_kind
 	U_VAR_KIND_RGB_F32,
 	U_VAR_KIND_U8,
 	U_VAR_KIND_U16,
+	U_VAR_KIND_U16_ARR,
 	U_VAR_KIND_U64,
 	U_VAR_KIND_I32,
 	U_VAR_KIND_I64,
@@ -386,6 +393,7 @@ u_var_force_on(void);
 	ADD_FUNC(rgb_f32, struct xrt_colour_rgb_f32, RGB_F32)                                                          \
 	ADD_FUNC(u8, uint8_t, U8)                                                                                      \
 	ADD_FUNC(u16, uint16_t, U16)                                                                                   \
+	ADD_FUNC(u16_arr, struct u_var_u16_arr, U16_ARR)                                                               \
 	ADD_FUNC(u64, uint64_t, U64)                                                                                   \
 	ADD_FUNC(i32, int32_t, I32)                                                                                    \
 	ADD_FUNC(i64, int64_t, I64)                                                                                    \
