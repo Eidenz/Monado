@@ -95,6 +95,7 @@ check_and_get_interface(struct xrt_prober_device *device,
 
 		switch (device->product_id) {
 		case EXPLORER_PID: *out_hmd_type = WMR_HEADSET_LENOVO_EXPLORER; return true;
+		case EXPLORER_NO_CONTROLLERS_PID: *out_hmd_type = WMR_HEADSET_LENOVO_EXPLORER; return true;
 		default: U_LOG_IFL_T(log_level, "No matching PID!"); return false;
 		}
 

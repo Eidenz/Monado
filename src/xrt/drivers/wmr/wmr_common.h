@@ -66,6 +66,7 @@ enum wmr_headset_type
 
 #define LENOVO_VID 0x17ef
 #define EXPLORER_PID 0xb801
+#define EXPLORER_NO_CONTROLLERS_PID 0xb800
 
 #define DELL_VID 0x413c
 #define VISOR_PID 0xb0d5
