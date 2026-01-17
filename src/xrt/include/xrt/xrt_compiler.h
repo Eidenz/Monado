@@ -189,6 +189,28 @@ xrt_atomic_s32_cmpxchg(xrt_atomic_s32_t *p, int32_t old_, int32_t new_)
 #error "compiler not supported"
 #endif
 }
+static inline void
+xrt_atomic_s32_store(xrt_atomic_s32_t *p, int32_t v)
+{
+#if defined(__GNUC__)
+	__atomic_store_n(p, v, __ATOMIC_SEQ_CST);
+#elif defined(_MSC_VER)
+	InterlockedExchange((volatile LONG *)p, v);
+#else
+#error "compiler not supported"
+#endif
+}
+static inline int32_t
+xrt_atomic_s32_load(xrt_atomic_s32_t *p)
+{
+#if defined(__GNUC__)
+	return __atomic_load_n(p, __ATOMIC_SEQ_CST);
+#elif defined(_MSC_VER)
+	return InterlockedCompareExchange((volatile LONG *)p, 0, 0);
+#else
+#error "compiler not supported"
+#endif
+}
 
 #ifdef _MSC_VER
 typedef intptr_t ssize_t;
