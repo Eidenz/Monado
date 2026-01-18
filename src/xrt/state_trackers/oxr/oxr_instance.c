@@ -9,7 +9,6 @@
  * @ingroup oxr_main
  */
 
-#include "oxr_bindings/b_oxr_generated_bindings.h"
 #include "xrt/xrt_config_os.h"
 #include "xrt/xrt_config_build.h"
 #include "xrt/xrt_instance.h"
@@ -37,6 +36,7 @@
 #include "oxr_subaction.h"
 #include "oxr_chain.h"
 #include "oxr_roles.h"
+#include "oxr_generated_bindings.h"
 
 #include <sys/types.h>
 #ifdef XRT_OS_UNIX

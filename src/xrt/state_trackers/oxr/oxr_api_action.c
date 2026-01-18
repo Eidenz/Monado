@@ -21,10 +21,10 @@
 #include "oxr_chain.h"
 #include "oxr_subaction.h"
 #include "oxr_roles.h"
+#include "oxr_generated_bindings.h"
 
 #include <stdio.h>
 
-#include "oxr_bindings/b_oxr_generated_bindings.h"
 
 
 /*

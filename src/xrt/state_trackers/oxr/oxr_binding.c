@@ -1,5 +1,5 @@
 // Copyright 2018-2020,2023 Collabora, Ltd.
-// Copyright 2025, NVIDIA CORPORATION.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -12,12 +12,12 @@
 #include "util/u_misc.h"
 
 #include "xrt/xrt_compiler.h"
-#include "oxr_bindings/b_oxr_generated_bindings.h"
 
 #include "oxr_objects.h"
 #include "oxr_logger.h"
 #include "oxr_two_call.h"
 #include "oxr_subaction.h"
+#include "oxr_generated_bindings.h"
 
 #include <stdio.h>
 

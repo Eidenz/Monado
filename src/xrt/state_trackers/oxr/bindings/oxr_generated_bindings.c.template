@@ -7,12 +7,12 @@
  * @author Jakob Bornecrantz <jakob@collabora.com>
  * @ingroup oxr_main
  *
- * GENERATED CODE - see src/xrt/state_trackers/oxr/oxr_bindings/!
+ * GENERATED CODE - see src/xrt/state_trackers/oxr/bindings/!
  */
 
-#include "oxr_bindings/b_oxr_generated_bindings.h"
 #include <string.h>
 #include "oxr_objects.h"
+#include "oxr_generated_bindings.h"
 
 // clang-format off
 

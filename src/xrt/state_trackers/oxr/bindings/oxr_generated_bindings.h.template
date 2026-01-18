@@ -7,7 +7,7 @@
  * @author Jakob Bornecrantz <jakob@collabora.com>
  * @ingroup oxr_main
  *
- * GENERATED CODE - see src/xrt/state_trackers/oxr/oxr_bindings/!
+ * GENERATED CODE - see src/xrt/state_trackers/oxr/bindings/!
  */
 
 #pragma once

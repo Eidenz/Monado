@@ -24,10 +24,10 @@ function(oxr_bindings_gen output)
 		)
 endfunction()
 
-oxr_bindings_gen(b_oxr_generated_bindings.h)
-oxr_bindings_gen(b_oxr_generated_bindings.c)
+oxr_bindings_gen(oxr_generated_bindings.h)
+oxr_bindings_gen(oxr_generated_bindings.c)
 
 add_custom_target(
-	generate_oxr_bindings DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/b_oxr_generated_bindings.h"
-				      "${CMAKE_CURRENT_BINARY_DIR}/b_oxr_generated_bindings.c"
+	generate_oxr_bindings DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/oxr_generated_bindings.h"
+				      "${CMAKE_CURRENT_BINARY_DIR}/oxr_generated_bindings.c"
 	)

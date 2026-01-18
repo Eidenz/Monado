@@ -6,7 +6,7 @@
  * @brief  Macros for generating extension-related tables and code and
  * inspecting Monado's extension support.
  *
- * GENERATED CODE - see src/xrt/state_trackers/oxr/oxr_extension_support/!
+ * GENERATED CODE - see src/xrt/state_trackers/oxr/extension_support/!
  *
  * To add support for a new extension, edit oxr_extension_support.py and
  * rebuild.

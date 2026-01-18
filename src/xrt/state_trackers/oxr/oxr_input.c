@@ -9,7 +9,6 @@
  * @ingroup oxr_main
  */
 
-#include "oxr_bindings/b_oxr_generated_bindings.h"
 #include "util/u_debug.h"
 #include "util/u_time.h"
 #include "util/u_misc.h"
@@ -26,6 +25,7 @@
 #include "oxr_conversions.h"
 #include "oxr_xret.h"
 #include "oxr_roles.h"
+#include "oxr_generated_bindings.h"
 
 #include <math.h>
 #include <stdio.h>
