@@ -141,33 +141,31 @@ _get_lighthouse(struct vive_config *d, const cJSON *json)
 		return;
 	}
 
-	const cJSON *json_map = cJSON_GetObjectItemCaseSensitive(lh, "channelMap");
+	const cJSON *json_channels = cJSON_GetObjectItemCaseSensitive(lh, "channelMap");
 	const cJSON *json_normals = cJSON_GetObjectItemCaseSensitive(lh, "modelNormals");
 	const cJSON *json_points = cJSON_GetObjectItemCaseSensitive(lh, "modelPoints");
 
-	if (json_map == NULL || json_normals == NULL || json_points == NULL) {
+	if (json_channels == NULL || json_normals == NULL || json_points == NULL) {
 		return;
 	}
 
-	size_t map_size = cJSON_GetArraySize(json_map);
-	size_t normals_size = cJSON_GetArraySize(json_normals);
-	size_t points_size = cJSON_GetArraySize(json_points);
+	uint8_t channels_size = cJSON_GetArraySize(json_channels);
+	uint8_t normals_size = cJSON_GetArraySize(json_normals);
+	uint8_t points_size = cJSON_GetArraySize(json_points);
 
-	if (map_size != normals_size || normals_size != points_size || map_size <= 0) {
+	if (channels_size != normals_size || normals_size != points_size || channels_size <= 0) {
 		return;
 	}
 
-	uint32_t *map = U_TYPED_ARRAY_CALLOC(uint32_t, map_size);
-	struct lh_sensor *s = U_TYPED_ARRAY_CALLOC(struct lh_sensor, map_size);
+	struct lh_sensor *s = U_TYPED_ARRAY_CALLOC(struct lh_sensor, channels_size);
 
-	size_t i = 0;
+	uint8_t i = 0;
 	const cJSON *item = NULL;
-	cJSON_ArrayForEach(item, json_map)
+	cJSON_ArrayForEach(item, json_channels)
 	{
-		// Build the channel map
-		int map_item = 0;
-		u_json_get_int(item, &map_item);
-		map[i++] = (uint32_t)map_item;
+		// Build the channel
+		// NOTE: Value can only be between 0 and 31
+		u_json_get_int(item, (int *)&s[i++].channel);
 	}
 
 	i = 0;
@@ -175,7 +173,7 @@ _get_lighthouse(struct vive_config *d, const cJSON *json)
 	cJSON_ArrayForEach(item, json_normals)
 	{
 		// Store in channel map order.
-		u_json_get_vec3_array(item, &s[map[i++]].normal);
+		u_json_get_vec3_array(item, &s[i++].normal);
 	}
 
 	i = 0;
@@ -183,15 +181,11 @@ _get_lighthouse(struct vive_config *d, const cJSON *json)
 	cJSON_ArrayForEach(item, json_points)
 	{
 		// Store in channel map order.
-		u_json_get_vec3_array(item, &s[map[i++]].pos);
+		u_json_get_vec3_array(item, &s[i++].pos);
 	}
 
-	// Free the map.
-	free(map);
-	map = NULL;
-
 	d->lh.sensors = s;
-	d->lh.sensor_count = map_size;
+	d->lh.sensor_count = channels_size;
 
 
 	// Transform the sensors into IMU space.
