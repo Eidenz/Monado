@@ -21,6 +21,7 @@ using namespace std::string_view_literals;
 
 // Default to 100% brightness.
 DEBUG_GET_ONCE_FLOAT_OPTION(lh_default_brightness, "LH_DEFAULT_BRIGHTNESS", 1.0)
+DEBUG_GET_ONCE_BOOL_OPTION(lh_standby_on_exit, "LH_STANDBY_ON_EXIT", false)
 
 using xrt::auxiliary::util::json::JSONNode;
 
@@ -67,6 +68,9 @@ Settings::SetString(const char *pchSection,
 bool
 Settings::GetBool(const char *pchSection, const char *pchSettingsKey, vr::EVRSettingsError *peError)
 {
+	if (pchSection == std::string_view{vr::k_pch_Power_Section} && pchSettingsKey == "powerOffOnExit"sv)
+		return debug_get_bool_option_lh_standby_on_exit();
+
 	return false;
 }
 

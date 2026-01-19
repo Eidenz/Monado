@@ -50,6 +50,7 @@
 
 DEBUG_GET_ONCE_BOOL_OPTION(lh_emulate_hand, "LH_EMULATE_HAND", true)
 DEBUG_GET_ONCE_FLOAT_OPTION(lh_override_ipd, "LH_OVERRIDE_IPD_MM", -1.0f)
+DEBUG_GET_ONCE_BOOL_OPTION(lh_standby_on_exit, "LH_STANDBY_ON_EXIT", false)
 
 // Each device will have its own input class.
 struct InputClass
@@ -323,6 +324,9 @@ Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx),
 
 	this->xrt_device::destroy = [](xrt_device *xdev) {
 		auto *dev = static_cast<Device *>(xdev);
+		if (debug_get_bool_option_lh_standby_on_exit()) {
+			dev->driver->EnterStandby();
+		}
 		dev->driver->Deactivate();
 		delete dev;
 	};
