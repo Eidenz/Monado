@@ -24,15 +24,21 @@
           devTools = with pkgs; [
             # Tools that are required in order to develop with Monado
             # but are not required to build Monado itself
-            git
+            ninja
+
+            # Needed for running things in ./scripts
             clang-tools
             cmake-format
-            ninja
-            lldb
+            codespell
+            # Reccomended for debugging
             gdb
+            lldb
             vulkan-tools
+
+            # Needed for Android
             gradle
             gradle-completion
+            # Needed for running `survive-websocketd`
             websocketd
           ];
 
