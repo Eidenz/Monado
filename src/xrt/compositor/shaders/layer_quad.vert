@@ -9,6 +9,8 @@ layout (binding = 0, std140) uniform Config
 {
 	vec4 post_transform;
 	mat4 mvp;
+	vec4 color_scale;
+	vec4 color_bias;
 } ubo;
 
 layout (location = 0) out vec2 out_uv;

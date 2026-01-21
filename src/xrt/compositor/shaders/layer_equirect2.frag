@@ -18,6 +18,8 @@ layout (binding = 0, std140) uniform Config
 	float central_horizontal_angle;
 	float upper_vertical_angle;
 	float lower_vertical_angle;
+	vec4 color_scale;
+	vec4 color_bias;
 } ubo;
 
 layout (binding = 1) uniform sampler2D image;
@@ -109,6 +111,7 @@ void main ()
 		out_color += texture(image, uv_sub) / 2.0;
 #else
 		out_color = texture(image, uv_sub);
+		out_color = clamp(out_color * ubo.color_scale + ubo.color_bias, 0.0, 1.0);
 	} else {
 		out_color = vec4(0, 0, 0, 0);
 #endif

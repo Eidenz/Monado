@@ -285,6 +285,8 @@ do_cylinder_layer(struct render_gfx *render,
 		data.aspect_ratio = c->aspect_ratio;
 	}
 
+	apply_bias_and_scale_from_layer(layer_data, &data.color_scale, &data.color_bias);
+
 	// Can fail if we have too many layers.
 	VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
 	ret = render_gfx_layer_cylinder_alloc_and_write( //
@@ -351,6 +353,8 @@ do_equirect2_layer(struct render_gfx *render,
 	data.upper_vertical_angle = eq2->upper_vertical_angle;
 	data.lower_vertical_angle = eq2->lower_vertical_angle;
 
+	apply_bias_and_scale_from_layer(layer_data, &data.color_scale, &data.color_bias);
+
 	// Can fail if we have too many layers.
 	VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
 	ret = render_gfx_layer_equirect2_alloc_and_write( //
@@ -415,6 +419,8 @@ do_projection_layer(struct render_gfx *render,
 	struct xrt_vec3 scale = {1, 1, 1};
 	calc_mvp_rot_only(state, layer_data, &vd->pose, &scale, &data.mvp);
 
+	apply_bias_and_scale_from_layer(layer_data, &data.color_scale, &data.color_bias);
+
 	// Can fail if we have too many layers.
 	VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
 	ret = render_gfx_layer_projection_alloc_and_write( //
@@ -467,6 +473,8 @@ do_quad_layer(struct render_gfx *render,
 	// Create MVP matrix, full 6dof mvp needed.
 	struct xrt_vec3 scale = {q->size.x, q->size.y, 1};
 	calc_mvp_full(state, layer_data, &q->pose, &scale, &data.mvp);
+
+	apply_bias_and_scale_from_layer(layer_data, &data.color_scale, &data.color_bias);
 
 	// Can fail if we have too many layers.
 	VkDescriptorSet descriptor_set = VK_NULL_HANDLE;

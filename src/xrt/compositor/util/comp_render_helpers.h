@@ -132,6 +132,21 @@ set_post_transform_rect(const struct xrt_layer_data *data,
 	*out_norm_rect = rect;
 }
 
+static inline void
+apply_bias_and_scale_from_layer(const struct xrt_layer_data *data,
+                                struct xrt_colour_rgba_f32 *out_scale,
+                                struct xrt_colour_rgba_f32 *out_bias)
+{
+	if (data->flags & XRT_LAYER_COMPOSITION_COLOR_BIAS_SCALE) {
+		*out_scale = data->color_scale;
+		*out_bias = data->color_bias;
+	} else {
+		// Use identity scale and zero bias when flag is not set
+		*out_scale = (struct xrt_colour_rgba_f32){1.0f, 1.0f, 1.0f, 1.0f};
+		*out_bias = (struct xrt_colour_rgba_f32){0.0f, 0.0f, 0.0f, 0.0f};
+	}
+}
+
 
 /*
  *

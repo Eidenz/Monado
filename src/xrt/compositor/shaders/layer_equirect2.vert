@@ -18,6 +18,8 @@ layout (binding = 0, std140) uniform Config
 	float central_horizontal_angle;
 	float upper_vertical_angle;
 	float lower_vertical_angle;
+	vec4 color_scale;
+	vec4 color_bias;
 } ubo;
 
 layout (location = 0) flat out vec3 out_camera_position;

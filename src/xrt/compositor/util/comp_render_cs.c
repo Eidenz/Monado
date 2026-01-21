@@ -686,6 +686,9 @@ comp_render_cs_layer(struct render_compute *render,
 		ubo_data->layer_data[cur_layer].layer_type = xrt_layer_to_cs_layer_type(data);
 		ubo_data->layer_data[cur_layer].unpremultiplied_alpha = is_layer_unpremultiplied(data);
 
+		apply_bias_and_scale_from_layer(data, &ubo_data->color_scale[cur_layer],
+		                                &ubo_data->color_bias[cur_layer]);
+
 		// Finally okay to increment the current layer.
 		cur_layer++;
 	}

@@ -908,6 +908,8 @@ struct render_gfx_layer_cylinder_data
 	float central_angle;
 	float aspect_ratio;
 	float _pad;
+	struct xrt_colour_rgba_f32 color_scale;
+	struct xrt_colour_rgba_f32 color_bias;
 };
 
 /*!
@@ -927,6 +929,8 @@ struct render_gfx_layer_equirect2_data
 	float central_horizontal_angle;
 	float upper_vertical_angle;
 	float lower_vertical_angle;
+	struct xrt_colour_rgba_f32 color_scale;
+	struct xrt_colour_rgba_f32 color_bias;
 };
 
 /*!
@@ -939,6 +943,8 @@ struct render_gfx_layer_projection_data
 	struct xrt_normalized_rect post_transform;
 	struct xrt_normalized_rect to_tanget;
 	struct xrt_matrix_4x4 mvp;
+	struct xrt_colour_rgba_f32 color_scale;
+	struct xrt_colour_rgba_f32 color_bias;
 };
 
 /*!
@@ -950,6 +956,8 @@ struct render_gfx_layer_quad_data
 {
 	struct xrt_normalized_rect post_transform;
 	struct xrt_matrix_4x4 mvp;
+	struct xrt_colour_rgba_f32 color_scale;
+	struct xrt_colour_rgba_f32 color_bias;
 };
 
 /*!
@@ -1277,6 +1285,12 @@ struct render_compute_layer_ubo_data
 		struct xrt_vec2 val;
 		float padding[XRT_MAX_VIEWS];
 	} quad_extent[RENDER_MAX_LAYERS];
+
+	/*!
+	 * Color scale and bias for all layers
+	 */
+	struct xrt_colour_rgba_f32 color_scale[RENDER_MAX_LAYERS];
+	struct xrt_colour_rgba_f32 color_bias[RENDER_MAX_LAYERS];
 };
 
 /*!

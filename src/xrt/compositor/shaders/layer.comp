@@ -88,6 +88,10 @@ layout(set = 0, binding = 3, std140) uniform restrict Config
 
 	// quad extent in world scale
 	vec2 quad_extent[RENDER_MAX_LAYERS];
+
+	// color scale and bias for all layers
+	vec4 color_scale[RENDER_MAX_LAYERS];
+	vec4 color_bias[RENDER_MAX_LAYERS];
 } ubo;
 
 
@@ -489,6 +493,9 @@ vec4 do_layers(vec2 view_uv)
 			break;
 		default: break;
 		}
+
+		// Apply color scale and bias
+		rgba = clamp(rgba * ubo.color_scale[layer] + ubo.color_bias[layer], 0.0, 1.0);
 
 		if (ubo.layer_data[layer].unpremultiplied_alpha != 0) {
 			// Unpremultipled blend factor of src.a.
