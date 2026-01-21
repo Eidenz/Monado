@@ -27,7 +27,9 @@ xrt_result_t
 ahardwarebuffer_image_allocate(const struct xrt_swapchain_create_info *xsci, xrt_graphics_buffer_handle_t *out_image);
 
 bool
-ahardwarebuffer_is_supported(uint64_t format, enum xrt_swapchain_usage_bits xbits);
+ahardwarebuffer_is_supported(uint64_t format,
+                             enum xrt_swapchain_create_flags create,
+                             enum xrt_swapchain_usage_bits xbits);
 
 #endif // XRT_GRAPHICS_BUFFER_HANDLE_IS_AHARDWAREBUFFER
 

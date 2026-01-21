@@ -50,7 +50,7 @@ vk_format_to_ahardwarebuffer(uint64_t format)
 }
 
 static uint64_t
-swapchain_usage_to_ahardwarebuffer(enum xrt_swapchain_usage_bits bits)
+swapchain_usage_to_ahardwarebuffer(enum xrt_swapchain_create_flags create, enum xrt_swapchain_usage_bits bits)
 {
 	uint64_t ahb_usage = 0;
 	if (bits & (XRT_SWAPCHAIN_USAGE_SAMPLED | XRT_SWAPCHAIN_USAGE_INPUT_ATTACHMENT)) {
@@ -61,7 +61,7 @@ swapchain_usage_to_ahardwarebuffer(enum xrt_swapchain_usage_bits bits)
 		ahb_usage |= AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER;
 	}
 
-	if (bits & XRT_SWAPCHAIN_CREATE_PROTECTED_CONTENT) {
+	if (create & XRT_SWAPCHAIN_CREATE_PROTECTED_CONTENT) {
 		ahb_usage |= AHARDWAREBUFFER_USAGE_PROTECTED_CONTENT;
 	}
 
@@ -74,7 +74,9 @@ swapchain_usage_to_ahardwarebuffer(enum xrt_swapchain_usage_bits bits)
 }
 
 bool
-ahardwarebuffer_is_supported(uint64_t format, enum xrt_swapchain_usage_bits xbits)
+ahardwarebuffer_is_supported(uint64_t format,
+                             enum xrt_swapchain_create_flags create,
+                             enum xrt_swapchain_usage_bits xbits)
 {
 	// Minimal buffer description to probe support
 	AHardwareBuffer_Desc desc = {
@@ -82,7 +84,7 @@ ahardwarebuffer_is_supported(uint64_t format, enum xrt_swapchain_usage_bits xbit
 	    .height = 16,
 	    .layers = 1,
 	    .format = vk_format_to_ahardwarebuffer(format),
-	    .usage = swapchain_usage_to_ahardwarebuffer(xbits),
+	    .usage = swapchain_usage_to_ahardwarebuffer(create, xbits),
 	};
 
 #if __ANDROID_API__ >= 29

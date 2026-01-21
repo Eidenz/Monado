@@ -387,9 +387,10 @@ void
 comp_vulkan_formats_check(struct vk_bundle *vk, struct comp_vulkan_formats *formats)
 {
 #define CHECK_COLOR(FORMAT)                                                                                            \
-	formats->has_##FORMAT = vk_csci_is_format_supported(vk, VK_FORMAT_##FORMAT, XRT_SWAPCHAIN_USAGE_COLOR);
+	formats->has_##FORMAT = vk_csci_is_format_supported(vk, VK_FORMAT_##FORMAT, 0, XRT_SWAPCHAIN_USAGE_COLOR);
 #define CHECK_DS(FORMAT)                                                                                               \
-	formats->has_##FORMAT = vk_csci_is_format_supported(vk, VK_FORMAT_##FORMAT, XRT_SWAPCHAIN_USAGE_DEPTH_STENCIL);
+	formats->has_##FORMAT =                                                                                        \
+	    vk_csci_is_format_supported(vk, VK_FORMAT_##FORMAT, 0, XRT_SWAPCHAIN_USAGE_DEPTH_STENCIL);
 
 	VK_CSCI_FORMATS(CHECK_COLOR, CHECK_DS, CHECK_DS, CHECK_DS)
 

@@ -341,19 +341,22 @@ has_ahardware_buffer_format_conversion(VkFormat format)
 #endif
 
 bool
-vk_csci_is_format_supported(struct vk_bundle *vk, VkFormat format, enum xrt_swapchain_usage_bits xbits)
+vk_csci_is_format_supported(struct vk_bundle *vk,
+                            VkFormat format,
+                            enum xrt_swapchain_create_flags create,
+                            enum xrt_swapchain_usage_bits xbits)
 {
 	/*
 	 * First check if the format is supported at all.
 	 */
-
+	(void)create;
 #if defined(XRT_GRAPHICS_BUFFER_HANDLE_IS_AHARDWAREBUFFER)
 	if (!has_ahardware_buffer_format_conversion(format)) {
 		VK_DEBUG(vk, "Format '%s' does not map to a AHardwareBuffer format!", vk_format_string(format));
 		return false;
 	}
 
-	if (!ahardwarebuffer_is_supported(format, xbits)) {
+	if (!ahardwarebuffer_is_supported(format, create, xbits)) {
 		VK_DEBUG(vk, "Format '%s' is not supported.", vk_format_string(format));
 		return false;
 	}

@@ -208,7 +208,7 @@ create_image(struct vk_bundle *vk, const struct xrt_swapchain_create_info *info,
 		}
 	}
 
-	if (vk_csci_is_format_supported(vk, image_format, info->bits)) {
+	if (vk_csci_is_format_supported(vk, image_format, info->create, info->bits)) {
 		// Format is supported, no need for VkExternalFormatANDROID
 		format_android.externalFormat = 0;
 		assert(a_buffer_format_props.format != VK_FORMAT_UNDEFINED); // Make sure there is a Vulkan format.
