@@ -151,7 +151,6 @@ Checks:       |
     -performance-enum-size,
     -performance-inefficient-string-concatenation,
     -performance-inefficient-vector-operation,
-    -performance-move-const-arg,
     -performance-no-int-to-ptr,
     -performance-noexcept-move-constructor,
     -performance-readability-avoid-const-params-in-decls,
