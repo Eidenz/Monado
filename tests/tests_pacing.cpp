@@ -95,12 +95,12 @@ struct SimulatedDisplayTimingData
 	void
 	call_u_pc_info(u_pacing_compositor *upc) const
 	{
-		std::cout << "frame_id:                 " << frame_id << std::endl;
-		std::cout << "desired_present_time_ns:  " << desired_present_time_ns << std::endl;
-		std::cout << "actual_present_time_ns:   " << actual_present_time_ns << std::endl;
-		std::cout << "earliest_present_time_ns: " << earliest_present_time_ns << std::endl;
-		std::cout << "present_margin_ns:        " << present_margin_ns << std::endl;
-		std::cout << "now_ns:                   " << now_ns << "\n" << std::endl;
+		std::cout << "frame_id:                 " << frame_id << '\n';
+		std::cout << "desired_present_time_ns:  " << desired_present_time_ns << '\n';
+		std::cout << "actual_present_time_ns:   " << actual_present_time_ns << '\n';
+		std::cout << "earliest_present_time_ns: " << earliest_present_time_ns << '\n';
+		std::cout << "present_margin_ns:        " << present_margin_ns << '\n';
+		std::cout << "now_ns:                   " << now_ns << "\n" << '\n';
 		u_pc_info(upc, frame_id, desired_present_time_ns, actual_present_time_ns, earliest_present_time_ns,
 		          present_margin_ns, now_ns);
 	}
