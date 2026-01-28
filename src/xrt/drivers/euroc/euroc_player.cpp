@@ -262,7 +262,7 @@ euroc_player_preload_img_data(const string &dataset_path, img_samples &samples, 
 			img_name_tail.pop_back();
 		}
 
-		string img_name = imgs_path + "/" + img_name_tail;
+		string img_name = std::string(imgs_path).append("/").append(img_name_tail);
 		img_sample sample{timestamp, img_name};
 		samples.push_back(sample);
 	}
