@@ -99,7 +99,8 @@ __cpu_to_lef32(float f)
 	} safe_copy;
 
 	safe_copy.f32 = f;
-	return (__lef32){.val = __cpu_to_le32(safe_copy.wire)};
+
+	return XRT_C11_COMPOUND(__lef32){.val = __cpu_to_le32(safe_copy.wire)};
 }
 
 static inline float
@@ -123,7 +124,7 @@ __cpu_to_bef32(float f)
 	} safe_copy;
 
 	safe_copy.f32 = f;
-	return (__bef32){.val = __cpu_to_be32(safe_copy.wire)};
+	return XRT_C11_COMPOUND(__bef32){.val = __cpu_to_be32(safe_copy.wire)};
 }
 
 /*
@@ -141,7 +142,7 @@ struct __levec2
 static inline struct xrt_vec2
 __levec2_to_cpu(struct __levec2 v)
 {
-	return (struct xrt_vec2){
+	return XRT_C11_COMPOUND(struct xrt_vec2){
 	    .x = __lef32_to_cpu(v.x),
 	    .y = __lef32_to_cpu(v.y),
 	};
@@ -150,7 +151,7 @@ __levec2_to_cpu(struct __levec2 v)
 static inline struct __levec2
 __cpu_to_levec2(struct xrt_vec2 v)
 {
-	return (struct __levec2){
+	return XRT_C11_COMPOUND(struct __levec2){
 	    .x = __cpu_to_lef32(v.x),
 	    .y = __cpu_to_lef32(v.y),
 	};
@@ -172,7 +173,7 @@ struct __levec3
 static inline struct xrt_vec3
 __levec3_to_cpu(struct __levec3 v)
 {
-	return (struct xrt_vec3){
+	return XRT_C11_COMPOUND(struct xrt_vec3){
 	    .x = __lef32_to_cpu(v.x),
 	    .y = __lef32_to_cpu(v.y),
 	    .z = __lef32_to_cpu(v.z),
@@ -182,7 +183,7 @@ __levec3_to_cpu(struct __levec3 v)
 static inline struct __levec3
 __cpu_to_levec3(struct xrt_vec3 v)
 {
-	return (struct __levec3){
+	return XRT_C11_COMPOUND(struct __levec3){
 	    .x = __cpu_to_lef32(v.x),
 	    .y = __cpu_to_lef32(v.y),
 	    .z = __cpu_to_lef32(v.z),
