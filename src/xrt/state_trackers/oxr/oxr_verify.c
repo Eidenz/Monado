@@ -450,7 +450,7 @@ oxr_verify_view_config_type(struct oxr_logger *log,
 	// Valid in OpenXR 1.1 and forward.
 	if (OXR_API_VERSION_AT_LEAST(inst, 1, 1)) {
 		if (view_conf == XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO_WITH_FOVEATED_INSET) {
-			return XR_ERROR_VIEW_CONFIGURATION_TYPE_UNSUPPORTED;
+			return XR_SUCCESS;
 		}
 	}
 
