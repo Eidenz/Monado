@@ -28,6 +28,8 @@
 
 #include "vive/vive_poses.h"
 
+#include "vp2/vp2_config.h"
+
 #include "openvr_driver.h"
 
 #include "device.hpp"
@@ -772,6 +774,10 @@ Device::get_battery_status(bool *out_present, bool *out_charging, float *out_cha
 xrt_result_t
 HmdDevice::get_brightness(float *out_brightness)
 {
+	if (variant == VIVE_VARIANT_PRO2 && vp2.hid != nullptr) {
+		this->brightness = vp2_get_brightness(vp2.hid);
+	}
+
 	*out_brightness = this->brightness;
 	return XRT_SUCCESS;
 }
@@ -779,6 +785,21 @@ HmdDevice::get_brightness(float *out_brightness)
 xrt_result_t
 HmdDevice::set_brightness(float brightness, bool relative)
 {
+	// Vive Pro 2 has a special command for setting brightness directly on the headset
+	if (variant == VIVE_VARIANT_PRO2 && vp2.hid != nullptr) {
+		brightness = relative ? vp2_get_brightness(vp2.hid) + brightness : brightness;
+
+		int ret = vp2_set_brightness(vp2.hid, brightness);
+		if (ret < 0) {
+			DEV_ERR("Failed to set VP2 brightness, got error %d", ret);
+			return XRT_ERROR_OUTPUT_REQUEST_FAILURE;
+		}
+
+		this->brightness = std::clamp(brightness, 0.0f, 1.3f);
+
+		return XRT_SUCCESS;
+	}
+
 	constexpr auto min_brightness = 0.2f;
 	constexpr auto max_brightness = 1.5f;
 
@@ -948,6 +969,18 @@ HmdDevice::get_view_poses(const xrt_vec3 *default_eye_relation,
 xrt_result_t
 HmdDevice::compute_distortion(uint32_t view, float u, float v, xrt_uv_triplet *out_result)
 {
+	// Vive Pro 2 has it's own special distortion model
+	if (this->variant == VIVE_VARIANT_PRO2 && this->vp2.hid != nullptr) {
+		vp2_config *config = vp2_get_config(this->vp2.hid);
+
+		struct xrt_vec2 uv = {u, v};
+
+		// If computing through VP2 method fails, fall back to the standard method.
+		if (vp2_distort(config, view, &uv, out_result)) {
+			return XRT_SUCCESS;
+		}
+	}
+
 	// Vive Pro 2 has a vertically flipped distortion map.
 	if (this->variant == VIVE_VARIANT_PRO2) {
 		v = 1.0f - v;
@@ -1326,6 +1359,13 @@ HmdDevice::init_vive_pro_2(struct xrt_prober *xp)
 
 	this->hmd_parts->base.screens[0].w_pixels = width;
 	this->hmd_parts->base.screens[0].h_pixels = height;
+
+	vp2_config *config = vp2_get_config(this->vp2.hid);
+
+	vp2_get_fov(config, 0, &this->hmd_parts->base.distortion.fov[0]);
+	vp2_get_fov(config, 1, &this->hmd_parts->base.distortion.fov[1]);
+
+	this->supported.brightness_control = true;
 
 	return ret == 0;
 }
