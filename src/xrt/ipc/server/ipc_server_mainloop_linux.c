@@ -76,7 +76,7 @@ static int
 create_listen_socket(struct ipc_server_mainloop *ml, int *out_fd)
 {
 	// no fd provided
-	struct sockaddr_un addr;
+	struct sockaddr_un addr = XRT_STRUCT_INIT;
 	int fd;
 	int ret;
 
@@ -95,10 +95,16 @@ create_listen_socket(struct ipc_server_mainloop *ml, int *out_fd)
 		return -1;
 	}
 
-	memset(&addr, 0, sizeof(addr));
+	// Make sure the path fits.
+	const int dst_size = (int)ARRAY_SIZE(addr.sun_path);
+	if (size >= dst_size) {
+		U_LOG_E("Total IPC path too long (%i > %i)", size, dst_size);
+		return -1;
+	}
 
+	// Struct zero init at declaration.
 	addr.sun_family = AF_UNIX;
-	strcpy(addr.sun_path, sock_file);
+	snprintf(addr.sun_path, dst_size, "%.s", sock_file);
 
 	ret = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
 

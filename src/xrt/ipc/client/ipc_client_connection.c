@@ -214,7 +214,7 @@ ipc_client_socket_connect(struct ipc_connection *ipc_c)
 #else
 	const int flags = 0;
 #endif
-	struct sockaddr_un addr;
+	struct sockaddr_un addr = XRT_STRUCT_INIT;
 	int ret;
 
 
@@ -236,9 +236,16 @@ ipc_client_socket_connect(struct ipc_connection *ipc_c)
 		return false;
 	}
 
-	memset(&addr, 0, sizeof(addr));
+	// Make sure the path fits.
+	const int dst_size = (int)ARRAY_SIZE(addr.sun_path);
+	if (size >= dst_size) {
+		IPC_ERROR(ipc_c, "Total IPC path too long (%i > %i)", (int)size, dst_size);
+		return false;
+	}
+
+	// Struct zero init at declaration.
 	addr.sun_family = AF_UNIX;
-	strcpy(addr.sun_path, sock_file);
+	snprintf(addr.sun_path, dst_size, "%.s", sock_file);
 
 	ret = connect(socket, (struct sockaddr *)&addr, sizeof(addr));
 	if (ret < 0) {

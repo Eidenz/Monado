@@ -260,7 +260,7 @@ ipc_server_mainloop_init(struct ipc_server_mainloop *ml, bool no_stdin)
 	constexpr char pipe_prefix[] = "\\\\.\\pipe\\";
 	constexpr int prefix_len = sizeof(pipe_prefix) - 1;
 	char pipe_name[MAX_PATH + prefix_len];
-	strcpy(pipe_name, pipe_prefix);
+	snprintf(pipe_name, ARRAY_SIZE(pipe_name), pipe_prefix);
 
 	if (u_file_get_path_in_runtime_dir(XRT_IPC_MSG_SOCK_FILENAME, pipe_name + prefix_len, MAX_PATH) == -1) {
 		U_LOG_E("u_file_get_path_in_runtime_dir failed!");
