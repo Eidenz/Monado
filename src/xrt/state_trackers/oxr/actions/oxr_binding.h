@@ -63,6 +63,16 @@ void
 oxr_interaction_profile_destroy(struct oxr_interaction_profile *profile);
 
 /*!
+ * Clone an interaction profile.
+ *
+ * @param src_profile Source interaction profile to clone
+ * @return Cloned interaction profile, or NULL if src_profile is NULL
+ * @public @memberof oxr_interaction_profile
+ */
+struct oxr_interaction_profile *
+oxr_interaction_profile_clone(const struct oxr_interaction_profile *src_profile);
+
+/*!
  * Find the best matching profile for the given @ref xrt_device.
  *
  * @param      log   Logger.
@@ -83,16 +93,6 @@ oxr_get_profile_for_device_name(struct oxr_logger *log,
                                 struct oxr_session *sess,
                                 enum xrt_device_name name,
                                 struct oxr_interaction_profile **out_p);
-
-/*!
- * Clone an interaction profile.
- *
- * @param src_profile Source interaction profile to clone
- * @return Cloned interaction profile, or NULL if src_profile is NULL
- * @public @memberof oxr_interaction_profile
- */
-struct oxr_interaction_profile *
-oxr_clone_profile(const struct oxr_interaction_profile *src_profile);
 
 /*!
  * Find bindings from action key in a profile.

@@ -540,76 +540,8 @@ oxr_interaction_profile_destroy(struct oxr_interaction_profile *profile)
 	free(profile);
 }
 
-void
-oxr_find_profile_for_device(struct oxr_logger *log,
-                            struct oxr_session *sess,
-                            struct xrt_device *xdev,
-                            struct oxr_interaction_profile **out_p)
-{
-	if (xdev == NULL) {
-		return;
-	}
-
-	// Have bindings for this device's interaction profile been suggested?
-	oxr_get_profile_for_device_name(log, sess, xdev->name, out_p);
-	if (*out_p != NULL) {
-		return;
-	}
-
-	// Check if bindings for any of this device's alternative interaction profiles have been suggested.
-	for (size_t i = 0; i < xdev->binding_profile_count; i++) {
-		struct xrt_binding_profile *xbp = &xdev->binding_profiles[i];
-		oxr_get_profile_for_device_name(log, sess, xbp->name, out_p);
-		if (*out_p != NULL) {
-			return;
-		}
-	}
-}
-
-void
-oxr_binding_find_bindings_from_act_key(struct oxr_logger *log,
-                                       struct oxr_interaction_profile *profile,
-                                       uint32_t key,
-                                       size_t max_binding_count,
-                                       struct oxr_binding **out_bindings,
-                                       size_t *out_binding_count)
-{
-	if (profile == NULL) {
-		*out_binding_count = 0;
-		return;
-	}
-
-	// How many bindings are we returning?
-	size_t binding_count = 0;
-
-	/*
-	 * Loop over all app provided bindings for this profile
-	 * and return those matching the action.
-	 */
-	for (size_t binding_index = 0; binding_index < profile->binding_count; binding_index++) {
-		struct oxr_binding *profile_binding = &profile->bindings[binding_index];
-
-		for (size_t key_index = 0; key_index < profile_binding->act_key_count; key_index++) {
-			if (profile_binding->act_keys[key_index] == key) {
-				out_bindings[binding_count++] = profile_binding;
-				break;
-			}
-		}
-
-		//! @todo Should return total count instead of fixed max.
-		if (binding_count >= max_binding_count) {
-			oxr_warn(log, "Internal limit reached, action has too many bindings!");
-			break;
-		}
-	}
-
-	assert(binding_count <= max_binding_count);
-
-	*out_binding_count = binding_count;
-}
-
 struct oxr_interaction_profile *
-oxr_clone_profile(const struct oxr_interaction_profile *src_profile)
+oxr_interaction_profile_clone(const struct oxr_interaction_profile *src_profile)
 {
 	if (src_profile == NULL)
 		return NULL;
@@ -688,6 +620,74 @@ oxr_clone_profile(const struct oxr_interaction_profile *src_profile)
 	oxr_dpad_state_clone(&dst_profile->dpad_state, &src_profile->dpad_state);
 
 	return dst_profile;
+}
+
+void
+oxr_find_profile_for_device(struct oxr_logger *log,
+                            struct oxr_session *sess,
+                            struct xrt_device *xdev,
+                            struct oxr_interaction_profile **out_p)
+{
+	if (xdev == NULL) {
+		return;
+	}
+
+	// Have bindings for this device's interaction profile been suggested?
+	oxr_get_profile_for_device_name(log, sess, xdev->name, out_p);
+	if (*out_p != NULL) {
+		return;
+	}
+
+	// Check if bindings for any of this device's alternative interaction profiles have been suggested.
+	for (size_t i = 0; i < xdev->binding_profile_count; i++) {
+		struct xrt_binding_profile *xbp = &xdev->binding_profiles[i];
+		oxr_get_profile_for_device_name(log, sess, xbp->name, out_p);
+		if (*out_p != NULL) {
+			return;
+		}
+	}
+}
+
+void
+oxr_binding_find_bindings_from_act_key(struct oxr_logger *log,
+                                       struct oxr_interaction_profile *profile,
+                                       uint32_t key,
+                                       size_t max_binding_count,
+                                       struct oxr_binding **out_bindings,
+                                       size_t *out_binding_count)
+{
+	if (profile == NULL) {
+		*out_binding_count = 0;
+		return;
+	}
+
+	// How many bindings are we returning?
+	size_t binding_count = 0;
+
+	/*
+	 * Loop over all app provided bindings for this profile
+	 * and return those matching the action.
+	 */
+	for (size_t binding_index = 0; binding_index < profile->binding_count; binding_index++) {
+		struct oxr_binding *profile_binding = &profile->bindings[binding_index];
+
+		for (size_t key_index = 0; key_index < profile_binding->act_key_count; key_index++) {
+			if (profile_binding->act_keys[key_index] == key) {
+				out_bindings[binding_count++] = profile_binding;
+				break;
+			}
+		}
+
+		//! @todo Should return total count instead of fixed max.
+		if (binding_count >= max_binding_count) {
+			oxr_warn(log, "Internal limit reached, action has too many bindings!");
+			break;
+		}
+	}
+
+	assert(binding_count <= max_binding_count);
+
+	*out_binding_count = binding_count;
 }
 
 static void

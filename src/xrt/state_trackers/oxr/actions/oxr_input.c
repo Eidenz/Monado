@@ -1862,7 +1862,7 @@ oxr_clone_profiles_to_session(struct oxr_logger *log, struct oxr_instance *inst,
 	sess->profiles_on_attachment = U_TYPED_ARRAY_CALLOC(struct oxr_interaction_profile *, inst->profile_count);
 
 	for (size_t profile_idx = 0; profile_idx < inst->profile_count; ++profile_idx) {
-		sess->profiles_on_attachment[profile_idx] = oxr_clone_profile(inst->profiles[profile_idx]);
+		sess->profiles_on_attachment[profile_idx] = oxr_interaction_profile_clone(inst->profiles[profile_idx]);
 	}
 }
 
