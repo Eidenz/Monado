@@ -453,10 +453,7 @@ vblank_event_func(struct comp_target *ct, int64_t *out_timestamp_ns)
 
 	VkFence vblank_event_fence = VK_NULL_HANDLE;
 	ret = vk->vkRegisterDisplayEventEXT(vk->device, cts->display, &event_info, NULL, &vblank_event_fence);
-	if (ret == VK_ERROR_OUT_OF_HOST_MEMORY) {
-		COMP_ERROR(ct->c, "vkRegisterDisplayEventEXT: %s (started too early?)", vk_result_string(ret));
-		return false;
-	} else if (ret != VK_SUCCESS) {
+	if (ret != VK_SUCCESS) {
 		COMP_ERROR(ct->c, "vkRegisterDisplayEventEXT: %s", vk_result_string(ret));
 		return false;
 	}
@@ -538,6 +535,11 @@ run_vblank_event_thread(void *ptr)
 
 		// We should wait for a vblank event.
 		cts->vblank.should_wait = false;
+
+		if (!cts->vblank.event_active) {
+			cts->vblank.event_active = true;
+			continue;
+		}
 
 		// Unlock while waiting.
 		os_thread_helper_unlock(&cts->vblank.event_thread);
