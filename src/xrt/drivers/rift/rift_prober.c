@@ -15,6 +15,25 @@
 #include "rift_internal.h"
 
 
+bool
+rift_is_oculus(struct xrt_prober *xp, struct xrt_prober_device *dev)
+{
+	unsigned char manufacturer[128] = {0};
+	int result = xrt_prober_get_string_descriptor(xp, dev, XRT_PROBER_STRING_MANUFACTURER, manufacturer,
+	                                              sizeof(manufacturer));
+	if (result < 0) {
+		return false;
+	}
+
+	// Some non-oculus devices (VR-Tek HMDs) reuse the same USB IDs as the oculus headsets, so we should check the
+	// manufacturer
+	if (strncmp((const char *)manufacturer, "Oculus VR, Inc.", sizeof(manufacturer)) != 0) {
+		return false;
+	}
+
+	return true;
+}
+
 int
 rift_found(struct xrt_prober *xp,
            struct xrt_prober_device **devices,
@@ -25,42 +44,25 @@ rift_found(struct xrt_prober *xp,
 {
 	struct xrt_prober_device *dev = devices[index];
 
-	unsigned char manufacturer[128] = {0};
-	int result = xrt_prober_get_string_descriptor(xp, dev, XRT_PROBER_STRING_MANUFACTURER, manufacturer,
-	                                              sizeof(manufacturer));
-	if (result < 0) {
-		return -1;
-	}
-
 	unsigned char serial_number[21] = {0};
-	result = xrt_prober_get_string_descriptor(xp, dev, XRT_PROBER_STRING_SERIAL_NUMBER, serial_number,
-	                                          sizeof(serial_number));
+	int result = xrt_prober_get_string_descriptor(xp, dev, XRT_PROBER_STRING_SERIAL_NUMBER, serial_number,
+	                                              sizeof(serial_number));
 	if (result < 0) {
 		return -1;
 	}
 
-	// Some non-oculus devices (VR-Tek HMDs) reuse the same USB IDs as the oculus headsets, so we should check the
-	// manufacturer
-	if (strncmp((const char *)manufacturer, "Oculus VR, Inc.", sizeof(manufacturer)) != 0) {
+	if (!rift_is_oculus(xp, dev)) {
 		return -1;
 	}
 
 	enum rift_variant variant;
-	const char *name;
 	switch (dev->product_id) {
-	case OCULUS_DK2_PID:
-		variant = RIFT_VARIANT_DK2;
-		name = RIFT_DK2_PRODUCT_STRING;
-		break;
-	case OCULUS_CV1_PID:
-		variant = RIFT_VARIANT_CV1;
-		name = RIFT_CV1_PRODUCT_STRING;
-		break;
+	case OCULUS_DK2_PID: variant = RIFT_VARIANT_DK2; break;
+	case OCULUS_CV1_PID: variant = RIFT_VARIANT_CV1; break;
 	default: return -1; break;
 	}
 
-	U_LOG_I("%s - Found at least the tracker of some Rift (%s) -- opening\n", __func__, name);
-
+	U_LOG_I("%s - Found at least the tracker of some Rift -- opening\n", __func__);
 	struct os_hid_device *hmd_dev = NULL;
 	result = xrt_prober_open_hid_interface(xp, dev, 0, &hmd_dev);
 	if (result != 0) {
@@ -75,9 +77,8 @@ rift_found(struct xrt_prober *xp,
 		}
 	}
 
-	struct rift_hmd *hd = NULL;
-	int created_devices =
-	    rift_devices_create(hmd_dev, radio_dev, variant, (char *)name, (char *)serial_number, &hd, out_xdevs);
+	struct rift_hmd *hmd = NULL;
+	int created_devices = rift_devices_create(hmd_dev, radio_dev, variant, (char *)serial_number, &hmd, out_xdevs);
 	if (created_devices < 0) {
 		return -1;
 	}

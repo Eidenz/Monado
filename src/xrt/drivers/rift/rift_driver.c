@@ -459,7 +459,6 @@ int
 rift_devices_create(struct os_hid_device *hmd_dev,
                     struct os_hid_device *radio_dev,
                     enum rift_variant variant,
-                    const char *device_name,
                     const char *serial_number,
                     struct rift_hmd **out_hmd,
                     struct xrt_device **out_xdevs)
@@ -642,6 +641,13 @@ rift_devices_create(struct os_hid_device *hmd_dev,
 	u_distortion_mesh_fill_in_compute(&hmd->base);
 
 	hmd->log_level = debug_get_log_option_rift_log();
+
+	const char *device_name = "Rift";
+	switch (variant) {
+	case RIFT_VARIANT_DK2: device_name = RIFT_DK2_PRODUCT_STRING; break;
+	case RIFT_VARIANT_CV1: device_name = RIFT_CV1_PRODUCT_STRING; break;
+	default: assert(!"unreachable, invalid rift variant"); break;
+	}
 
 	// Print name.
 	strncpy(hmd->base.str, device_name, XRT_DEVICE_NAME_LEN);

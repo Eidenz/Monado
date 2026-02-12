@@ -37,6 +37,17 @@ enum rift_variant
 #define RIFT_CV1_PRODUCT_STRING "Rift CV1"
 
 /*!
+ * Checks whether the given device is an Oculus device, by checking the manufacturer string.
+ *
+ * @ingroup drv_rift
+ * @param xp The prober to use for getting string descriptors.
+ * @param dev The device to check.
+ * @return true if the device is an Oculus device, false otherwise.
+ */
+bool
+rift_is_oculus(struct xrt_prober *xp, struct xrt_prober_device *dev);
+
+/*!
  * Probing function for Oculus Rift devices.
  *
  * @ingroup drv_rift
@@ -54,7 +65,6 @@ int
 rift_devices_create(struct os_hid_device *hmd_dev,
                     struct os_hid_device *radio_dev,
                     enum rift_variant variant,
-                    const char *device_name,
                     const char *serial_number,
                     struct rift_hmd **out_hmd,
                     struct xrt_device **out_xdevs);
