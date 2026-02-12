@@ -81,15 +81,12 @@ oxr_instance_destroy(struct oxr_logger *log, struct oxr_handle_base *hb)
 
 	u_var_remove_root((void *)inst);
 
-	oxr_interaction_profile_array_clear(&inst->profiles);
+	oxr_instance_action_context_fini(&inst->action_context);
 
 	// Maybe a no-op, needs to happen before path_store if not.
 	oxr_instance_path_cache_fini(&inst->path_cache);
 
 	oxr_path_store_fini(&inst->path_store);
-
-	u_hashset_destroy(&inst->action_sets.name_store);
-	u_hashset_destroy(&inst->action_sets.loc_store);
 
 	// Free the mask here, no system destroy yet.
 	for (uint32_t i = 0; i < ARRAY_SIZE(inst->system.visibility_mask); i++) {
@@ -250,7 +247,6 @@ oxr_instance_create(struct oxr_logger *log,
 {
 	struct oxr_instance *inst = NULL;
 	int m_ret;
-	int h_ret;
 	xrt_result_t xret;
 	XrResult ret;
 
@@ -296,17 +292,12 @@ oxr_instance_create(struct oxr_logger *log,
 		return oxr_error(log, ret, "Failed to init action path cache");
 	}
 
-	h_ret = u_hashset_create(&inst->action_sets.name_store);
-	if (h_ret != 0) {
-		oxr_instance_destroy(log, &inst->handle);
-		return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "Failed to create name_store hashset");
+	// Might use the path_store and path_cache, do after them.
+	ret = oxr_instance_action_context_init(log, &inst->action_context);
+	if (ret != XR_SUCCESS) {
+		return oxr_error(log, ret, "Failed to init instance action context");
 	}
 
-	h_ret = u_hashset_create(&inst->action_sets.loc_store);
-	if (h_ret != 0) {
-		oxr_instance_destroy(log, &inst->handle);
-		return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "Failed to create loc_store hashset");
-	}
 
 	// fill in our application info - @todo - replicate all createInfo
 	// fields?

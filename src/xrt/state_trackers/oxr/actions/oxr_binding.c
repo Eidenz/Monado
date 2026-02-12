@@ -106,11 +106,11 @@ static bool
 interaction_profile_find_or_create_in_instance(struct oxr_logger *log,
                                                struct oxr_path_store *store,
                                                const struct oxr_instance_path_cache *cache,
-                                               struct oxr_instance *inst,
+                                               struct oxr_instance_action_context *context,
                                                XrPath path,
                                                struct oxr_interaction_profile **out_p)
 {
-	if (oxr_interaction_profile_array_find_by_path(&inst->profiles, path, out_p)) {
+	if (oxr_interaction_profile_array_find_by_path(&context->suggested_profiles, path, out_p)) {
 		return true;
 	}
 
@@ -173,7 +173,7 @@ interaction_profile_find_or_create_in_instance(struct oxr_logger *log,
 	}
 
 	// Add to the list of currently created interaction profiles.
-	oxr_interaction_profile_array_add(&inst->profiles, p);
+	oxr_interaction_profile_array_add(&context->suggested_profiles, p);
 
 	*out_p = p;
 
@@ -574,6 +574,7 @@ oxr_action_suggest_interaction_profile_bindings(struct oxr_logger *log,
                                                 const XrInteractionProfileSuggestedBinding *suggestedBindings,
                                                 struct oxr_dpad_state *dpad_state)
 {
+	struct oxr_instance_action_context *inst_context = &inst->action_context;
 	struct oxr_interaction_profile *p = NULL;
 
 	// Path already validated.
@@ -582,7 +583,7 @@ oxr_action_suggest_interaction_profile_bindings(struct oxr_logger *log,
 	    log,                                        //
 	    &inst->path_store,                          //
 	    &inst->path_cache,                          //
-	    inst,                                       //
+	    inst_context,                               //
 	    path,                                       //
 	    &p);                                        //
 

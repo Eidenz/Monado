@@ -319,17 +319,18 @@ static XrResult
 oxr_action_set_destroy_cb(struct oxr_logger *log, struct oxr_handle_base *hb)
 {
 	struct oxr_action_set *act_set = (struct oxr_action_set *)hb;
+	struct oxr_instance_action_context *inst_context = &act_set->inst->action_context;
 
 	oxr_refcounted_unref(&act_set->data->base);
 	act_set->data = NULL;
 
 	if (act_set->name_item != NULL) {
-		u_hashset_erase_item(act_set->inst->action_sets.name_store, act_set->name_item);
+		u_hashset_erase_item(inst_context->action_sets.name_store, act_set->name_item);
 		free(act_set->name_item);
 		act_set->name_item = NULL;
 	}
 	if (act_set->loc_item != NULL) {
-		u_hashset_erase_item(act_set->inst->action_sets.loc_store, act_set->loc_item);
+		u_hashset_erase_item(inst_context->action_sets.loc_store, act_set->loc_item);
 		free(act_set->loc_item);
 		act_set->loc_item = NULL;
 	}
@@ -342,6 +343,7 @@ oxr_action_set_destroy_cb(struct oxr_logger *log, struct oxr_handle_base *hb)
 XrResult
 oxr_action_set_create(struct oxr_logger *log,
                       struct oxr_instance *inst,
+                      struct oxr_instance_action_context *inst_context,
                       const XrActionSetCreateInfo *createInfo,
                       struct oxr_action_set **out_act_set)
 {
@@ -377,8 +379,9 @@ oxr_action_set_create(struct oxr_logger *log,
 
 	snprintf(act_set_ref->name, sizeof(act_set_ref->name), "%s", createInfo->actionSetName);
 
-	u_hashset_create_and_insert_str_c(inst->action_sets.name_store, createInfo->actionSetName, &act_set->name_item);
-	u_hashset_create_and_insert_str_c(inst->action_sets.loc_store, createInfo->localizedActionSetName,
+	u_hashset_create_and_insert_str_c(inst_context->action_sets.name_store, createInfo->actionSetName,
+	                                  &act_set->name_item);
+	u_hashset_create_and_insert_str_c(inst_context->action_sets.loc_store, createInfo->localizedActionSetName,
 	                                  &act_set->loc_item);
 
 	act_set_ref->priority = createInfo->priority;
@@ -1876,7 +1879,9 @@ oxr_session_attach_action_sets(struct oxr_logger *log,
 {
 	struct oxr_instance *inst = sess->sys->inst;
 
-	oxr_interaction_profile_array_clone(&inst->profiles, &sess->profiles_on_attachment);
+	const struct oxr_instance_action_context *inst_context = &inst->action_context;
+
+	oxr_interaction_profile_array_clone(&inst_context->suggested_profiles, &sess->profiles_on_attachment);
 
 	// Allocate room for list. No need to check if anything has been
 	// attached the API function does that.

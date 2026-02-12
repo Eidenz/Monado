@@ -41,6 +41,7 @@
 #include "actions/oxr_dpad_state.h"
 #include "actions/oxr_interaction_profile_array.h"
 #include "actions/oxr_instance_path_cache.h"
+#include "actions/oxr_instance_action_context.h"
 
 
 #if defined(XRT_HAVE_D3D11) || defined(XRT_HAVE_D3D12)
@@ -1236,12 +1237,6 @@ struct oxr_instance
 
 	struct time_state *timekeeping;
 
-	struct
-	{
-		struct u_hashset *name_store;
-		struct u_hashset *loc_store;
-	} action_sets;
-
 	//! Path store for managing paths.
 	struct oxr_path_store path_store;
 
@@ -1253,13 +1248,13 @@ struct oxr_instance
 		struct oxr_event *next;
 	} event;
 
-	//! Interaction profile bindings that have been suggested by the client.
-	struct oxr_interaction_profile_array profiles;
-
 	struct oxr_session *sessions;
 
 	//! Path cache for actions, needs path_store to work.
 	struct oxr_instance_path_cache path_cache;
+
+	//! The default action context, holds things like suggested profiles.
+	struct oxr_instance_action_context action_context;
 
 	struct
 	{

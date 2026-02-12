@@ -32,6 +32,7 @@ extern "C" {
 XrResult
 oxr_action_set_create(struct oxr_logger *log,
                       struct oxr_instance *inst,
+                      struct oxr_instance_action_context *inst_context,
                       const XrActionSetCreateInfo *createInfo,
                       struct oxr_action_set **out_act_set);
 
