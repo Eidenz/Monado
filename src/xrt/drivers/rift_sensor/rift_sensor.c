@@ -12,6 +12,8 @@
 #include "util/u_debug.h"
 #include "util/u_logging.h"
 #include "util/u_var.h"
+#include "util/u_linux.h"
+#include "util/u_trace_marker.h"
 
 #include "rift/rift_interface.h"
 
@@ -327,6 +329,8 @@ rift_sensor_destroy(struct rift_sensor *sensor)
 void
 rift_sensor_context_destroy(struct rift_sensor_context *context)
 {
+	os_thread_helper_destroy(&context->usb_thread);
+
 	u_var_remove_root(context);
 
 	for (size_t i = 0; i < context->num_sensors; i++) {
@@ -451,4 +455,87 @@ rift_sensor_context_create(struct rift_sensor_context **out_context, struct xrt_
 fail:
 	rift_sensor_context_destroy(context);
 	return ret;
+}
+
+int
+rift_sensor_context_enable_exposure_sync(struct rift_sensor_context *context, uint8_t radio_id[5])
+{
+	int result;
+
+	for (size_t i = 0; i < context->num_sensors; i++) {
+		struct rift_sensor *sensor = &context->sensors[i];
+
+		switch (sensor->variant) {
+		case RIFT_SENSOR_VARIANT_DK2: {
+			result = mt9v034_setup(sensor->hid_dev);
+			if (result < 0) {
+				SENSOR_ERROR(context, "Failed to setup DK2 camera, reason %d", result);
+				return result;
+			}
+
+			result = mt9v034_set_sync(sensor->hid_dev, true);
+			if (result < 0) {
+				SENSOR_ERROR(context, "Failed to turn on DK2 exposure sync, reason %d", result);
+				return result;
+			}
+
+			break;
+		}
+		case RIFT_SENSOR_VARIANT_CV1: {
+			result = rift_sensor_ar0134_init(sensor->hid_dev, sensor->usb2);
+			if (result < 0) {
+				SENSOR_ERROR(context, "Failed to setup CV1 camera, reason %d", result);
+				return result;
+			}
+
+			result = rift_sensor_esp770u_setup_radio(sensor->hid_dev, radio_id);
+			if (result < 0) {
+				SENSOR_ERROR(context, "Failed to connect CV1 sensor to radio, reason %d", result);
+				return result;
+			}
+
+			break;
+		}
+		default: break;
+		}
+	}
+
+	return 0;
+}
+
+int
+rift_sensor_context_start(struct rift_sensor_context *context)
+{
+	int result;
+	result = os_thread_helper_init(&context->usb_thread);
+	if (result < 0)
+		return result;
+
+	result = os_thread_helper_start(&context->usb_thread, rift_sensor_usb_thread_run, context);
+	if (result < 0)
+		return result;
+
+	return 0;
+}
+
+ssize_t
+rift_sensor_context_get_sensors(struct rift_sensor_context *context, struct rift_sensor ***out_sensors)
+{
+	struct rift_sensor **sensors = U_TYPED_ARRAY_CALLOC(struct rift_sensor *, context->num_sensors);
+	if (sensors == NULL) {
+		return -1;
+	}
+
+	for (size_t i = 0; i < context->num_sensors; i++) {
+		sensors[i] = &context->sensors[i];
+	}
+	*out_sensors = sensors;
+
+	return context->num_sensors;
+}
+
+struct xrt_fs *
+rift_sensor_get_frame_server(struct rift_sensor *sensor)
+{
+	return sensor->frame_server;
 }
