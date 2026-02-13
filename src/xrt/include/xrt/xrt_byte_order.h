@@ -62,6 +62,10 @@
 
 #endif
 
+/*
+ * 32-bit float
+ */
+
 /*!
  * Little endian 32-bit float wrapper struct.
  */
@@ -125,6 +129,75 @@ __cpu_to_bef32(float f)
 
 	safe_copy.f32 = f;
 	return XRT_C11_COMPOUND(__bef32){.val = __cpu_to_be32(safe_copy.wire)};
+}
+
+/*
+ * 64-bit float
+ */
+
+/*!
+ * Little endian 64-bit float wrapper struct.
+ */
+typedef struct
+{
+	__le64 val;
+} __lef64;
+
+/*!
+ * Big endian 64-bit float wrapper struct.
+ */
+typedef struct
+{
+	__be64 val;
+} __bef64;
+
+static inline double
+__lef64_to_cpu(__lef64 f)
+{
+	union {
+		uint64_t raw;
+		double f64;
+	} safe_copy;
+
+	safe_copy.raw = __le64_to_cpu(f.val);
+	return safe_copy.f64;
+}
+
+static inline __lef64
+__cpu_to_lef64(double f)
+{
+	union {
+		uint64_t wire;
+		double f64;
+	} safe_copy;
+
+	safe_copy.f64 = f;
+
+	return XRT_C11_COMPOUND(__lef64){.val = __cpu_to_le64(safe_copy.wire)};
+}
+
+static inline double
+__bef64_to_cpu(__bef64 f)
+{
+	union {
+		uint64_t raw;
+		double f64;
+	} safe_copy;
+
+	safe_copy.raw = __be64_to_cpu(f.val);
+	return safe_copy.f64;
+}
+
+static inline __bef64
+__cpu_to_bef64(double f)
+{
+	union {
+		uint64_t wire;
+		double f64;
+	} safe_copy;
+
+	safe_copy.f64 = f;
+	return XRT_C11_COMPOUND(__bef64){.val = __cpu_to_be64(safe_copy.wire)};
 }
 
 /*
