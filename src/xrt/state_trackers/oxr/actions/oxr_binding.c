@@ -25,12 +25,44 @@
 #include <stdio.h>
 
 
+static bool
+get_subaction_path_from_path(struct oxr_path_store *store, XrPath path, enum oxr_subaction_path *out_subaction_path)
+{
+	const char *str = NULL;
+	size_t length = 0;
+	XrResult ret;
+
+	ret = oxr_path_store_get_string(store, path, &str, &length);
+	if (ret != XR_SUCCESS) {
+		return false;
+	}
+
+	if (length >= 10 && strncmp("/user/head", str, 10) == 0) {
+		*out_subaction_path = OXR_SUB_ACTION_PATH_HEAD;
+		return true;
+	}
+	if (length >= 15 && strncmp("/user/hand/left", str, 15) == 0) {
+		*out_subaction_path = OXR_SUB_ACTION_PATH_LEFT;
+		return true;
+	}
+	if (length >= 16 && strncmp("/user/hand/right", str, 16) == 0) {
+		*out_subaction_path = OXR_SUB_ACTION_PATH_RIGHT;
+		return true;
+	}
+	if (length >= 13 && strncmp("/user/gamepad", str, 13) == 0) {
+		*out_subaction_path = OXR_SUB_ACTION_PATH_GAMEPAD;
+		return true;
+	}
+	if (length >= 14 && strncmp("/user/eyes_ext", str, 14) == 0) {
+		*out_subaction_path = OXR_SUB_ACTION_PATH_EYES;
+		return true;
+	}
+
+	return false;
+}
+
 static void
-setup_paths(struct oxr_logger *log,
-            struct oxr_instance *inst,
-            const char **src_paths,
-            XrPath **dest_paths,
-            uint32_t *dest_path_count)
+setup_paths(struct oxr_path_store *store, const char **src_paths, XrPath **dest_paths, uint32_t *dest_path_count)
 {
 	uint32_t count = 0;
 	while (src_paths[count] != NULL) {
@@ -44,15 +76,9 @@ setup_paths(struct oxr_logger *log,
 	for (size_t x = 0; x < *dest_path_count; x++) {
 		const char *str = src_paths[x];
 		size_t len = strlen(str);
-		oxr_path_get_or_create(log, inst, str, len, &(*dest_paths)[x]);
+		oxr_path_store_get_or_create(store, str, len, &(*dest_paths)[x]);
 	}
 }
-
-static bool
-get_subaction_path_from_path(struct oxr_logger *log,
-                             struct oxr_instance *inst,
-                             XrPath path,
-                             enum oxr_subaction_path *out_subaction_path);
 
 static bool
 get_profile_template_from_path(const struct oxr_instance_path_cache *cache,
@@ -78,6 +104,7 @@ get_profile_template_from_path(const struct oxr_instance_path_cache *cache,
 
 static bool
 interaction_profile_find_or_create_in_instance(struct oxr_logger *log,
+                                               struct oxr_path_store *store,
                                                const struct oxr_instance_path_cache *cache,
                                                struct oxr_instance *inst,
                                                XrPath path,
@@ -109,17 +136,17 @@ interaction_profile_find_or_create_in_instance(struct oxr_logger *log,
 
 		XrPath subaction_path;
 		XrResult r =
-		    oxr_path_get_or_create(log, inst, t->subaction_path, strlen(t->subaction_path), &subaction_path);
+		    oxr_path_store_get_or_create(store, t->subaction_path, strlen(t->subaction_path), &subaction_path);
 		if (r != XR_SUCCESS) {
 			oxr_log(log, "Couldn't get subaction path %s\n", t->subaction_path);
 		}
 
-		if (!get_subaction_path_from_path(log, inst, subaction_path, &b->subaction_path)) {
+		if (!get_subaction_path_from_path(store, subaction_path, &b->subaction_path)) {
 			oxr_log(log, "Invalid subaction path %s\n", t->subaction_path);
 		}
 
 		b->localized_name = t->localized_name;
-		setup_paths(log, inst, t->paths, &b->paths, &b->path_count);
+		setup_paths(store, t->paths, &b->paths, &b->path_count);
 		b->input = t->input;
 		b->dpad_activate = t->dpad_activate;
 		b->output = t->output;
@@ -131,16 +158,16 @@ interaction_profile_find_or_create_in_instance(struct oxr_logger *log,
 
 		XrPath subaction_path;
 		XrResult r =
-		    oxr_path_get_or_create(log, inst, t->subaction_path, strlen(t->subaction_path), &subaction_path);
+		    oxr_path_store_get_or_create(store, t->subaction_path, strlen(t->subaction_path), &subaction_path);
 		if (r != XR_SUCCESS) {
 			oxr_log(log, "Couldn't get subaction path %s\n", t->subaction_path);
 		}
 
-		if (!get_subaction_path_from_path(log, inst, subaction_path, &d->subaction_path)) {
+		if (!get_subaction_path_from_path(store, subaction_path, &d->subaction_path)) {
 			oxr_log(log, "Invalid subaction path %s\n", t->subaction_path);
 		}
 
-		setup_paths(log, inst, t->paths, &d->paths, &d->path_count);
+		setup_paths(store, t->paths, &d->paths, &d->path_count);
 		d->position = t->position;
 		d->activate = t->activate;
 	}
@@ -181,8 +208,7 @@ ends_with(const char *str, const char *suffix)
 }
 
 static bool
-try_add_by_component(struct oxr_logger *log,
-                     struct oxr_instance *inst,
+try_add_by_component(struct oxr_path_store *store,
                      struct oxr_binding *bindings,
                      size_t binding_count,
                      XrPath path,
@@ -214,7 +240,7 @@ try_add_by_component(struct oxr_logger *log,
 
 				const char *str;
 				size_t len;
-				oxr_path_get_string(log, inst, b->paths[y], &str, &len);
+				oxr_path_store_get_string(store, b->paths[y], &str, &len);
 				if (ends_with(str, components[component_index])) {
 					component_found = true;
 				}
@@ -240,12 +266,7 @@ try_add_by_component(struct oxr_logger *log,
 }
 
 static bool
-add_direct(struct oxr_logger *log,
-           struct oxr_instance *inst,
-           struct oxr_binding *bindings,
-           size_t binding_count,
-           XrPath path,
-           struct oxr_action *act)
+add_direct(struct oxr_binding *bindings, size_t binding_count, XrPath path, struct oxr_action *act)
 {
 	for (size_t i = 0; i < binding_count; i++) {
 		struct oxr_binding *b = &bindings[i];
@@ -274,8 +295,7 @@ add_direct(struct oxr_logger *log,
 }
 
 static void
-add_act_key_to_matching_bindings(struct oxr_logger *log,
-                                 struct oxr_instance *inst,
+add_act_key_to_matching_bindings(struct oxr_path_store *store,
                                  struct oxr_binding *bindings,
                                  size_t binding_count,
                                  XrPath path,
@@ -285,7 +305,7 @@ add_act_key_to_matching_bindings(struct oxr_logger *log,
 
 	const char *str;
 	size_t len;
-	oxr_path_get_string(log, inst, path, &str, &len);
+	oxr_path_store_get_string(store, path, &str, &len);
 
 	bool added = false;
 
@@ -293,16 +313,16 @@ add_act_key_to_matching_bindings(struct oxr_logger *log,
 	// float action
 	if (xr_act_type == XR_ACTION_TYPE_BOOLEAN_INPUT && !ends_with(str, "/click") && !ends_with(str, "/touch")) {
 		const char *components[2] = {"click", "value"};
-		added = try_add_by_component(log, inst, bindings, binding_count, path, act, components, 2);
+		added = try_add_by_component(store, bindings, binding_count, path, act, components, 2);
 	} else if (xr_act_type == XR_ACTION_TYPE_FLOAT_INPUT && !ends_with(str, "/value") &&
 	           !ends_with(str, "/click")) {
 		const char *components[2] = {"value", "click"};
-		added = try_add_by_component(log, inst, bindings, binding_count, path, act, components, 2);
+		added = try_add_by_component(store, bindings, binding_count, path, act, components, 2);
 	}
 
 	// if the suggested str was not one of the ones that require us to select a child, fall back to the default case
 	if (!added) {
-		add_direct(log, inst, bindings, binding_count, path, act);
+		add_direct(bindings, binding_count, path, act);
 	}
 }
 
@@ -317,45 +337,6 @@ add_string(char *temp, size_t max, ssize_t *current, const char *str)
 	if (len > 0) {
 		*current += len;
 	}
-}
-
-static bool
-get_subaction_path_from_path(struct oxr_logger *log,
-                             struct oxr_instance *inst,
-                             XrPath path,
-                             enum oxr_subaction_path *out_subaction_path)
-{
-	const char *str = NULL;
-	size_t length = 0;
-	XrResult ret;
-
-	ret = oxr_path_get_string(log, inst, path, &str, &length);
-	if (ret != XR_SUCCESS) {
-		return false;
-	}
-
-	if (length >= 10 && strncmp("/user/head", str, 10) == 0) {
-		*out_subaction_path = OXR_SUB_ACTION_PATH_HEAD;
-		return true;
-	}
-	if (length >= 15 && strncmp("/user/hand/left", str, 15) == 0) {
-		*out_subaction_path = OXR_SUB_ACTION_PATH_LEFT;
-		return true;
-	}
-	if (length >= 16 && strncmp("/user/hand/right", str, 16) == 0) {
-		*out_subaction_path = OXR_SUB_ACTION_PATH_RIGHT;
-		return true;
-	}
-	if (length >= 13 && strncmp("/user/gamepad", str, 13) == 0) {
-		*out_subaction_path = OXR_SUB_ACTION_PATH_GAMEPAD;
-		return true;
-	}
-	if (length >= 14 && strncmp("/user/eyes_ext", str, 14) == 0) {
-		*out_subaction_path = OXR_SUB_ACTION_PATH_EYES;
-		return true;
-	}
-
-	return false;
 }
 
 static const char *
@@ -599,6 +580,7 @@ oxr_action_suggest_interaction_profile_bindings(struct oxr_logger *log,
 	XrPath path = suggestedBindings->interactionProfile;
 	interaction_profile_find_or_create_in_instance( //
 	    log,                                        //
+	    &inst->path_store,                          //
 	    &inst->path_cache,                          //
 	    inst,                                       //
 	    path,                                       //
@@ -623,7 +605,12 @@ oxr_action_suggest_interaction_profile_bindings(struct oxr_logger *log,
 		const XrActionSuggestedBinding *s = &suggestedBindings->suggestedBindings[i];
 		struct oxr_action *act = XRT_CAST_OXR_HANDLE_TO_PTR(struct oxr_action *, s->action);
 
-		add_act_key_to_matching_bindings(log, inst, bindings, binding_count, s->binding, act);
+		add_act_key_to_matching_bindings( //
+		    &inst->path_store,            //
+		    bindings,                     //
+		    binding_count,                //
+		    s->binding,                   //
+		    act);                         //
 	}
 
 out:
@@ -670,8 +657,9 @@ oxr_action_get_input_source_localized_name(struct oxr_logger *log,
 	char temp[1024] = {0};
 	ssize_t current = 0;
 	enum oxr_subaction_path subaction_path = 0;
+	struct oxr_path_store *store = &sess->sys->inst->path_store;
 
-	if (!get_subaction_path_from_path(log, sess->sys->inst, getInfo->sourcePath, &subaction_path)) {
+	if (!get_subaction_path_from_path(store, getInfo->sourcePath, &subaction_path)) {
 		return oxr_error(log, XR_ERROR_VALIDATION_FAILURE,
 		                 "(getInfo->sourcePath) doesn't start with a "
 		                 "valid subaction_path");
