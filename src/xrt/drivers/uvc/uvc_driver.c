@@ -381,8 +381,8 @@ uvc_fs_stream_stop(struct xrt_fs *xfs)
 		         strerror(errno));
 	}
 
-	libusb_lock_event_waiters(stream->usb_ctx);
 	stream->is_running = false;
+	libusb_lock_event_waiters(stream->usb_ctx);
 
 	// Wait for active transfers to finish
 	while (stream->active_transfers > 0) {
