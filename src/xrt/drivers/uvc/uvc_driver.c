@@ -502,7 +502,7 @@ uvc_get_descriptor_ascii(libusb_device_handle *devh, uint8_t index, unsigned cha
 int
 uvc_fs_create(libusb_context *usb_ctx,
               libusb_device_handle *devh,
-              struct libusb_device_descriptor *desc,
+              const struct libusb_device_descriptor *desc,
               setup_stream_parameters_callback_t setup_stream_parameters_callback,
               post_init_callback_t post_init_callback,
               void *user_data,
