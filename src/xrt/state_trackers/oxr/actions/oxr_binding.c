@@ -55,7 +55,30 @@ get_subaction_path_from_path(struct oxr_logger *log,
                              enum oxr_subaction_path *out_subaction_path);
 
 static bool
+get_profile_template_from_path(const struct oxr_instance_path_cache *cache,
+                               XrPath path,
+                               struct profile_template **out_templ)
+{
+	static_assert(OXR_BINDINGS_PROFILE_TEMPLATE_COUNT == ARRAY_SIZE(profile_templates), "Must match");
+	static_assert(OXR_BINDINGS_PROFILE_TEMPLATE_COUNT == ARRAY_SIZE(cache->template_paths), "Must match");
+
+	for (size_t x = 0; x < OXR_BINDINGS_PROFILE_TEMPLATE_COUNT; x++) {
+		if (cache->template_paths[x] != path) {
+			continue;
+		}
+
+		*out_templ = &profile_templates[x];
+		return true;
+	}
+
+	*out_templ = NULL;
+
+	return false;
+}
+
+static bool
 interaction_profile_find_or_create_in_instance(struct oxr_logger *log,
+                                               const struct oxr_instance_path_cache *cache,
                                                struct oxr_instance *inst,
                                                XrPath path,
                                                struct oxr_interaction_profile **out_p)
@@ -65,19 +88,7 @@ interaction_profile_find_or_create_in_instance(struct oxr_logger *log,
 	}
 
 	struct profile_template *templ = NULL;
-
-	for (size_t x = 0; x < OXR_BINDINGS_PROFILE_TEMPLATE_COUNT; x++) {
-		XrPath t_path = XR_NULL_PATH;
-
-		oxr_path_get_or_create(log, inst, profile_templates[x].path, strlen(profile_templates[x].path),
-		                       &t_path);
-		if (t_path == path) {
-			templ = &profile_templates[x];
-			break;
-		}
-	}
-
-	if (templ == NULL) {
+	if (!get_profile_template_from_path(cache, path, &templ)) {
 		*out_p = NULL;
 		return false;
 	}
@@ -586,7 +597,12 @@ oxr_action_suggest_interaction_profile_bindings(struct oxr_logger *log,
 
 	// Path already validated.
 	XrPath path = suggestedBindings->interactionProfile;
-	interaction_profile_find_or_create_in_instance(log, inst, path, &p);
+	interaction_profile_find_or_create_in_instance( //
+	    log,                                        //
+	    &inst->path_cache,                          //
+	    inst,                                       //
+	    path,                                       //
+	    &p);                                        //
 
 	// Valid path, but not used.
 	if (p == NULL) {
