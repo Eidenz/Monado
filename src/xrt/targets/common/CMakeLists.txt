@@ -9,7 +9,15 @@ add_library(
 	target_lists STATIC target_builder_interface.h target_builder_legacy.c target_lists.c
 			    target_lists.h
 	)
-target_link_libraries(target_lists PRIVATE xrt-interfaces aux_util aux_util_sink drv_includes)
+target_link_libraries(
+	target_lists
+	PRIVATE
+		xrt-interfaces
+		tracking-includes
+		aux_util
+		aux_util_sink
+		drv_includes
+	)
 target_include_directories(target_lists PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 ###
@@ -30,6 +38,7 @@ endif()
 
 if(XRT_BUILD_DRIVER_RIFT)
 	target_sources(target_lists PRIVATE target_builder_rift.c)
+	target_link_libraries(target_lists PRIVATE constellation)
 endif()
 
 if(XRT_BUILD_DRIVER_RIFT_S)
