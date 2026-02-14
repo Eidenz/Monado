@@ -9,3 +9,5 @@ target_include_directories(
 if(XRT_MODULE_MERCURY_HANDTRACKING)
 	add_subdirectory(hand)
 endif()
+
+add_subdirectory(constellation)
