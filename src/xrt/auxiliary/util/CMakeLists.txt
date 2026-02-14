@@ -210,6 +210,7 @@ endif()
 add_library(
 	aux_util_sink STATIC
 	u_sink.h
+	u_sink_blob_visualizer.c
 	u_sink_combiner.c
 	u_sink_force_genlock.c
 	u_sink_converter.c
