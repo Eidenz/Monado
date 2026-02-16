@@ -262,7 +262,8 @@ solarxr_device_get_body_joints(struct xrt_device *const xdev,
 
 	os_mutex_lock(&device->mutex);
 
-	out_value->base_body_joint_set_meta.sample_time_ns = device->timestamp;
+	out_value->base_body_joint_set_meta.sample_time_ns =
+	    atomic_load_explicit(&device->timestamp, memory_order_relaxed);
 	out_value->base_body_joint_set_meta.confidence = 1.f; // N/A
 	out_value->base_body_joint_set_meta.skeleton_changed_count = device->generation;
 	out_value->base_body_joint_set_meta.is_active = true;
@@ -630,7 +631,7 @@ solarxr_network_thread(void *const ptr)
 
 		os_mutex_lock(&device->mutex);
 
-		FLATBUFFERS_VECTOR(solarxr_bone_t) bones = {0};
+		struct flatbuffers_vector_solarxr_bone bones = {0};
 		for (uint32_t i = 0; i < bundle.data_feed_msgs.length; ++i) {
 			struct solarxr_data_feed_message_header header;
 			if (!read_solarxr_data_feed_message_header(&header, buffer.data, buffer.length,
@@ -1161,7 +1162,7 @@ solarxr_device_create_xdevs(struct xrt_tracking_origin *const tracking_origin,
 		uint32_t tracker_datas_len = 0;
 		struct solarxr_tracker_data tracker_datas[ARRAY_SIZE(device->trackers)];
 		if (debug_get_bool_option_solarxr_raw_trackers()) {
-			const flatbuffers_vector_solarxr_device_data_t devices =
+			const struct flatbuffers_vector_solarxr_device_data devices =
 			    header.message.data_feed_update.devices;
 			for (const solarxr_device_data_t *device = devices.data, *const devices_end =
 			                                                             &device[devices.length];
@@ -1189,7 +1190,7 @@ solarxr_device_create_xdevs(struct xrt_tracking_origin *const tracking_origin,
 				}
 			}
 		} else {
-			const flatbuffers_vector_solarxr_tracker_data_t synthetic_trackers =
+			const struct flatbuffers_vector_solarxr_tracker_data synthetic_trackers =
 			    header.message.data_feed_update.synthetic_trackers;
 			for (const solarxr_tracker_data_t *tracker = synthetic_trackers.data,
 			                                  *const end = &tracker[synthetic_trackers.length];

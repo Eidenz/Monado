@@ -10,7 +10,6 @@
 
 typedef int32_t flatbuffers_soffset_t;  // little-endian byte order
 typedef uint16_t flatbuffers_voffset_t; // little-endian byte order
-typedef FLATBUFFERS_VECTOR(void) flatbuffers_vector_t;
 
 struct flatbuffers_vtable_t
 {
@@ -79,7 +78,7 @@ read_flatbuffers_table(const uint8_t buffer[const],
 	return (struct table_data){table_size, (const uint8_t *)table};
 }
 
-static flatbuffers_vector_t
+static struct flatbuffers_vector
 read_flatbuffers_vector(const uint8_t buffer[const],
                         const size_t buffer_len,
                         const flatbuffers_uoffset_t *const ref,
@@ -87,15 +86,15 @@ read_flatbuffers_vector(const uint8_t buffer[const],
 {
 	const uint32_t *const vector = read_flatbuffers_uoffset(buffer, buffer_len, ref, sizeof(*vector));
 	if (vector == NULL) {
-		return (flatbuffers_vector_t){0};
+		return (struct flatbuffers_vector){0};
 	}
 
-	const flatbuffers_vector_t out = {
+	const struct flatbuffers_vector out = {
 	    .length = le32toh(*vector),
 	    .data = &vector[1],
 	};
 	if (out.length > (&buffer[buffer_len] - (const uint8_t *)out.data) / element_size) {
-		return (flatbuffers_vector_t){0};
+		return (struct flatbuffers_vector){0};
 	}
 
 	return out;
@@ -157,15 +156,15 @@ read_solarxr_message_bundle(struct solarxr_message_bundle *const out,
 	}
 
 	if (bundle_vtable[0] != 0 && bundle_vtable[0] + sizeof(flatbuffers_uoffset_t) <= bundle.length) {
-		*(flatbuffers_vector_t *)&out->data_feed_msgs = read_flatbuffers_vector(
+		out->data_feed_msgs = flatbuffers_vector_solarxr_data_feed_message_header(read_flatbuffers_vector(
 		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&bundle.data[bundle_vtable[0]],
-		    sizeof(*out->data_feed_msgs.data));
+		    sizeof(*out->data_feed_msgs.data)));
 	}
 
 	if (bundle_vtable[1] != 0 && bundle_vtable[1] + sizeof(flatbuffers_uoffset_t) <= bundle.length) {
-		*(flatbuffers_vector_t *)&out->rpc_msgs = read_flatbuffers_vector(
+		out->rpc_msgs = flatbuffers_vector_solarxr_rpc_message_header(read_flatbuffers_vector(
 		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&bundle.data[bundle_vtable[1]],
-		    sizeof(*out->rpc_msgs.data));
+		    sizeof(*out->rpc_msgs.data)));
 	}
 
 	return true;
@@ -203,22 +202,23 @@ read_solarxr_data_feed_message_header(struct solarxr_data_feed_message_header *c
 		}
 
 		if (update_vtable[0] != 0 && update_vtable[0] + sizeof(flatbuffers_uoffset_t) <= update.length) {
-			*(flatbuffers_vector_t *)&out->message.data_feed_update.devices = read_flatbuffers_vector(
-			    buffer, buffer_len, (const flatbuffers_uoffset_t *)&update.data[update_vtable[0]],
-			    sizeof(*out->message.data_feed_update.devices.data));
+			out->message.data_feed_update.devices =
+			    flatbuffers_vector_solarxr_device_data(read_flatbuffers_vector(
+			        buffer, buffer_len, (const flatbuffers_uoffset_t *)&update.data[update_vtable[0]],
+			        sizeof(*out->message.data_feed_update.devices.data)));
 		}
 
 		if (update_vtable[1] != 0 && update_vtable[1] + sizeof(flatbuffers_uoffset_t) <= update.length) {
-			*(flatbuffers_vector_t *)&out->message.data_feed_update.synthetic_trackers =
-			    read_flatbuffers_vector(buffer, buffer_len,
-			                            (const flatbuffers_uoffset_t *)&update.data[update_vtable[1]],
-			                            sizeof(*out->message.data_feed_update.synthetic_trackers.data));
+			out->message.data_feed_update.synthetic_trackers =
+			    flatbuffers_vector_solarxr_tracker_data(read_flatbuffers_vector(
+			        buffer, buffer_len, (const flatbuffers_uoffset_t *)&update.data[update_vtable[1]],
+			        sizeof(*out->message.data_feed_update.synthetic_trackers.data)));
 		}
 
 		if (update_vtable[2] != 0 && update_vtable[2] + sizeof(flatbuffers_uoffset_t) <= update.length) {
-			*(flatbuffers_vector_t *)&out->message.data_feed_update.bones = read_flatbuffers_vector(
+			out->message.data_feed_update.bones = flatbuffers_vector_solarxr_bone(read_flatbuffers_vector(
 			    buffer, buffer_len, (const flatbuffers_uoffset_t *)&update.data[update_vtable[2]],
-			    sizeof(*out->message.data_feed_update.bones.data));
+			    sizeof(*out->message.data_feed_update.bones.data)));
 		}
 
 		break;
@@ -340,9 +340,9 @@ read_solarxr_device_data(struct solarxr_device_data *const out,
 	}
 
 	if (data_vtable[4] != 0 && data_vtable[4] + sizeof(flatbuffers_uoffset_t) <= data.length) {
-		*(flatbuffers_vector_t *)&out->trackers = read_flatbuffers_vector(
+		out->trackers = flatbuffers_vector_solarxr_tracker_data(read_flatbuffers_vector(
 		    buffer, buffer_len, (const flatbuffers_uoffset_t *)&data.data[data_vtable[4]],
-		    sizeof(*out->trackers.data));
+		    sizeof(*out->trackers.data)));
 	}
 
 	return true;
@@ -388,9 +388,9 @@ read_solarxr_tracker_data(struct solarxr_tracker_data *const out,
 		}
 
 		if (info_vtable[7] != 0) {
-			*(flatbuffers_vector_t *)&out->info.display_name = read_flatbuffers_vector(
+			out->info.display_name = flatbuffers_vector_char(read_flatbuffers_vector(
 			    buffer, buffer_len, (const flatbuffers_uoffset_t *)&info.data[info_vtable[7]],
-			    sizeof(*out->info.display_name.data));
+			    sizeof(*out->info.display_name.data)));
 		}
 	}
 
