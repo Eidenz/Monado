@@ -40,6 +40,60 @@
 
 /*
  *
+ * Structs.
+ *
+ */
+
+struct oxr_profiles_per_subaction
+{
+#define PROFILE_MEMBER(X) struct oxr_interaction_profile *X;
+	OXR_FOR_EACH_VALID_SUBACTION_PATH(PROFILE_MEMBER)
+#undef PROFILE_MEMBER
+};
+
+
+/*
+ *
+ * Helpers
+ *
+ */
+
+static void
+print_profile_to_slog(struct oxr_logger *log,
+                      struct oxr_session *sess,
+                      struct oxr_sink_logger *slog,
+                      struct oxr_interaction_profile *profile,
+                      const char *point)
+{
+	if (!profile) {
+		oxr_slog(slog, "\n\t%s: (null)", point);
+		return;
+	}
+
+	const char *str = NULL;
+	size_t length = 0;
+
+	oxr_path_get_string(log, sess->sys->inst, profile->path, &str, &length);
+	oxr_slog(slog, "\n\t%s: %s '%s'", point, str, profile->localized_name);
+}
+
+static void
+print_profiles(struct oxr_logger *log, struct oxr_session *sess, const struct oxr_profiles_per_subaction *profiles)
+{
+	struct oxr_sink_logger slog = {0};
+
+	oxr_slog(&slog, "Profiles:");
+
+#define PRINT_PROFILE(X) print_profile_to_slog(log, sess, &slog, profiles->X, #X);
+	OXR_FOR_EACH_VALID_SUBACTION_PATH(PRINT_PROFILE)
+#undef PRINT_PROFILE
+
+	oxr_log_slog(log, &slog);
+}
+
+
+/*
+ *
  * Pre declare functions.
  *
  */
@@ -834,14 +888,6 @@ get_binding(struct oxr_logger *log,
 		}
 	}
 }
-
-
-struct oxr_profiles_per_subaction
-{
-#define PROFILE_MEMBER(X) struct oxr_interaction_profile *X;
-	OXR_FOR_EACH_VALID_SUBACTION_PATH(PROFILE_MEMBER)
-#undef PROFILE_MEMBER
-};
 
 static void
 oxr_find_profiles_from_roles(struct oxr_logger *log,
@@ -1876,6 +1922,11 @@ oxr_session_update_action_bindings(struct oxr_logger *log, struct oxr_session *s
 {
 	struct oxr_profiles_per_subaction profiles = {0};
 	oxr_find_profiles_from_roles(log, sess, roles, &profiles);
+
+	// Dump selected profiles if debugging.
+	if (sess->sys->inst->debug_bindings) {
+		print_profiles(log, sess, &profiles);
+	}
 
 	for (size_t i = 0; i < sess->action_set_attachment_count; i++) {
 		struct oxr_action_set_attachment *act_set_attached = &sess->act_set_attachments[i];
