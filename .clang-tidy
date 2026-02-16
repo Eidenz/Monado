@@ -20,6 +20,7 @@ Checks:       |
 
     -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
     -performance-no-int-to-ptr,
+    -portability-avoid-pragma-once,
 
     -android-cloexec-dup,
     -android-cloexec-fopen,
@@ -149,7 +150,9 @@ Checks:       |
     -modernize-use-trailing-return-type,
     -modernize-use-transparent-functors,
     -modernize-use-using,
-    -performance-no-int-to-ptr,
+    -performance-enum-size,
+    -performance-noexcept-move-constructor,
+    -performance-unnecessary-value-param,
     -readability-avoid-const-params-in-decls,
     -readability-avoid-nested-conditional-operator,
     -readability-avoid-return-with-void-value,
@@ -191,5 +194,5 @@ Checks:       |
     -readability-use-std-min-max,
 
 WarningsAsErrors: '*'
-HeaderFilterRegex: ''
+HeaderFilterRegex: '.*'
 FormatStyle:     file
