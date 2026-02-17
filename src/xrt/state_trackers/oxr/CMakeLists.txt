@@ -27,6 +27,8 @@ add_library(
 	actions/oxr_input_transform.h
 	actions/oxr_instance_action_context.c
 	actions/oxr_instance_action_context.h
+	actions/oxr_pair_hashset.c
+	actions/oxr_pair_hashset.h
 	actions/oxr_instance_path_cache.c
 	actions/oxr_instance_path_cache.h
 	actions/oxr_interaction_profile_array.c

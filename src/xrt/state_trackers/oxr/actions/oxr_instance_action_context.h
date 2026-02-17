@@ -11,6 +11,7 @@
 
 #include "oxr_forward_declarations.h"
 #include "oxr_interaction_profile_array.h"
+#include "oxr_pair_hashset.h"
 
 
 #ifdef __cplusplus
@@ -42,11 +43,7 @@ struct oxr_instance_action_context
 	/*!
 	 * Action set name and localized name stores.
 	 */
-	struct
-	{
-		struct u_hashset *name_store;
-		struct u_hashset *loc_store;
-	} action_sets;
+	struct oxr_pair_hashset action_sets;
 
 	/*!
 	 * Interaction profile bindings that have been suggested by the client.

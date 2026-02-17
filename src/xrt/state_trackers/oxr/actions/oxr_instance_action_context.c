@@ -7,29 +7,16 @@
  * @ingroup oxr_main
  */
 
-#include "util/u_hashset.h"
-
 #include "oxr_instance_action_context.h"
 #include "oxr_interaction_profile_array.h"
-#include "oxr_binding.h"
-
-#include "../oxr_logger.h"
 
 
 XrResult
 oxr_instance_action_context_init(struct oxr_logger *log, struct oxr_instance_action_context *context)
 {
-	int h_ret;
-
-	h_ret = u_hashset_create(&context->action_sets.name_store);
-	if (h_ret != 0) {
-		return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "Failed to create name_store hashset");
-	}
-
-	h_ret = u_hashset_create(&context->action_sets.loc_store);
-	if (h_ret != 0) {
-		u_hashset_destroy(&context->action_sets.name_store);
-		return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "Failed to create loc_store hashset");
+	XrResult ret = oxr_pair_hashset_init(log, &context->action_sets);
+	if (ret != XR_SUCCESS) {
+		return ret;
 	}
 
 	// Probably not needed, but done anyway.
@@ -42,7 +29,6 @@ oxr_instance_action_context_init(struct oxr_logger *log, struct oxr_instance_act
 void
 oxr_instance_action_context_fini(struct oxr_instance_action_context *context)
 {
-	u_hashset_destroy(&context->action_sets.name_store);
-	u_hashset_destroy(&context->action_sets.loc_store);
+	oxr_pair_hashset_fini(&context->action_sets);
 	oxr_interaction_profile_array_clear(&context->suggested_profiles);
 }

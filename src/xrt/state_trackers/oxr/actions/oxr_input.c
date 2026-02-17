@@ -18,6 +18,7 @@
 
 #include "oxr_input.h"
 #include "oxr_binding.h"
+#include "oxr_pair_hashset.h"
 #include "oxr_subaction.h"
 #include "oxr_dpad_state.h"
 #include "oxr_input_transform.h"
@@ -310,8 +311,7 @@ oxr_action_set_ref_destroy_cb(struct oxr_refcounted *orc)
 {
 	struct oxr_action_set_ref *act_set_ref = (struct oxr_action_set_ref *)orc;
 
-	u_hashset_destroy(&act_set_ref->actions.name_store);
-	u_hashset_destroy(&act_set_ref->actions.loc_store);
+	oxr_pair_hashset_fini(&act_set_ref->actions);
 
 	free(act_set_ref);
 }
@@ -325,16 +325,7 @@ oxr_action_set_destroy_cb(struct oxr_logger *log, struct oxr_handle_base *hb)
 	oxr_refcounted_unref(&act_set->data->base);
 	act_set->data = NULL;
 
-	if (act_set->name_item != NULL) {
-		u_hashset_erase_item(inst_context->action_sets.name_store, act_set->name_item);
-		free(act_set->name_item);
-		act_set->name_item = NULL;
-	}
-	if (act_set->loc_item != NULL) {
-		u_hashset_erase_item(inst_context->action_sets.loc_store, act_set->loc_item);
-		free(act_set->loc_item);
-		act_set->loc_item = NULL;
-	}
+	oxr_pair_hashset_erase_and_free(&inst_context->action_sets, &act_set->name_item, &act_set->loc_item);
 
 	free(act_set);
 
@@ -350,6 +341,7 @@ oxr_action_set_create(struct oxr_logger *log,
 {
 	// Mod music for all!
 	static uint32_t key_gen = 1;
+	XrResult ret;
 	int h_ret;
 
 	struct oxr_action_set *act_set = NULL;
@@ -366,24 +358,24 @@ oxr_action_set_create(struct oxr_logger *log,
 
 	act_set->inst = inst;
 
-	h_ret = u_hashset_create(&act_set_ref->actions.name_store);
-	if (h_ret != 0) {
+	ret = oxr_pair_hashset_init(log, &act_set_ref->actions);
+	if (ret != XR_SUCCESS) {
 		oxr_handle_destroy(log, &act_set->handle);
-		return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "Failed to create name_store hashset");
-	}
-
-	h_ret = u_hashset_create(&act_set_ref->actions.loc_store);
-	if (h_ret != 0) {
-		oxr_handle_destroy(log, &act_set->handle);
-		return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "Failed to create loc_store hashset");
+		return ret;
 	}
 
 	snprintf(act_set_ref->name, sizeof(act_set_ref->name), "%s", createInfo->actionSetName);
 
-	u_hashset_create_and_insert_str_c(inst_context->action_sets.name_store, createInfo->actionSetName,
-	                                  &act_set->name_item);
-	u_hashset_create_and_insert_str_c(inst_context->action_sets.loc_store, createInfo->localizedActionSetName,
-	                                  &act_set->loc_item);
+	h_ret = oxr_pair_hashset_insert_str_c(  //
+	    &inst_context->action_sets,         //
+	    createInfo->actionSetName,          //
+	    createInfo->localizedActionSetName, //
+	    &act_set->name_item,                //
+	    &act_set->loc_item);                //
+	if (h_ret != 0) {
+		oxr_handle_destroy(log, &act_set->handle);
+		return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "Failed to insert action set name pair");
+	}
 
 	act_set_ref->priority = createInfo->priority;
 
@@ -414,16 +406,7 @@ oxr_action_destroy_cb(struct oxr_logger *log, struct oxr_handle_base *hb)
 	oxr_refcounted_unref(&act->data->base);
 	act->data = NULL;
 
-	if (act->name_item != NULL) {
-		u_hashset_erase_item(act->act_set->data->actions.name_store, act->name_item);
-		free(act->name_item);
-		act->name_item = NULL;
-	}
-	if (act->loc_item != NULL) {
-		u_hashset_erase_item(act->act_set->data->actions.loc_store, act->loc_item);
-		free(act->loc_item);
-		act->loc_item = NULL;
-	}
+	oxr_pair_hashset_erase_and_free(&act->act_set->data->actions, &act->name_item, &act->loc_item);
 
 	free(act);
 
@@ -441,6 +424,7 @@ oxr_action_create(struct oxr_logger *log,
 
 	// Mod music for all!
 	static uint32_t key_gen = 1;
+	int h_ret;
 
 	if (!oxr_classify_subaction_paths(log, inst, createInfo->countSubactionPaths, createInfo->subactionPaths,
 	                                  &subaction_paths)) {
@@ -476,9 +460,16 @@ oxr_action_create(struct oxr_logger *log,
 
 	snprintf(act_ref->name, sizeof(act_ref->name), "%s", createInfo->actionName);
 
-	u_hashset_create_and_insert_str_c(act_set->data->actions.name_store, createInfo->actionName, &act->name_item);
-	u_hashset_create_and_insert_str_c(act_set->data->actions.loc_store, createInfo->localizedActionName,
-	                                  &act->loc_item);
+	h_ret = oxr_pair_hashset_insert_str_c( //
+	    &act_set->data->actions,           //
+	    createInfo->actionName,            //
+	    createInfo->localizedActionName,   //
+	    &act->name_item,                   //
+	    &act->loc_item);                   //
+	if (h_ret != 0) {
+		oxr_handle_destroy(log, &act->handle);
+		return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "Failed to insert action name pair");
+	}
 
 	*out_act = act;
 

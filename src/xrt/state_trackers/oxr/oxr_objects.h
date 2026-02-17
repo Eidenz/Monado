@@ -1995,11 +1995,7 @@ struct oxr_action_set_ref
 	//! Application supplied action set priority.
 	uint32_t priority;
 
-	struct
-	{
-		struct u_hashset *name_store;
-		struct u_hashset *loc_store;
-	} actions;
+	struct oxr_pair_hashset actions;
 
 	struct oxr_subaction_paths permitted_subaction_paths;
 };

@@ -514,15 +514,17 @@ oxr_xrCreateActionSet(XrInstance instance, const XrActionSetCreateInfo *createIn
 	struct oxr_instance_action_context *inst_context = NULL;
 	struct oxr_action_set *act_set = NULL;
 	struct oxr_instance *inst = NULL;
-	struct u_hashset_item *d = NULL;
 	struct oxr_logger log;
-	int h_ret;
+	bool has_name = false;
+	bool has_loc = false;
 	XrResult ret;
+
 	OXR_VERIFY_INSTANCE_AND_INIT_LOG(&log, instance, inst, "xrCreateActionSet");
 	OXR_VERIFY_ARG_TYPE_AND_NOT_NULL(&log, createInfo, XR_TYPE_ACTION_SET_CREATE_INFO);
 	OXR_VERIFY_ARG_NOT_NULL(&log, actionSet);
 	OXR_VERIFY_ARG_SINGLE_LEVEL_FIXED_LENGTH_PATH(&log, createInfo->actionSetName);
 	OXR_VERIFY_ARG_LOCALIZED_NAME(&log, createInfo->localizedActionSetName);
+
 
 	/*
 	 * Action context.
@@ -535,17 +537,22 @@ oxr_xrCreateActionSet(XrInstance instance, const XrActionSetCreateInfo *createIn
 	 * Dup checks.
 	 */
 
-	h_ret = u_hashset_find_c_str(inst_context->action_sets.name_store, createInfo->actionSetName, &d);
-	if (h_ret >= 0) {
+	ret = oxr_pair_hashset_has_name_and_loc( //
+	    &inst_context->action_sets,          //
+	    createInfo->actionSetName,           //
+	    createInfo->localizedActionSetName,  //
+	    &has_name,                           //
+	    &has_loc);                           //
+	if (ret != XR_SUCCESS) {
+		return oxr_error(&log, ret, "Failed to validate name and localized name");
+	}
+	if (has_name) {
 		return oxr_error(&log, XR_ERROR_NAME_DUPLICATED, "(createInfo->actionSetName == '%s') is duplicated",
 		                 createInfo->actionSetName);
 	}
-
-	h_ret = u_hashset_find_c_str(inst_context->action_sets.loc_store, createInfo->localizedActionSetName, &d);
-	if (h_ret >= 0) {
+	if (has_loc) {
 		return oxr_error(&log, XR_ERROR_LOCALIZED_NAME_DUPLICATED,
-		                 "(createInfo->localizedActionSetName == '%s') "
-		                 "is duplicated",
+		                 "(createInfo->localizedActionSetName == '%s') is duplicated",
 		                 createInfo->localizedActionSetName);
 	}
 
@@ -589,11 +596,11 @@ oxr_xrCreateAction(XrActionSet actionSet, const XrActionCreateInfo *createInfo, 
 	OXR_TRACE_MARKER();
 
 	struct oxr_action_set *act_set;
-	struct u_hashset_item *d = NULL;
 	struct oxr_action *act = NULL;
 	struct oxr_logger log;
+	bool has_name = false;
+	bool has_loc = false;
 	XrResult ret;
-	int h_ret;
 
 	OXR_VERIFY_ACTIONSET_AND_INIT_LOG(&log, actionSet, act_set, "xrCreateAction");
 	OXR_VERIFY_ARG_TYPE_AND_NOT_NULL(&log, createInfo, XR_TYPE_ACTION_CREATE_INFO);
@@ -619,17 +626,22 @@ oxr_xrCreateAction(XrActionSet actionSet, const XrActionCreateInfo *createInfo, 
 	 * Dup checks.
 	 */
 
-	h_ret = u_hashset_find_c_str(act_set->data->actions.name_store, createInfo->actionName, &d);
-	if (h_ret >= 0) {
+	ret = oxr_pair_hashset_has_name_and_loc( //
+	    &act_set->data->actions,             //
+	    createInfo->actionName,              //
+	    createInfo->localizedActionName,     //
+	    &has_name,                           //
+	    &has_loc);                           //
+	if (ret != XR_SUCCESS) {
+		return oxr_error(&log, ret, "Failed to validate name and localized name");
+	}
+	if (has_name) {
 		return oxr_error(&log, XR_ERROR_NAME_DUPLICATED, "(createInfo->actionName == '%s') is duplicated",
 		                 createInfo->actionName);
 	}
-
-	h_ret = u_hashset_find_c_str(act_set->data->actions.loc_store, createInfo->localizedActionName, &d);
-	if (h_ret >= 0) {
+	if (has_loc) {
 		return oxr_error(&log, XR_ERROR_LOCALIZED_NAME_DUPLICATED,
-		                 "(createInfo->localizedActionName == '%s') "
-		                 "is duplicated",
+		                 "(createInfo->localizedActionName == '%s') is duplicated",
 		                 createInfo->localizedActionName);
 	}
 
