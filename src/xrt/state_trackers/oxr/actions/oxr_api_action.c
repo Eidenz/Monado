@@ -367,7 +367,13 @@ oxr_xrSuggestInteractionProfileBindings(XrInstance instance,
 	 * Everything verified.
 	 */
 
-	return oxr_action_suggest_interaction_profile_bindings(&log, inst, suggestedBindings, &dpad_state);
+	return oxr_action_suggest_interaction_profile_bindings( //
+	    &log,                                               //
+	    &inst->path_store,                                  //
+	    &inst->path_cache,                                  //
+	    &inst->action_context,                              //
+	    suggestedBindings,                                  //
+	    &dpad_state);                                       //
 }
 
 XRAPI_ATTR XrResult XRAPI_CALL
@@ -417,8 +423,16 @@ oxr_xrGetCurrentInteractionProfile(XrSession session,
 		                 str);
 	}
 
-	/* XXX: How do we return XR_SESSION_LOSS_PENDING here? */
-	return oxr_action_get_current_interaction_profile(&log, sess, topLevelUserPath, interactionProfile);
+	XrResult ret = oxr_action_get_current_interaction_profile( //
+	    &log,                                                  //
+	    &inst->path_cache,                                     //
+	    sess,                                                  //
+	    topLevelUserPath,                                      //
+	    interactionProfile);                                   //
+	if (ret == XR_SUCCESS) {
+		return oxr_session_success_result(sess);
+	}
+	return ret;
 }
 
 XRAPI_ATTR XrResult XRAPI_CALL
@@ -470,8 +484,19 @@ oxr_xrGetInputSourceLocalizedName(XrSession session,
 		return oxr_error(&log, XR_ERROR_VALIDATION_FAILURE, "(getInfo->whichComponents == 0) cannot be zero");
 	}
 
-	return oxr_action_get_input_source_localized_name(&log, sess, getInfo, bufferCapacityInput, bufferCountOutput,
-	                                                  buffer);
+	XrResult ret = oxr_action_get_input_source_localized_name( //
+	    &log,                                                  //
+	    &inst->path_store,                                     //
+	    sess,                                                  //
+	    getInfo,                                               //
+	    bufferCapacityInput,                                   //
+	    bufferCountOutput,                                     //
+	    buffer);                                               //
+	if (ret == XR_SUCCESS) {
+		return oxr_session_success_result(sess);
+	}
+
+	return ret;
 }
 
 

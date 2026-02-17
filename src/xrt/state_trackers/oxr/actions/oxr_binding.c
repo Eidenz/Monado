@@ -26,7 +26,9 @@
 
 
 static bool
-get_subaction_path_from_path(struct oxr_path_store *store, XrPath path, enum oxr_subaction_path *out_subaction_path)
+get_subaction_path_from_path(const struct oxr_path_store *store,
+                             XrPath path,
+                             enum oxr_subaction_path *out_subaction_path)
 {
 	const char *str = NULL;
 	size_t length = 0;
@@ -554,19 +556,20 @@ oxr_binding_find_bindings_from_act_key(struct oxr_logger *log,
 
 XrResult
 oxr_action_suggest_interaction_profile_bindings(struct oxr_logger *log,
-                                                struct oxr_instance *inst,
+                                                struct oxr_path_store *store,
+                                                const struct oxr_instance_path_cache *cache,
+                                                struct oxr_instance_action_context *inst_context,
                                                 const XrInteractionProfileSuggestedBinding *suggestedBindings,
                                                 struct oxr_dpad_state *dpad_state)
 {
-	struct oxr_instance_action_context *inst_context = &inst->action_context;
 	struct oxr_interaction_profile *p = NULL;
 
 	// Path already validated.
 	XrPath path = suggestedBindings->interactionProfile;
 	interaction_profile_find_or_create_in_instance( //
 	    log,                                        //
-	    &inst->path_store,                          //
-	    &inst->path_cache,                          //
+	    store,                                      //
+	    cache,                                      //
 	    inst_context,                               //
 	    path,                                       //
 	    &p);                                        //
@@ -591,7 +594,7 @@ oxr_action_suggest_interaction_profile_bindings(struct oxr_logger *log,
 		struct oxr_action *act = XRT_CAST_OXR_HANDLE_TO_PTR(struct oxr_action *, s->action);
 
 		add_act_key_to_matching_bindings( //
-		    &inst->path_store,            //
+		    store,                        //
 		    bindings,                     //
 		    binding_count,                //
 		    s->binding,                   //
@@ -606,19 +609,18 @@ out:
 
 XrResult
 oxr_action_get_current_interaction_profile(struct oxr_logger *log,
+                                           const struct oxr_instance_path_cache *cache,
                                            struct oxr_session *sess,
                                            XrPath topLevelUserPath,
                                            XrInteractionProfileState *interactionProfile)
 {
-	struct oxr_instance *inst = sess->sys->inst;
-
 	if (sess->act_set_attachments == NULL) {
 		return oxr_error(log, XR_ERROR_ACTIONSET_NOT_ATTACHED,
 		                 "xrAttachSessionActionSets has not been "
 		                 "called on this session.");
 	}
 #define IDENTIFY_TOP_LEVEL_PATH(X)                                                                                     \
-	if (topLevelUserPath == inst->path_cache.X) {                                                                  \
+	if (topLevelUserPath == cache->X) {                                                                            \
 		interactionProfile->interactionProfile = sess->X;                                                      \
 	} else
 
@@ -633,6 +635,7 @@ oxr_action_get_current_interaction_profile(struct oxr_logger *log,
 
 XrResult
 oxr_action_get_input_source_localized_name(struct oxr_logger *log,
+                                           const struct oxr_path_store *store,
                                            struct oxr_session *sess,
                                            const XrInputSourceLocalizedNameGetInfo *getInfo,
                                            uint32_t bufferCapacityInput,
@@ -642,7 +645,6 @@ oxr_action_get_input_source_localized_name(struct oxr_logger *log,
 	char temp[1024] = {0};
 	ssize_t current = 0;
 	enum oxr_subaction_path subaction_path = 0;
-	struct oxr_path_store *store = &sess->sys->inst->path_store;
 
 	if (!get_subaction_path_from_path(store, getInfo->sourcePath, &subaction_path)) {
 		return oxr_error(log, XR_ERROR_VALIDATION_FAILURE,
@@ -693,6 +695,5 @@ oxr_action_get_input_source_localized_name(struct oxr_logger *log,
 	// Include the null character.
 	current += 1;
 
-	OXR_TWO_CALL_HELPER(log, bufferCapacityInput, bufferCountOutput, buffer, (size_t)current, temp,
-	                    oxr_session_success_result(sess));
+	OXR_TWO_CALL_HELPER(log, bufferCapacityInput, bufferCountOutput, buffer, (size_t)current, temp, XR_SUCCESS);
 }
