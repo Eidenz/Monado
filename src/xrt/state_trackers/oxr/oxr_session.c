@@ -50,6 +50,7 @@
 #include "oxr_roles.h"
 #include "actions/oxr_input.h"
 #include "actions/oxr_session_action_context.h"
+#include "actions/oxr_session_attached_actions.h"
 #include "actions/oxr_binding.h"
 
 #include <stdio.h>
@@ -1064,6 +1065,7 @@ oxr_session_destroy(struct oxr_logger *log, struct oxr_handle_base *hb)
 	XrResult ret = oxr_event_remove_session_events(log, sess);
 
 	oxr_session_action_context_fini(&sess->action_context);
+	oxr_session_attached_actions_fini(&sess->attached_actions);
 
 	xrt_comp_destroy(&sess->compositor);
 	xrt_comp_native_destroy(&sess->xcn);
@@ -1087,6 +1089,12 @@ oxr_session_allocate_and_init(struct oxr_logger *log,
 	struct oxr_session *sess = NULL;
 	XrResult ret;
 	OXR_ALLOCATE_HANDLE_OR_RETURN(log, sess, OXR_XR_DEBUG_SESSION, oxr_session_destroy, &sys->inst->handle);
+
+	// Needs to happen early due to mutex.
+	ret = oxr_session_attached_actions_init(&sess->attached_actions);
+	if (ret != XR_SUCCESS) {
+		return oxr_error(log, ret, "Failed to initialize attached actions");
+	}
 
 	// Needs to happen early due to mutex.
 	ret = oxr_session_action_context_init(&sess->action_context);

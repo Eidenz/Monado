@@ -88,24 +88,6 @@ struct oxr_session_action_context
 
 
 	/*
-	 * Action fields
-	 */
-
-	/*!
-	 * A map of action key to action attachment.
-	 *
-	 * The action attachments are actually owned by the action set
-	 * attachments, but we own the action set attachments, so this is OK.
-	 *
-	 * If non-null, this means an action context (default or otherwise)
-	 * action sets have been attached to the owning session, since this map
-	 * points to @p oxr_action_attachment members of
-	 * @ref oxr_session_action_context::act_set_attachments elements.
-	 */
-	struct u_hashmap_int *act_attachments_by_key;
-
-
-	/*
 	 * Interaction Profiles fields
 	 */
 

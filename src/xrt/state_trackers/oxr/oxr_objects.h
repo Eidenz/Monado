@@ -41,6 +41,7 @@
 #include "actions/oxr_subaction.h"
 #include "actions/oxr_dpad_state.h"
 #include "actions/oxr_session_action_context.h"
+#include "actions/oxr_session_attached_actions.h"
 #include "actions/oxr_interaction_profile_array.h"
 #include "actions/oxr_instance_path_cache.h"
 #include "actions/oxr_instance_action_context.h"
@@ -1414,6 +1415,11 @@ struct oxr_session
 	 * Holds all the action state that belongs on the session level.
 	 */
 	struct oxr_session_action_context action_context;
+
+	/*!
+	 * Per-session map of action key to action attachment (thread-safe).
+	 */
+	struct oxr_session_attached_actions attached_actions;
 
 	/*!
 	 * IPD, to be expanded to a proper 3D relation.

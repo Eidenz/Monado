@@ -81,7 +81,7 @@ oxr_action_apply_haptic_feedback(struct oxr_logger *log,
 {
 	struct oxr_action_attachment *act_attached = NULL;
 
-	oxr_session_get_action_attachment(sess, act_key, &act_attached);
+	oxr_session_attached_actions_find(&sess->attached_actions, act_key, &act_attached);
 	if (act_attached == NULL) {
 		return oxr_error(log, XR_ERROR_ACTIONSET_NOT_ATTACHED, "Action has not been attached to this session");
 	}
@@ -137,7 +137,7 @@ oxr_action_stop_haptic_feedback(struct oxr_logger *log,
 {
 	struct oxr_action_attachment *act_attached = NULL;
 
-	oxr_session_get_action_attachment(sess, act_key, &act_attached);
+	oxr_session_attached_actions_find(&sess->attached_actions, act_key, &act_attached);
 	if (act_attached == NULL) {
 		return oxr_error(log, XR_ERROR_ACTIONSET_NOT_ATTACHED, "Action has not been attached to this session");
 	}

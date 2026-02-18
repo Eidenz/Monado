@@ -30,9 +30,6 @@ oxr_session_action_context_init(struct oxr_session_action_context *action_contex
 		return XR_ERROR_RUNTIME_FAILURE;
 	}
 
-	// @todo Remove or check results.
-	u_hashmap_int_create(&action_context->act_attachments_by_key);
-
 	// Initialize action set attachments
 	action_context->act_set_attachments = NULL;
 	action_context->action_set_attachment_count = 0;
@@ -61,11 +58,8 @@ oxr_session_action_context_fini(struct oxr_session_action_context *action_contex
 	// If we tore everything down correctly, these are empty now.
 	assert(action_context->act_sets_attachments_by_key == NULL ||
 	       u_hashmap_int_empty(action_context->act_sets_attachments_by_key));
-	assert(action_context->act_attachments_by_key == NULL ||
-	       u_hashmap_int_empty(action_context->act_attachments_by_key));
 
 	u_hashmap_int_destroy(&action_context->act_sets_attachments_by_key);
-	u_hashmap_int_destroy(&action_context->act_attachments_by_key);
 
 	// Destroy mutex
 	os_mutex_destroy(&action_context->sync_actions_mutex);

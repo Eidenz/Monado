@@ -232,7 +232,7 @@ static void
 oxr_action_attachment_teardown(struct oxr_action_attachment *act_attached)
 {
 	struct oxr_session *sess = act_attached->sess;
-	u_hashmap_int_erase(sess->action_context.act_attachments_by_key, act_attached->act_key);
+	oxr_session_attached_actions_remove_action_attachment(&sess->attached_actions, act_attached);
 
 #define CACHE_TEARDOWN(X) oxr_action_cache_teardown(&(act_attached->X));
 	OXR_FOR_EACH_SUBACTION_PATH(CACHE_TEARDOWN)
@@ -256,14 +256,16 @@ oxr_action_attachment_init(struct oxr_logger *log,
 	struct oxr_session *sess = act_set_attached->sess;
 	act_attached->sess = sess;
 	act_attached->act_set_attached = act_set_attached;
-	u_hashmap_int_insert(sess->action_context.act_attachments_by_key, act->act_key, act_attached);
+	act_attached->act_key = act->act_key;
 
 	// Reference this action's refcounted data
 	act_attached->act_ref = act->data;
 	oxr_refcounted_ref(&act_attached->act_ref->base);
 
-	// Copy this for efficiency.
-	act_attached->act_key = act->act_key;
+	XrResult ret = oxr_session_attached_actions_add_action_attachment(&sess->attached_actions, act_attached);
+	if (ret != XR_SUCCESS) {
+		return oxr_error(log, ret, "Failed to add action attachment to session attached actions");
+	}
 	return XR_SUCCESS;
 }
 
@@ -560,8 +562,7 @@ oxr_action_get_pose_input(struct oxr_session *sess,
 {
 	struct oxr_action_attachment *act_attached = NULL;
 
-	oxr_session_get_action_attachment(sess, act_key, &act_attached);
-
+	oxr_session_attached_actions_find(&sess->attached_actions, act_key, &act_attached);
 	if (act_attached == NULL) {
 		return XR_SUCCESS;
 	}
@@ -1828,19 +1829,6 @@ oxr_action_bind_io(struct oxr_logger *log,
  *
  */
 
-void
-oxr_session_get_action_attachment(struct oxr_session *sess,
-                                  uint32_t act_key,
-                                  struct oxr_action_attachment **out_act_attached)
-{
-	void *ptr = NULL;
-
-	int ret = u_hashmap_int_find(sess->action_context.act_attachments_by_key, act_key, &ptr);
-	if (ret == 0) {
-		*out_act_attached = (struct oxr_action_attachment *)ptr;
-	}
-}
-
 static inline size_t
 oxr_handle_base_get_num_children(struct oxr_handle_base *hb)
 {
@@ -2146,7 +2134,7 @@ oxr_action_enumerate_bound_sources(struct oxr_logger *log,
 	uint32_t path_count = 0;
 	XrPath temp[OXR_MAX_BINDINGS_PER_ACTION] = {0};
 
-	oxr_session_get_action_attachment(sess, act_key, &act_attached);
+	oxr_session_attached_actions_find(&sess->attached_actions, act_key, &act_attached);
 	if (act_attached == NULL) {
 		return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "act_key did not find any action");
 	}
