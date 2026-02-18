@@ -231,8 +231,7 @@ oxr_action_cache_teardown(struct oxr_action_cache *cache)
 static void
 oxr_action_attachment_teardown(struct oxr_action_attachment *act_attached)
 {
-	struct oxr_session *sess = act_attached->sess;
-	oxr_session_attached_actions_remove_action_attachment(&sess->attached_actions, act_attached);
+	oxr_session_attached_actions_remove_action_attachment(act_attached->attached_actions, act_attached);
 
 #define CACHE_TEARDOWN(X) oxr_action_cache_teardown(&(act_attached->X));
 	OXR_FOR_EACH_SUBACTION_PATH(CACHE_TEARDOWN)
@@ -249,23 +248,26 @@ oxr_action_attachment_teardown(struct oxr_action_attachment *act_attached)
  */
 static XrResult
 oxr_action_attachment_init(struct oxr_logger *log,
-                           struct oxr_action_set_attachment *act_set_attached,
                            struct oxr_action_attachment *act_attached,
-                           struct oxr_action *act)
+                           struct oxr_session_attached_actions *attached_actions,
+                           struct oxr_action_set_attachment *act_set_attached,
+                           struct oxr_action_ref *act_ref)
 {
-	struct oxr_session *sess = act_set_attached->sess;
-	act_attached->sess = sess;
-	act_attached->act_set_attached = act_set_attached;
-	act_attached->act_key = act->act_key;
-
 	// Reference this action's refcounted data
-	act_attached->act_ref = act->data;
-	oxr_refcounted_ref(&act_attached->act_ref->base);
+	oxr_refcounted_ref(&act_ref->base);
 
-	XrResult ret = oxr_session_attached_actions_add_action_attachment(&sess->attached_actions, act_attached);
+	act_attached->attached_actions = attached_actions;
+	act_attached->act_set_attached = act_set_attached;
+	act_attached->act_key = act_ref->act_key; // Copy this for efficiency.
+	act_attached->act_ref = act_ref;
+
+	XrResult ret = oxr_session_attached_actions_add_action_attachment(attached_actions, act_attached);
 	if (ret != XR_SUCCESS) {
+		oxr_refcounted_unref(&act_attached->act_ref->base);
+		U_ZERO(act_attached);
 		return oxr_error(log, ret, "Failed to add action attachment to session attached actions");
 	}
+
 	return XR_SUCCESS;
 }
 
@@ -281,20 +283,27 @@ oxr_action_attachment_init(struct oxr_logger *log,
  */
 static XrResult
 oxr_action_set_attachment_init(struct oxr_logger *log,
-                               struct oxr_session *sess,
-                               struct oxr_action_set *act_set,
-                               struct oxr_action_set_attachment *act_set_attached)
+                               struct oxr_action_set_attachment *act_set_attached,
+                               struct oxr_session_action_context *action_context,
+                               struct oxr_action_set_ref *act_set_ref)
 {
-	act_set_attached->sess = sess;
-
 	// Reference this action set's refcounted data
-	act_set_attached->act_set_ref = act_set->data;
-	oxr_refcounted_ref(&act_set_attached->act_set_ref->base);
+	oxr_refcounted_ref(&act_set_ref->base);
 
-	u_hashmap_int_insert(sess->action_context.act_sets_attachments_by_key, act_set->act_set_key, act_set_attached);
+	act_set_attached->sess_context = action_context;
+	act_set_attached->act_set_key = act_set_ref->act_set_key; // Copy this for efficiency.
+	act_set_attached->act_set_ref = act_set_ref;
 
-	// Copy this for efficiency.
-	act_set_attached->act_set_key = act_set->act_set_key;
+	int h_ret = u_hashmap_int_insert(                //
+	    action_context->act_sets_attachments_by_key, //
+	    act_set_ref->act_set_key,                    //
+	    act_set_attached);                           //
+	if (h_ret < 0) {
+		oxr_refcounted_unref(&act_set_attached->act_set_ref->base);
+		U_ZERO(act_set_attached);
+		return oxr_error(log, XR_ERROR_RUNTIME_FAILURE,
+		                 "Failed to add action set attachment to session action context");
+	}
 
 	return XR_SUCCESS;
 }
@@ -305,12 +314,13 @@ oxr_action_set_attachment_teardown(struct oxr_action_set_attachment *act_set_att
 	for (size_t i = 0; i < act_set_attached->action_attachment_count; ++i) {
 		oxr_action_attachment_teardown(&(act_set_attached->act_attachments[i]));
 	}
+
 	free(act_set_attached->act_attachments);
 	act_set_attached->act_attachments = NULL;
 	act_set_attached->action_attachment_count = 0;
 
-	struct oxr_session *sess = act_set_attached->sess;
-	u_hashmap_int_erase(sess->action_context.act_sets_attachments_by_key, act_set_attached->act_set_key);
+	struct oxr_session_action_context *sess_context = act_set_attached->sess_context;
+	u_hashmap_int_erase(sess_context->act_sets_attachments_by_key, act_set_attached->act_set_key);
 
 	// Unref this action set's refcounted data
 	oxr_refcounted_unref(&act_set_attached->act_set_ref->base);
@@ -1849,6 +1859,7 @@ oxr_session_attach_action_sets(struct oxr_logger *log,
 	struct oxr_instance *inst = sess->sys->inst;
 
 	const struct oxr_instance_action_context *inst_context = inst->action_context;
+	struct oxr_session_attached_actions *attached_actions = &sess->attached_actions;
 	struct oxr_session_action_context *sess_context = &sess->action_context;
 
 	oxr_interaction_profile_array_clone(&inst_context->suggested_profiles, &sess_context->profiles_on_attachment);
@@ -1866,7 +1877,7 @@ oxr_session_attach_action_sets(struct oxr_logger *log,
 		struct oxr_action_set_ref *act_set_ref = act_set->data;
 		act_set_ref->ever_attached = true;
 		struct oxr_action_set_attachment *act_set_attached = &sess->action_context.act_set_attachments[i];
-		oxr_action_set_attachment_init(log, sess, act_set, act_set_attached);
+		oxr_action_set_attachment_init(log, act_set_attached, sess_context, act_set->data);
 
 		// Allocate the action attachments for this set.
 		act_set_attached->action_attachment_count = oxr_handle_base_get_num_children(&act_set->handle);
@@ -1882,7 +1893,7 @@ oxr_session_attach_action_sets(struct oxr_logger *log,
 			}
 
 			struct oxr_action_attachment *act_attached = &act_set_attached->act_attachments[child_index];
-			oxr_action_attachment_init(log, act_set_attached, act_attached, act);
+			oxr_action_attachment_init(log, act_attached, attached_actions, act_set_attached, act->data);
 			++child_index;
 		}
 	}

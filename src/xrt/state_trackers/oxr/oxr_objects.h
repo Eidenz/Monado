@@ -1621,8 +1621,8 @@ oxr_subaction_paths_is_subset_of(const struct oxr_subaction_paths *a, const stru
  */
 struct oxr_action_set_attachment
 {
-	//! Owning session.
-	struct oxr_session *sess;
+	//! Owning session action context.
+	struct oxr_session_action_context *sess_context;
 
 	//! Action set refcounted data
 	struct oxr_action_set_ref *act_set_ref;
@@ -1746,17 +1746,11 @@ struct oxr_action_attachment
 	//! This action's refcounted data
 	struct oxr_action_ref *act_ref;
 
-	/*!
-	 * The corresponding session.
-	 *
-	 * This will always be valid: the session outlives this object because
-	 * it owns act_set_attached.
-	 */
-	struct oxr_session *sess;
+	//! The session attached actions this action attachment belongs to.
+	struct oxr_session_attached_actions *attached_actions;
 
 	//! Unique key for the session hashmap.
 	uint32_t act_key;
-
 
 	/*!
 	 * For pose actions any subaction paths are special treated, at bind
