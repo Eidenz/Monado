@@ -59,10 +59,9 @@ struct oxr_profiles_per_subaction
  */
 
 static void
-print_profile_to_slog(struct oxr_logger *log,
-                      struct oxr_session *sess,
-                      struct oxr_sink_logger *slog,
-                      struct oxr_interaction_profile *profile,
+print_profile_to_slog(struct oxr_sink_logger *slog,
+                      const struct oxr_path_store *store,
+                      const struct oxr_interaction_profile *profile,
                       const char *point)
 {
 	if (!profile) {
@@ -73,18 +72,20 @@ print_profile_to_slog(struct oxr_logger *log,
 	const char *str = NULL;
 	size_t length = 0;
 
-	oxr_path_get_string(log, sess->sys->inst, profile->path, &str, &length);
+	oxr_path_store_get_string(store, profile->path, &str, &length);
 	oxr_slog(slog, "\n\t%s: %s '%s'", point, str, profile->localized_name);
 }
 
 static void
-print_profiles(struct oxr_logger *log, struct oxr_session *sess, const struct oxr_profiles_per_subaction *profiles)
+print_profiles(struct oxr_logger *log,
+               const struct oxr_path_store *store,
+               const struct oxr_profiles_per_subaction *profiles)
 {
 	struct oxr_sink_logger slog = {0};
 
 	oxr_slog(&slog, "Profiles:");
 
-#define PRINT_PROFILE(X) print_profile_to_slog(log, sess, &slog, profiles->X, #X);
+#define PRINT_PROFILE(X) print_profile_to_slog(&slog, store, profiles->X, #X);
 	OXR_FOR_EACH_VALID_SUBACTION_PATH(PRINT_PROFILE)
 #undef PRINT_PROFILE
 
@@ -129,7 +130,7 @@ oxr_action_attachment_update(struct oxr_logger *log,
 static void
 oxr_action_bind_io(struct oxr_logger *log,
                    struct oxr_sink_logger *slog,
-                   struct oxr_session *sess,
+                   const struct oxr_path_store *store,
                    const struct oxr_roles *roles,
                    const struct oxr_action_ref *act_ref,
                    const uint32_t act_set_key,
@@ -498,6 +499,8 @@ oxr_classify_subaction_paths(struct oxr_logger *log,
                              const XrPath *subaction_paths,
                              struct oxr_subaction_paths *subaction_paths_out)
 {
+	const struct oxr_path_store *store = &inst->path_store;
+	const struct oxr_instance_path_cache *cache = &inst->path_cache;
 	const char *str = NULL;
 	size_t length = 0;
 	bool ret = true;
@@ -514,7 +517,7 @@ oxr_classify_subaction_paths(struct oxr_logger *log,
 		XrPath path = subaction_paths[i];
 
 #define IDENTIFY_PATH(X)                                                                                               \
-	else if (path == inst->path_cache.X)                                                                           \
+	else if (path == cache->X)                                                                                     \
 	{                                                                                                              \
 		subaction_paths_out->X = true;                                                                         \
 	}
@@ -525,7 +528,7 @@ oxr_classify_subaction_paths(struct oxr_logger *log,
 		}
 		OXR_FOR_EACH_VALID_SUBACTION_PATH(IDENTIFY_PATH) else
 		{
-			oxr_path_get_string(log, inst, path, &str, &length);
+			oxr_path_store_get_string(store, path, &str, &length);
 
 			oxr_warn(log, " unrecognized sub action path '%s'", str);
 			ret = false;
@@ -770,7 +773,7 @@ get_matched_xrpath(struct oxr_binding *b, const struct oxr_action_ref *act)
 static void
 get_binding(struct oxr_logger *log,
             struct oxr_sink_logger *slog,
-            struct oxr_session *sess,
+            const struct oxr_path_store *store,
             const struct oxr_roles *roles,
             const struct oxr_action_ref *act_ref,
             struct oxr_interaction_profile *profile,
@@ -818,7 +821,7 @@ get_binding(struct oxr_logger *log,
 		return;
 	}
 
-	oxr_path_get_string(log, sess->sys->inst, profile->path, &profile_str, &length);
+	oxr_path_store_get_string(store, profile->path, &profile_str, &length);
 
 	oxr_slog(slog, "\t\tProfile: %s\n", profile_str);
 
@@ -855,7 +858,7 @@ get_binding(struct oxr_logger *log,
 
 		XrPath matched_path = get_matched_xrpath(binding_point, act_ref);
 
-		oxr_path_get_string(log, sess->sys->inst, matched_path, &str, &length);
+		oxr_path_store_get_string(store, matched_path, &str, &length);
 		oxr_slog(slog, "\t\t\tBinding: %s\n", str);
 
 		if (binding_point->subaction_path != subaction_path) {
@@ -911,15 +914,11 @@ get_by_device(const struct oxr_interaction_profile_array *array,
 }
 
 static void
-oxr_find_profiles_from_roles(struct oxr_logger *log,
-                             struct oxr_session *sess,
-                             const struct oxr_roles *roles,
-                             struct oxr_profiles_per_subaction *out_profiles)
+find_profiles_from_roles(const struct oxr_instance_path_cache *cache,
+                         const struct oxr_interaction_profile_array *array,
+                         const struct oxr_roles *roles,
+                         struct oxr_profiles_per_subaction *out_profiles)
 {
-	// Convenience.
-	const struct oxr_instance_path_cache *cache = &sess->sys->inst->path_cache;
-	const struct oxr_interaction_profile_array *array = &sess->profiles_on_attachment;
-
 #define FIND_PROFILE(X)                                                                                                \
 	if (!get_by_name(array, cache, GET_PROFILE_NAME_BY_ROLE(roles, X), &out_profiles->X)) {                        \
 		struct xrt_device *xdev = GET_XDEV_BY_ROLE(roles, X);                                                  \
@@ -937,13 +936,13 @@ oxr_find_profiles_from_roles(struct oxr_logger *log,
  */
 static XrResult
 oxr_action_attachment_bind(struct oxr_logger *log,
+                           struct oxr_instance *inst,
                            struct oxr_action_attachment *act_attached,
                            const struct oxr_roles *roles,
                            const struct oxr_profiles_per_subaction *profiles)
 {
 	struct oxr_sink_logger slog = {0};
 	const struct oxr_action_ref *act_ref = act_attached->act_ref;
-	struct oxr_session *sess = act_attached->sess;
 	const uint32_t act_set_key = act_attached->act_set_attached->act_set_key;
 
 	// Start logging into a single buffer.
@@ -958,8 +957,8 @@ oxr_action_attachment_bind(struct oxr_logger *log,
 
 #define BIND_SUBACTION(NAME, NAME_CAPS, PATH)                                                                          \
 	if (act_ref->subaction_paths.NAME || act_ref->subaction_paths.any) {                                           \
-		oxr_action_bind_io(log, &slog, sess, roles, act_ref, act_set_key, &act_attached->NAME, profiles->NAME, \
-		                   OXR_SUB_ACTION_PATH_##NAME_CAPS);                                                   \
+		oxr_action_bind_io(log, &slog, &inst->path_store, roles, act_ref, act_set_key, &act_attached->NAME,    \
+		                   profiles->NAME, OXR_SUB_ACTION_PATH_##NAME_CAPS);                                   \
 	}
 	OXR_FOR_EACH_VALID_SUBACTION_PATH_DETAILED(BIND_SUBACTION)
 #undef BIND_SUBACTION
@@ -993,7 +992,7 @@ oxr_action_attachment_bind(struct oxr_logger *log,
 	oxr_slog(&slog, "\tDone");
 
 	// Also frees all data.
-	if (sess->sys->inst->debug_bindings) {
+	if (inst->debug_bindings) {
 		oxr_log_slog(log, &slog);
 	} else {
 		oxr_slog_cancel(&slog);
@@ -1531,7 +1530,7 @@ oxr_action_attachment_update(struct oxr_logger *log,
 static bool
 oxr_action_populate_input_transform(struct oxr_logger *log,
                                     struct oxr_sink_logger *slog,
-                                    struct oxr_session *sess,
+                                    const struct oxr_path_store *store,
                                     const struct oxr_action_ref *act_ref,
                                     struct oxr_action_input *action_input)
 {
@@ -1539,7 +1538,7 @@ oxr_action_populate_input_transform(struct oxr_logger *log,
 	assert(action_input->transform_count == 0);
 	const char *str;
 	size_t length;
-	oxr_path_get_string(log, sess->sys->inst, action_input->bound_path, &str, &length);
+	oxr_path_store_get_string(store, action_input->bound_path, &str, &length);
 
 	enum xrt_input_type t = XRT_GET_INPUT_TYPE(action_input->input->name);
 
@@ -1561,8 +1560,7 @@ oxr_action_populate_input_transform(struct oxr_logger *log,
  * @returns true if settings were found and written to @p out_dpad_settings
  */
 static bool
-find_matching_dpad(struct oxr_logger *log,
-                   struct oxr_instance *inst,
+find_matching_dpad(const struct oxr_path_store *store,
                    struct oxr_dpad_entry *dpad_entry,
                    const char *bound_path_string,
                    struct oxr_dpad_binding_modification **out_dpad_binding)
@@ -1571,8 +1569,8 @@ find_matching_dpad(struct oxr_logger *log,
 		for (uint32_t i = 0; i < dpad_entry->dpad_count; i++) {
 			const char *dpad_path_string;
 			size_t dpad_path_length;
-			oxr_path_get_string(log, inst, dpad_entry->dpads[i].binding, &dpad_path_string,
-			                    &dpad_path_length);
+			oxr_path_store_get_string(store, dpad_entry->dpads[i].binding, &dpad_path_string,
+			                          &dpad_path_length);
 			if (strncmp(bound_path_string, dpad_path_string, dpad_path_length) == 0) {
 				*out_dpad_binding = &dpad_entry->dpads[i];
 				return true;
@@ -1594,7 +1592,7 @@ find_matching_dpad(struct oxr_logger *log,
 static bool
 oxr_action_populate_input_transform_dpad(struct oxr_logger *log,
                                          struct oxr_sink_logger *slog,
-                                         struct oxr_session *sess,
+                                         const struct oxr_path_store *store,
                                          const struct oxr_action_ref *act_ref,
                                          struct oxr_dpad_entry *dpad_entry,
                                          enum oxr_dpad_region dpad_region,
@@ -1609,11 +1607,11 @@ oxr_action_populate_input_transform_dpad(struct oxr_logger *log,
 
 	const char *bound_path_string;
 	size_t bound_path_length;
-	oxr_path_get_string(log, sess->sys->inst, action_input->bound_path, &bound_path_string, &bound_path_length);
+	oxr_path_store_get_string(store, action_input->bound_path, &bound_path_string, &bound_path_length);
 
 	// find correct dpad entry
 	struct oxr_dpad_binding_modification *dpad_binding_modification = NULL;
-	find_matching_dpad(log, sess->sys->inst, dpad_entry, bound_path_string, &dpad_binding_modification);
+	find_matching_dpad(store, dpad_entry, bound_path_string, &dpad_binding_modification);
 
 	enum xrt_input_type t = XRT_GET_INPUT_TYPE(action_input->input->name);
 	enum xrt_input_type activate_t = XRT_GET_INPUT_TYPE(action_input->dpad_activate_name);
@@ -1665,16 +1663,13 @@ is_dpad_region_for_emulation(const char *start, const char *end)
 
 // based on get_subaction_path_from_path
 static bool
-get_dpad_region_from_path(struct oxr_logger *log,
-                          struct oxr_instance *inst,
-                          XrPath path,
-                          enum oxr_dpad_region *out_dpad_region)
+get_dpad_region_from_path(const struct oxr_path_store *store, XrPath path, enum oxr_dpad_region *out_dpad_region)
 {
 	const char *str = NULL;
 	size_t length = 0;
 	XrResult ret;
 
-	ret = oxr_path_get_string(log, inst, path, &str, &length);
+	ret = oxr_path_store_get_string(store, path, &str, &length);
 	if (ret != XR_SUCCESS) {
 		return false;
 	}
@@ -1712,7 +1707,7 @@ get_dpad_region_from_path(struct oxr_logger *log,
 static void
 oxr_action_bind_io(struct oxr_logger *log,
                    struct oxr_sink_logger *slog,
-                   struct oxr_session *sess,
+                   const struct oxr_path_store *store,
                    const struct oxr_roles *roles,
                    const struct oxr_action_ref *act_ref,
                    const uint32_t act_set_key,
@@ -1732,7 +1727,7 @@ oxr_action_bind_io(struct oxr_logger *log,
 	get_binding(        //
 	    log,            // log
 	    slog,           // slog
-	    sess,           // sess
+	    store,          // store
 	    roles,          // roles
 	    act_ref,        // act_ref
 	    profile,        // profile
@@ -1755,13 +1750,13 @@ oxr_action_bind_io(struct oxr_logger *log,
 			         xr_action_type_to_str(act_ref->action_type));
 
 			enum oxr_dpad_region dpad_region;
-			if (get_dpad_region_from_path(log, sess->sys->inst, inputs[i].bound_path, &dpad_region)) {
+			if (get_dpad_region_from_path(store, inputs[i].bound_path, &dpad_region)) {
 				struct oxr_dpad_entry *entry = oxr_dpad_state_get(&profile->dpad_state, act_set_key);
 
 				bool bret = oxr_action_populate_input_transform_dpad( //
 				    log,                                              //
 				    slog,                                             //
-				    sess,                                             //
+				    store,                                            //
 				    act_ref,                                          //
 				    entry,                                            //
 				    dpad_region,                                      //
@@ -1773,7 +1768,7 @@ oxr_action_bind_io(struct oxr_logger *log,
 					cache->inputs[count++] = inputs[i];
 					continue;
 				}
-			} else if (oxr_action_populate_input_transform(log, slog, sess, act_ref, &(inputs[i]))) {
+			} else if (oxr_action_populate_input_transform(log, slog, store, act_ref, &(inputs[i]))) {
 				cache->inputs[count++] = inputs[i];
 				continue;
 			}
@@ -1927,21 +1922,29 @@ oxr_session_attach_action_sets(struct oxr_logger *log,
 }
 
 static XrResult
-oxr_session_update_action_bindings(struct oxr_logger *log, struct oxr_session *sess, const struct oxr_roles *roles)
+session_update_action_bindings(struct oxr_logger *log,
+                               struct oxr_instance *inst,
+                               struct oxr_session *sess,
+                               const struct oxr_roles *roles)
 {
+	// Convenience.
+	const struct oxr_path_store *store = &inst->path_store;
+	const struct oxr_instance_path_cache *cache = &inst->path_cache;
+	const struct oxr_interaction_profile_array *array = &sess->profiles_on_attachment;
+
 	struct oxr_profiles_per_subaction profiles = {0};
-	oxr_find_profiles_from_roles(log, sess, roles, &profiles);
+	find_profiles_from_roles(cache, array, roles, &profiles);
 
 	// Dump selected profiles if debugging.
-	if (sess->sys->inst->debug_bindings) {
-		print_profiles(log, sess, &profiles);
+	if (inst->debug_bindings) {
+		print_profiles(log, store, &profiles);
 	}
 
 	for (size_t i = 0; i < sess->action_set_attachment_count; i++) {
 		struct oxr_action_set_attachment *act_set_attached = &sess->act_set_attachments[i];
 		for (size_t k = 0; k < act_set_attached->action_attachment_count; k++) {
 			struct oxr_action_attachment *act_attached = &act_set_attached->act_attachments[k];
-			oxr_action_attachment_bind(log, act_attached, roles, &profiles);
+			oxr_action_attachment_bind(log, inst, act_attached, roles, &profiles);
 		}
 	}
 
@@ -2019,7 +2022,7 @@ oxr_action_sync_data(struct oxr_logger *log,
 		os_mutex_lock(&sess->sync_actions_mutex);
 		if (sess->dynamic_roles_generation_id < roles.roles.generation_id) {
 			sess->dynamic_roles_generation_id = roles.roles.generation_id;
-			oxr_session_update_action_bindings(log, sess, &roles);
+			session_update_action_bindings(log, sess->sys->inst, sess, &roles);
 		}
 		os_mutex_unlock(&sess->sync_actions_mutex);
 	}
