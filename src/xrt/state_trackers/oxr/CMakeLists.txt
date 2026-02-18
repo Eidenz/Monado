@@ -35,6 +35,7 @@ add_library(
 	actions/oxr_set_haptic.h
 	common/oxr_defines.h
 	common/oxr_forward_declarations.h
+	common/oxr_refcounted.h
 	path/oxr_path_store.c
 	path/oxr_path_store.h
 	path/oxr_path_wrappers.h

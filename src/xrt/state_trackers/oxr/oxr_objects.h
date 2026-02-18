@@ -34,6 +34,7 @@
 #include "oxr_defines.h"
 #include "oxr_frame_sync.h"
 #include "oxr_forward_declarations.h"
+#include "oxr_refcounted.h"
 
 #include "path/oxr_path_store.h"
 
@@ -1963,33 +1964,6 @@ struct oxr_swapchain
 
 	XrResult (*release_image)(struct oxr_logger *, struct oxr_swapchain *, const XrSwapchainImageReleaseInfo *);
 };
-
-struct oxr_refcounted
-{
-	struct xrt_reference base;
-	//! Destruction callback
-	void (*destroy)(struct oxr_refcounted *);
-};
-
-/*!
- * Increase the reference count of @p orc.
- */
-static inline void
-oxr_refcounted_ref(struct oxr_refcounted *orc)
-{
-	xrt_reference_inc(&orc->base);
-}
-
-/*!
- * Decrease the reference count of @p orc, destroying it if it reaches 0.
- */
-static inline void
-oxr_refcounted_unref(struct oxr_refcounted *orc)
-{
-	if (xrt_reference_dec_and_is_zero(&orc->base)) {
-		orc->destroy(orc);
-	}
-}
 
 /*!
  * The reference-counted data of an action set.
