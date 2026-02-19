@@ -481,6 +481,7 @@ multi_compositor_begin_session(struct xrt_compositor *xc, const struct xrt_begin
 	if (!mc->state.session_active) {
 		multi_system_compositor_update_session_status(mc->msc, true);
 		mc->state.session_active = true;
+		mc->state.session_view_type = info->view_type;
 	}
 
 	return XRT_SUCCESS;
