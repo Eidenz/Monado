@@ -207,6 +207,8 @@ oxr_xrSuggestInteractionProfileBindings(XrInstance instance,
 
 	struct oxr_instance *inst;
 	struct oxr_logger log;
+	XrResult ret;
+
 	OXR_VERIFY_INSTANCE_AND_INIT_LOG(&log, instance, inst, "xrSuggestInteractionProfileBindings");
 	OXR_VERIFY_ARG_TYPE_AND_NOT_NULL(&log, suggestedBindings, XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING);
 
@@ -220,9 +222,10 @@ oxr_xrSuggestInteractionProfileBindings(XrInstance instance,
 	const char *ip_str = NULL;
 	size_t ip_length = 0;
 
-	XrResult ret = oxr_path_get_string(&log, inst, ip, &ip_str, &ip_length);
+	ret = oxr_path_store_get_string(&inst->path_store, ip, &ip_str, &ip_length);
 	if (ret != XR_SUCCESS) {
-		oxr_error(&log, ret, "(suggestedBindings->countSuggestedBindings == 0x%08" PRIx64 ") invalid path", ip);
+		return oxr_error(&log, ret, "(suggestedBindings->interactionProfile == 0x%08" PRIx64 ") invalid path",
+		                 ip);
 	}
 
 	// Used in the loop that verifies the suggested bindings paths.
@@ -293,7 +296,7 @@ oxr_xrSuggestInteractionProfileBindings(XrInstance instance,
 			                 i, act->act_set->data->name, act->data->name);
 		}
 
-		ret = oxr_path_get_string(&log, inst, s->binding, &str, &length);
+		ret = oxr_path_store_get_string(&inst->path_store, s->binding, &str, &length);
 		if (ret != XR_SUCCESS) {
 			return oxr_error(&log, XR_ERROR_PATH_INVALID,
 			                 "(suggestedBindings->suggestedBindings[%zu]->"
