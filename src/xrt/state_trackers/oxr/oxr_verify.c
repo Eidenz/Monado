@@ -330,7 +330,7 @@ oxr_verify_subaction_path_sync(struct oxr_logger *log,
 		return XR_SUCCESS;
 	}
 	struct oxr_subaction_paths subaction_paths = {0};
-	if (!oxr_classify_subaction_paths(log, inst, 1, &path, &subaction_paths)) {
+	if (!oxr_classify_subaction_path(&inst->path_cache, path, &subaction_paths)) {
 		const char *str = NULL;
 		size_t length = 0;
 

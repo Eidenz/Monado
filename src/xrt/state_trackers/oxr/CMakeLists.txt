@@ -39,6 +39,8 @@ add_library(
 	actions/oxr_session_attached_actions.h
 	actions/oxr_set_haptic.c
 	actions/oxr_set_haptic.h
+	actions/oxr_subaction.c
+	actions/oxr_subaction.h
 	common/oxr_defines.h
 	common/oxr_forward_declarations.h
 	common/oxr_refcounted.h

@@ -1572,41 +1572,6 @@ struct oxr_binding
  */
 
 /*!
- * A parsed equivalent of a list of sub-action paths.
- *
- * If @p any is true, then no paths were provided, which typically means any
- * input is acceptable.
- *
- * @ingroup oxr_main
- * @ingroup oxr_input
- */
-struct oxr_subaction_paths
-{
-	bool any;
-#define OXR_SUBPATH_MEMBER(X) bool X;
-	OXR_FOR_EACH_SUBACTION_PATH(OXR_SUBPATH_MEMBER)
-#undef OXR_SUBPATH_MEMBER
-};
-
-/*!
- * Helper function to determine if the set of paths in @p a is a subset of the
- * paths in @p b.
- *
- * @public @memberof oxr_subaction_paths
- */
-static inline bool
-oxr_subaction_paths_is_subset_of(const struct oxr_subaction_paths *a, const struct oxr_subaction_paths *b)
-{
-#define OXR_CHECK_SUBACTION_PATHS(X)                                                                                   \
-	if (a->X && !b->X) {                                                                                           \
-		return false;                                                                                          \
-	}
-	OXR_FOR_EACH_SUBACTION_PATH(OXR_CHECK_SUBACTION_PATHS)
-#undef OXR_CHECK_SUBACTION_PATHS
-	return true;
-}
-
-/*!
  * The data associated with the attachment of an Action Set (@ref
  * oxr_action_set) to as Session (@ref oxr_session).
  *

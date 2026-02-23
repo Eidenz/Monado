@@ -461,9 +461,14 @@ oxr_action_create(struct oxr_logger *log,
 	static uint32_t key_gen = 1;
 	int h_ret;
 
-	if (!oxr_classify_subaction_paths(log, inst, createInfo->countSubactionPaths, createInfo->subactionPaths,
-	                                  &subaction_paths)) {
-		return XR_ERROR_PATH_UNSUPPORTED;
+	bool bret = oxr_classify_subaction_paths( //
+	    &inst->path_cache,                    //
+	    createInfo->countSubactionPaths,      //
+	    createInfo->subactionPaths,           //
+	    &subaction_paths);                    //
+	if (!bret) {
+		//! @todo This is probably an internal runtime error since it should be validated before?
+		return oxr_error(log, XR_ERROR_PATH_UNSUPPORTED, "Bad internal codepath taken (bug?)");
 	}
 
 	struct oxr_action *act = NULL;
@@ -517,52 +522,6 @@ oxr_action_create(struct oxr_logger *log,
  * "Exported" helper functions.
  *
  */
-
-bool
-oxr_classify_subaction_paths(struct oxr_logger *log,
-                             const struct oxr_instance *inst,
-                             uint32_t subaction_path_count,
-                             const XrPath *subaction_paths,
-                             struct oxr_subaction_paths *subaction_paths_out)
-{
-	const struct oxr_path_store *store = &inst->path_store;
-	const struct oxr_instance_path_cache *cache = &inst->path_cache;
-	const char *str = NULL;
-	size_t length = 0;
-	bool ret = true;
-
-	// Reset the subaction_paths completely.
-	U_ZERO(subaction_paths_out);
-
-	if (subaction_path_count == 0) {
-		subaction_paths_out->any = true;
-		return ret;
-	}
-
-	for (uint32_t i = 0; i < subaction_path_count; i++) {
-		XrPath path = subaction_paths[i];
-
-#define IDENTIFY_PATH(X)                                                                                               \
-	else if (path == cache->X)                                                                                     \
-	{                                                                                                              \
-		subaction_paths_out->X = true;                                                                         \
-	}
-
-
-		if (path == XR_NULL_PATH) {
-			subaction_paths_out->any = true;
-		}
-		OXR_FOR_EACH_VALID_SUBACTION_PATH(IDENTIFY_PATH) else
-		{
-			oxr_path_store_get_string(store, path, &str, &length);
-
-			oxr_warn(log, " unrecognized sub action path '%s'", str);
-			ret = false;
-		}
-#undef IDENTIFY_PATH
-	}
-	return ret;
-}
 
 XrResult
 oxr_action_get_pose_input(struct oxr_session *sess,
@@ -2089,11 +2048,10 @@ oxr_action_sync_data(struct oxr_logger *log,
 		get_action_set_attachment(sess_context, actionSets[i].actionSet, &act_set_attached, &act_set);
 		assert(act_set_attached != NULL);
 
-		if (!oxr_classify_subaction_paths(log, sess->sys->inst, 1, &actionSets[i].subactionPath,
-		                                  &subaction_paths)) {
-			return XR_ERROR_PATH_UNSUPPORTED;
+		if (!oxr_classify_subaction_path(&inst->path_cache, actionSets[i].subactionPath, &subaction_paths)) {
+			//! @todo Probably an internal runtime error since it should be validated before?
+			return oxr_error(log, XR_ERROR_PATH_UNSUPPORTED, "Bad internal codepath taken (bug?)");
 		}
-
 
 		/* never error when requesting any subactionpath */
 		bool any_action_with_subactionpath = subaction_paths.any;

@@ -176,7 +176,10 @@ oxr_space_action_create(struct oxr_logger *log,
 	struct oxr_space *spc = NULL;
 	OXR_ALLOCATE_HANDLE_OR_RETURN(log, spc, OXR_XR_DEBUG_SPACE, oxr_space_destroy, &sess->handle);
 
-	oxr_classify_subaction_paths(log, inst, 1, &createInfo->subactionPath, &subaction_paths);
+	if (!oxr_classify_subaction_path(&inst->path_cache, createInfo->subactionPath, &subaction_paths)) {
+		//! @todo This is probably an internal runtime error since it should be validated before?
+		return oxr_error(log, XR_ERROR_PATH_UNSUPPORTED, "Bad internal codepath taken (bug?)");
+	}
 
 	spc->sess = sess;
 	spc->space_type = OXR_SPACE_TYPE_ACTION;
