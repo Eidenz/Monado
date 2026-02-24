@@ -56,7 +56,19 @@ uvc_fs(struct xrt_fs *xfs)
 }
 
 static void
-uvc_stream_release_frame(struct xrt_frame *frame);
+uvc_stream_release_frame(struct xrt_frame *frame)
+{
+	struct uvc_fs *stream = (struct uvc_fs *)frame->owner;
+
+	assert(frame->owner == stream);
+	assert(stream->num_free_frames < stream->num_alloced_frames);
+	// assert(frame->data_block_size == stream->frame_size);
+
+	// Put the frame back on the free queue
+	os_mutex_lock(&stream->frames_lock);
+	stream->free_frames[stream->num_free_frames++] = frame;
+	os_mutex_unlock(&stream->frames_lock);
+}
 
 int
 uvc_set_cur(libusb_device_handle *dev,
@@ -104,7 +116,7 @@ uvc_get_cur(libusb_device_handle *dev,
 	return ret;
 }
 
-void
+static void
 process_payload(struct uvc_fs *stream, unsigned char *payload, size_t len)
 {
 	struct uvc_payload_header *h = (struct uvc_payload_header *)payload;
@@ -369,7 +381,7 @@ uvc_fs_is_running(struct xrt_fs *xfs)
 	return fs->is_running;
 }
 
-bool
+static bool
 uvc_fs_stream_stop(struct xrt_fs *xfs)
 {
 	int ret;
@@ -405,7 +417,7 @@ uvc_fs_stream_stop(struct xrt_fs *xfs)
 	return true;
 }
 
-bool
+static bool
 uvc_fs_stream_start(struct xrt_fs *xfs,
                     struct xrt_frame_sink *xs,
                     enum xrt_fs_capture_type capture_type,
@@ -679,19 +691,4 @@ uvc_fs_destroy(struct xrt_fs *xfs)
 	os_mutex_destroy(&stream->frames_lock);
 
 	return 0;
-}
-
-static void
-uvc_stream_release_frame(struct xrt_frame *frame)
-{
-	struct uvc_fs *stream = (struct uvc_fs *)frame->owner;
-
-	assert(frame->owner == stream);
-	assert(stream->num_free_frames < stream->num_alloced_frames);
-	// assert(frame->data_block_size == stream->frame_size);
-
-	// Put the frame back on the free queue
-	os_mutex_lock(&stream->frames_lock);
-	stream->free_frames[stream->num_free_frames++] = frame;
-	os_mutex_unlock(&stream->frames_lock);
 }
