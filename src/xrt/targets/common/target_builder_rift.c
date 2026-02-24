@@ -26,6 +26,7 @@
 #include "rift_sensor/rift_sensor_interface.h"
 #endif
 
+
 /*
  *
  * Internal structures
@@ -59,7 +60,16 @@ rift_builder(struct xrt_builder *xb)
  *
  */
 
+#ifdef XRT_BUILD_DRIVER_OHMD
+#define DEFAULT_ENABLE false
+#else
+#define DEFAULT_ENABLE true
+#endif
+
 DEBUG_GET_ONCE_LOG_OPTION(rift_log, "RIFT_LOG", U_LOGGING_WARN)
+DEBUG_GET_ONCE_BOOL_OPTION(rift_prober_enable, "RIFT_PROBER_ENABLE", DEFAULT_ENABLE)
+
+#undef DEFAULT_ENABLE
 
 #define RIFT_ERROR(p, ...) U_LOG_IFL_E(p->log_level, __VA_ARGS__)
 #define RIFT_WARN(p, ...) U_LOG_IFL_W(p->log_level, __VA_ARGS__)
@@ -89,6 +99,10 @@ rift_estimate_system(struct xrt_builder *xb,
 	xrt_result_t xret = XRT_SUCCESS;
 
 	U_ZERO(estimate);
+
+	if (!debug_get_bool_option_rift_prober_enable()) {
+		return XRT_SUCCESS;
+	}
 
 	xret = xrt_prober_lock_list(xp, &xpdevs, &xpdev_count);
 	if (xret != XRT_SUCCESS) {

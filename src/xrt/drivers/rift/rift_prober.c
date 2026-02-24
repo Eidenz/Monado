@@ -8,12 +8,22 @@
  */
 
 #include "xrt/xrt_prober.h"
+#include "xrt/xrt_config.h"
 
 #include "util/u_misc.h"
 #include "util/u_logging.h"
+#include "util/u_debug.h"
 
 #include "rift_internal.h"
 
+
+#ifdef XRT_BUILD_DRIVER_OHMD
+#define DEFAULT_ENABLE false
+#else
+#define DEFAULT_ENABLE true
+#endif
+
+DEBUG_GET_ONCE_BOOL_OPTION(rift_prober_enable, "RIFT_PROBER_ENABLE", DEFAULT_ENABLE)
 
 bool
 rift_is_oculus(struct xrt_prober *xp, struct xrt_prober_device *dev)
@@ -43,6 +53,11 @@ rift_found(struct xrt_prober *xp,
            struct xrt_device **out_xdevs)
 {
 	struct xrt_prober_device *dev = devices[index];
+
+	// don't do anything if rift probing is not enabled
+	if (!debug_get_bool_option_rift_prober_enable()) {
+		return -1;
+	}
 
 	unsigned char serial_number[21] = {0};
 	int result = xrt_prober_get_string_descriptor(xp, dev, XRT_PROBER_STRING_SERIAL_NUMBER, serial_number,
