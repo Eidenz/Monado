@@ -16,6 +16,7 @@
 #include "tracking/t_constellation.h"
 
 #include "constellation/t_rift_blobwatch.h"
+#include "constellation/t_constellation_tracker.h"
 
 #include "util/u_debug.h"
 #include "util/u_misc.h"
@@ -71,6 +72,8 @@ struct rift_builder
 
 	struct t_blobwatch **blobwatches;
 	struct u_sink_debug *blobwatch_debug_sinks;
+
+	struct t_constellation_tracker *constellation_tracker;
 #endif
 };
 
@@ -94,6 +97,7 @@ rift_builder(struct xrt_builder *xb)
 
 DEBUG_GET_ONCE_LOG_OPTION(rift_log, "RIFT_LOG", U_LOGGING_WARN)
 DEBUG_GET_ONCE_BOOL_OPTION(rift_prober_enable, "RIFT_PROBER_ENABLE", DEFAULT_ENABLE)
+DEBUG_GET_ONCE_BOOL_OPTION(rift_prober_constellation_tracking, "RIFT_PROBER_CONSTELLATION_TRACKING", false)
 
 #undef DEFAULT_ENABLE
 
@@ -363,18 +367,10 @@ rift_open_system_impl(struct xrt_builder *xb,
 		RIFT_WARN(rb, "Rift sensor context creation failed with code %d", ret);
 	}
 
-	uint8_t radio_id[5] = {0};
-	if (rb->hmd) {
-		rift_get_radio_id(rb->hmd, radio_id);
-	}
-
+	ssize_t signed_num_sensors = 0;
+	bool have_applicable_sensor = false;
 	if (rb->sensor_context) {
-		ret = rift_sensor_context_start(rb->sensor_context);
-		if (ret != 0) {
-			RIFT_WARN(rb, "Rift sensor context start failed with code %d", ret);
-		}
-
-		ssize_t signed_num_sensors = rift_sensor_context_get_sensors(rb->sensor_context, &rb->sensors);
+		signed_num_sensors = rift_sensor_context_get_sensors(rb->sensor_context, &rb->sensors);
 		if (signed_num_sensors >= UINT32_MAX) {
 			RIFT_WARN(rb, "Rift sensor context got too many sensors: %zd", signed_num_sensors);
 			signed_num_sensors = 0;
@@ -384,11 +380,72 @@ rift_open_system_impl(struct xrt_builder *xb,
 			signed_num_sensors = 0;
 		}
 
+		// See if any sensors are applicable
+		for (ssize_t i = 0; i < signed_num_sensors; i++) {
+			struct rift_sensor *sensor = rb->sensors[i];
+			enum rift_variant sensor_variant = rift_sensor_get_variant(sensor);
+			if (sensor_variant != variant) {
+				continue;
+			}
+
+			have_applicable_sensor = true;
+			break;
+		}
+	}
+
+	uint8_t radio_id[5] = {0};
+	if (rb->hmd) {
+		rift_get_radio_id(rb->hmd, radio_id);
+	}
+
+	// Only do constellation tracking if we have applicable sensors.
+	if (have_applicable_sensor && debug_get_bool_option_rift_prober_constellation_tracking()) {
+		ret = rift_sensor_context_start(rb->sensor_context);
+		if (ret != 0) {
+			RIFT_WARN(rb, "Rift sensor context start failed with code %d", ret);
+		}
+
 		uint32_t num_sensors = (uint32_t)signed_num_sensors;
 		rb->blobwatches = U_TYPED_ARRAY_CALLOC(struct t_blobwatch *, num_sensors);
 		rb->blobwatch_debug_sinks = U_TYPED_ARRAY_CALLOC(struct u_sink_debug, num_sensors);
 
-		for (uint32_t i = 0; i < num_sensors; i++) {
+		struct t_constellation_tracker_params constellation_tracker_params = {
+		    .num_mosaics = 1,
+		};
+
+		struct t_constellation_tracker_camera_mosaic *mosaic = &constellation_tracker_params.mosaics[0];
+
+		for (uint32_t i = 0; i < num_sensors && i < XRT_TRACKING_MAX_CAMS; i++) {
+			struct rift_sensor *sensor = rb->sensors[i];
+
+			enum rift_variant sensor_variant = rift_sensor_get_variant(sensor);
+			if (sensor_variant != variant) {
+				continue;
+			}
+
+			struct t_camera_calibration calibration;
+			rift_sensor_get_calibration(sensor, &calibration);
+
+			mosaic->cameras[mosaic->num_cameras++] = (struct t_constellation_tracker_camera){
+			    .calibration = calibration,
+			    // HACK: set concrete pose of "facing Z+" until we have real room calibration (Z+ so that
+			    // user faces Z-)
+			    .has_concrete_pose = true,
+			    .pose_in_origin = {.position = XRT_VEC3_ZERO,
+			                       .orientation = {.x = 0, .y = 1, .z = 0, .w = 0}},
+			};
+
+			RIFT_DEBUG(rb, "Rift sensor %u added to constellation tracker at index %zu", i,
+			           mosaic->num_cameras - 1);
+		}
+
+		ret = t_constellation_tracker_create(xfctx, &constellation_tracker_params, &rb->constellation_tracker);
+		if (ret != 0) {
+			RIFT_ERROR(rb, "Failed to create Rift constellation tracker with code %d", ret);
+			goto unlock_and_fail;
+		}
+
+		for (uint32_t i = 0; i < num_sensors && rb->num_sensors < mosaic->num_cameras; i++) {
 			struct rift_sensor *sensor = rb->sensors[i];
 
 			enum rift_variant sensor_variant = rift_sensor_get_variant(sensor);
@@ -403,9 +460,9 @@ rift_open_system_impl(struct xrt_builder *xb,
 
 			u_sink_debug_init(debug_sink);
 
-			struct t_blob_sink *blob_sink;
-			u_sink_blob_visualizer_create(xfctx, NULL, debug_sink, RIFT_SENSOR_WIDTH, RIFT_SENSOR_HEIGHT,
-			                              &blob_sink);
+			struct t_blob_sink *blob_sink = mosaic->cameras[rb->num_sensors].blob_sink;
+			u_sink_blob_visualizer_create(xfctx, blob_sink, debug_sink, RIFT_SENSOR_WIDTH,
+			                              RIFT_SENSOR_HEIGHT, &blob_sink);
 
 			struct xrt_frame_sink *frame_sink;
 			struct t_rift_blobwatch_params params = {
@@ -435,8 +492,9 @@ rift_open_system_impl(struct xrt_builder *xb,
 			}
 
 			u_var_add_sink_debug(rb, debug_sink, "Sensor Blobwatch");
-			RIFT_DEBUG(rb, "Rift sensor %u initialized and streaming at index %zd", i, rb->num_sensors);
+			RIFT_DEBUG(rb, "Rift sensor %u initialized and streaming at index %zu", i, rb->num_sensors);
 
+			// Mark that we've added another sensor
 			rb->num_sensors++;
 
 			// @note radio_id may be null on DK2, but DK2 doesn't use the radio ID so this is fine.
