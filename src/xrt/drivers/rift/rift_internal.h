@@ -18,6 +18,7 @@
 #include "math/m_api.h"
 #include "math/m_mathinclude.h"
 #include "math/m_clock_tracking.h"
+#include "math/m_filter_fifo.h"
 
 #include "tracking/t_imu.h"
 #include "tracking/t_constellation.h"
@@ -885,6 +886,8 @@ union rift_radio_command_data {
  * A rift HMD device.
  *
  * @implements xrt_device
+ * @implements t_constellation_tracker_device
+ * @implements t_constellation_tracker_tracking_source
  */
 struct rift_hmd
 {
@@ -894,6 +897,8 @@ struct rift_hmd
 
 	// has built-in mutex so thread safe
 	struct m_relation_history *relation_hist;
+
+	bool use_constellation_poses;
 
 	struct os_hid_device *hmd_dev;
 	struct os_hid_device *radio_dev;
@@ -937,6 +942,17 @@ struct rift_hmd
 	int device_count;
 	int added_devices;
 	struct xrt_device *devices[4]; // left touch, right touch, tracked object, remote
+
+	struct t_constellation_tracker *constellation_tracker;
+	struct t_constellation_tracker_device constellation_device;
+	struct t_constellation_tracker_tracking_source constellation_tracking_source;
+	t_constellation_device_id_t constellation_device_id;
+
+	struct m_ff_vec3_f32 *gyro_ff;
+	struct m_ff_vec3_f32 *accel_ff;
+	struct m_relation_history *raw_constellation_relation_hist;
+	timepoint_ns last_ff_timestamp_ns;
+	struct m_ff_f64 *gravity_correction;
 
 	struct t_constellation_tracker_led_model led_model;
 	struct xrt_pose T_imu_device;

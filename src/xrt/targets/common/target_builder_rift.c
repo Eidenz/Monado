@@ -445,6 +445,12 @@ rift_open_system_impl(struct xrt_builder *xb,
 			goto unlock_and_fail;
 		}
 
+		ret = rift_add_to_constellation_tracker(rb->hmd, rb->constellation_tracker);
+		if (ret != 0) {
+			RIFT_ERROR(rb, "Failed to add Rift HMD to constellation tracker with code %d", ret);
+			goto unlock_and_fail;
+		}
+
 		for (uint32_t i = 0; i < num_sensors && rb->num_sensors < mosaic->num_cameras; i++) {
 			struct rift_sensor *sensor = rb->sensors[i];
 

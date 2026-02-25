@@ -317,6 +317,7 @@ if(XRT_BUILD_DRIVER_RIFT)
 		drv_rift
 		PRIVATE
 			xrt-interfaces
+			tracking-includes
 			aux_util
 			aux_util_sink
 			aux_math
@@ -346,6 +347,7 @@ if(XRT_BUILD_DRIVER_RIFT_SENSOR)
 		drv_rift_sensor
 		PRIVATE
 			xrt-interfaces
+			tracking-includes
 			aux_util
 			aux_util_sink
 			aux_math
