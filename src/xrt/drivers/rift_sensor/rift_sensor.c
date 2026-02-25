@@ -142,7 +142,7 @@ rift_sensor_read_calibration(struct rift_sensor_context *context,
 	switch (desc->idProduct) {
 	case OCULUS_DK2_SENSOR_PID: {
 		sensor->frame_interval = 16666 * OS_NS_PER_USEC;
-		sensor->variant = RIFT_SENSOR_VARIANT_DK2;
+		sensor->variant = RIFT_VARIANT_DK2;
 		sensor->calibration.distortion_model = T_DISTORTION_OPENCV_RADTAN_5;
 		struct t_camera_calibration_rt5_params calibration_params;
 
@@ -174,7 +174,7 @@ rift_sensor_read_calibration(struct rift_sensor_context *context,
 	}
 	case OCULUS_CV1_SENSOR_PID: {
 		sensor->frame_interval = 19200 * OS_NS_PER_USEC;
-		sensor->variant = RIFT_SENSOR_VARIANT_CV1;
+		sensor->variant = RIFT_VARIANT_CV1;
 		sensor->calibration.distortion_model = T_DISTORTION_FISHEYE_KB4;
 		struct t_camera_calibration_kb4_params calibration_params;
 
@@ -458,46 +458,42 @@ fail:
 }
 
 int
-rift_sensor_context_enable_exposure_sync(struct rift_sensor_context *context, uint8_t radio_id[5])
+rift_sensor_enable_exposure_sync(struct rift_sensor_context *context, struct rift_sensor *sensor, uint8_t radio_id[5])
 {
 	int result;
 
-	for (size_t i = 0; i < context->num_sensors; i++) {
-		struct rift_sensor *sensor = &context->sensors[i];
-
-		switch (sensor->variant) {
-		case RIFT_SENSOR_VARIANT_DK2: {
-			result = mt9v034_setup(sensor->hid_dev);
-			if (result < 0) {
-				SENSOR_ERROR(context, "Failed to setup DK2 camera, reason %d", result);
-				return result;
-			}
-
-			result = mt9v034_set_sync(sensor->hid_dev, true);
-			if (result < 0) {
-				SENSOR_ERROR(context, "Failed to turn on DK2 exposure sync, reason %d", result);
-				return result;
-			}
-
-			break;
+	switch (sensor->variant) {
+	case RIFT_VARIANT_DK2: {
+		result = mt9v034_setup(sensor->hid_dev);
+		if (result < 0) {
+			SENSOR_ERROR(context, "Failed to setup DK2 camera, reason %d", result);
+			return result;
 		}
-		case RIFT_SENSOR_VARIANT_CV1: {
-			result = rift_sensor_ar0134_init(sensor->hid_dev, sensor->usb2);
-			if (result < 0) {
-				SENSOR_ERROR(context, "Failed to setup CV1 camera, reason %d", result);
-				return result;
-			}
 
-			result = rift_sensor_esp770u_setup_radio(sensor->hid_dev, radio_id);
-			if (result < 0) {
-				SENSOR_ERROR(context, "Failed to connect CV1 sensor to radio, reason %d", result);
-				return result;
-			}
+		result = mt9v034_set_sync(sensor->hid_dev, true);
+		if (result < 0) {
+			SENSOR_ERROR(context, "Failed to turn on DK2 exposure sync, reason %d", result);
+			return result;
+		}
 
-			break;
+		break;
+	}
+	case RIFT_VARIANT_CV1: {
+		result = rift_sensor_ar0134_init(sensor->hid_dev, sensor->usb2);
+		if (result < 0) {
+			SENSOR_ERROR(context, "Failed to setup CV1 camera, reason %d", result);
+			return result;
 		}
-		default: break;
+
+		result = rift_sensor_esp770u_setup_radio(sensor->hid_dev, radio_id);
+		if (result < 0) {
+			SENSOR_ERROR(context, "Failed to connect CV1 sensor to radio, reason %d", result);
+			return result;
 		}
+
+		break;
+	}
+	default: break;
 	}
 
 	return 0;
@@ -538,4 +534,10 @@ struct xrt_fs *
 rift_sensor_get_frame_server(struct rift_sensor *sensor)
 {
 	return sensor->frame_server;
+}
+
+enum rift_variant
+rift_sensor_get_variant(struct rift_sensor *sensor)
+{
+	return sensor->variant;
 }

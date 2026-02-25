@@ -261,17 +261,22 @@ rift_open_system_impl(struct xrt_builder *xb,
 		for (ssize_t i = 0; i < num_sensors; i++) {
 			struct rift_sensor *sensor = rb->sensors[i];
 
+			enum rift_variant sensor_variant = rift_sensor_get_variant(sensor);
+			if (sensor_variant != variant) {
+				continue;
+			}
+
 			struct xrt_fs *fs = rift_sensor_get_frame_server(sensor);
 			if (!xrt_fs_stream_start(fs, NULL, XRT_FS_CAPTURE_TYPE_TRACKING, 0)) {
 				RIFT_WARN(rb, "Failed to start Rift sensor frame server stream for sensor %zd", i);
 				continue;
 			}
-		}
 
-		// @note radio_id may be null on DK2, but DK2 doesn't use the radio ID so this is fine.
-		ret = rift_sensor_context_enable_exposure_sync(rb->sensor_context, radio_id);
-		if (ret != 0) {
-			RIFT_WARN(rb, "Rift sensor context exposure sync enable failed with code %d", ret);
+			// @note radio_id may be null on DK2, but DK2 doesn't use the radio ID so this is fine.
+			ret = rift_sensor_enable_exposure_sync(rb->sensor_context, sensor, radio_id);
+			if (ret != 0) {
+				RIFT_WARN(rb, "Rift sensor context exposure sync enable failed with code %d", ret);
+			}
 		}
 	}
 #endif

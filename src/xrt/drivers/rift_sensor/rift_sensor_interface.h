@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include "rift/rift_interface.h"
+
 #include "tracking/t_camera_models.h"
 
 
@@ -24,12 +26,6 @@
 struct rift_sensor;
 struct rift_sensor_context;
 
-enum rift_sensor_variant
-{
-	RIFT_SENSOR_VARIANT_DK2,
-	RIFT_SENSOR_VARIANT_CV1,
-};
-
 void
 rift_sensor_context_destroy(struct rift_sensor_context *context);
 
@@ -37,7 +33,7 @@ int
 rift_sensor_context_create(struct rift_sensor_context **out_context, struct xrt_frame_context *xfctx);
 
 int
-rift_sensor_context_enable_exposure_sync(struct rift_sensor_context *context, uint8_t radio_id[5]);
+rift_sensor_enable_exposure_sync(struct rift_sensor_context *context, struct rift_sensor *sensor, uint8_t radio_id[5]);
 
 int
 rift_sensor_context_start(struct rift_sensor_context *context);
@@ -47,3 +43,6 @@ rift_sensor_context_get_sensors(struct rift_sensor_context *context, struct rift
 
 struct xrt_fs *
 rift_sensor_get_frame_server(struct rift_sensor *sensor);
+
+enum rift_variant
+rift_sensor_get_variant(struct rift_sensor *sensor);
