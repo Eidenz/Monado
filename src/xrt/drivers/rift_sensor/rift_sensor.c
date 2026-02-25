@@ -568,3 +568,9 @@ rift_sensor_get_variant(struct rift_sensor *sensor)
 {
 	return sensor->variant;
 }
+
+void
+rift_sensor_get_calibration(struct rift_sensor *sensor, struct t_camera_calibration *out_calibration)
+{
+	*out_calibration = sensor->calibration;
+}

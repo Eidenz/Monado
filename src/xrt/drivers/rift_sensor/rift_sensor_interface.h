@@ -43,3 +43,6 @@ rift_sensor_get_frame_server(struct rift_sensor *sensor);
 
 enum rift_variant
 rift_sensor_get_variant(struct rift_sensor *sensor);
+
+void
+rift_sensor_get_calibration(struct rift_sensor *sensor, struct t_camera_calibration *out_calibration);
