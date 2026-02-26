@@ -1234,8 +1234,10 @@ solarxr_device_create_xdevs(struct xrt_tracking_origin *const tracking_origin,
 
 			tracker->base.name = XRT_DEVICE_VIVE_TRACKER;
 			tracker->base.device_type = XRT_DEVICE_TYPE_GENERIC_TRACKER;
-			snprintf(tracker->base.str, sizeof(tracker->base.str), "SolarXR Tracker %06x", id);
-			snprintf(tracker->base.serial, sizeof(tracker->base.serial), "SOLARXR-%06x", id);
+			snprintf(tracker->base.str, sizeof(tracker->base.str), "SolarXR Tracker %06" PRIx32,
+			         (uint32_t)id);
+			snprintf(tracker->base.serial, sizeof(tracker->base.serial), "SOLARXR-%06" PRIx32,
+			         (uint32_t)id);
 			tracker->base.tracking_origin = device->base.tracking_origin;
 			tracker->base.supported.orientation_tracking = true;
 			tracker->base.supported.position_tracking = true;

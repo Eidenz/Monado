@@ -278,7 +278,7 @@ recv_nonblock(const struct ipc_message_channel channel,
 		return false;
 	}
 
-	if (length > buffer_cap - *head) {
+	if ((size_t)length > buffer_cap - *head) {
 		U_LOG_IFL_E(channel.log_level, "recv() returned invalid length");
 		return false;
 	}

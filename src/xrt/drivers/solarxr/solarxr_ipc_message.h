@@ -37,7 +37,8 @@ solarxr_ipc_message_write(struct solarxr_ipc_message *const message,
 		return false;
 	}
 
-	if ((size_t)(end - message->body) < message->length || end - &message->body[message->length] < data_len) {
+	if ((size_t)(end - message->body) < message->length ||
+	    (size_t)(end - &message->body[message->length]) < data_len) {
 		message->length = UINT32_MAX;
 		return false;
 	}

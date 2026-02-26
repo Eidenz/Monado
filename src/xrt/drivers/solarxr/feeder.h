@@ -37,7 +37,7 @@ feeder_fini(struct feeder *feeder);
  * Holds the mutex during most of the operation.
  *
  * @param feeder self
- * @param device device to register
+ * @param xdev device to register
  *
  * @return true on success.
  *
@@ -52,7 +52,7 @@ feeder_add_device(struct feeder *feeder, struct xrt_device *xdev); // thread saf
  * Holds the mutex during most of the operation.
  *
  * @param feeder self
- * @param device device to unregister
+ * @param xdev device to unregister
  *
  * @public @memberof feeder
  */
@@ -77,7 +77,6 @@ feeder_clear_devices(struct feeder *feeder); // thread safe
  * Holds the mutex during most of the operation.
  *
  * @param feeder self
- * @param time Timestamp used to query device poses
  *
  * @public @memberof feeder
  */
