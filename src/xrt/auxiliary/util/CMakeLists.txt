@@ -123,7 +123,7 @@ add_library(
 target_link_libraries(
 	aux_util
 	PUBLIC
-		xrt-external-nanopb
+		xrt-external-metrics
 		xrt-external-bcdec
 		aux-includes
 		aux_generated_bindings_helpers

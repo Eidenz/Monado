@@ -72,8 +72,6 @@ endif()
 # Nano Protobuf
 add_library(
 	xrt-external-nanopb STATIC
-	nanopb/monado_metrics.pb.c
-	nanopb/monado_metrics.pb.h
 	nanopb/pb.h
 	nanopb/pb_common.c
 	nanopb/pb_common.h
@@ -83,6 +81,16 @@ add_library(
 	nanopb/pb_encode.h
 	)
 target_include_directories(xrt-external-nanopb PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/nanopb)
+
+add_library(xrt-external-metrics STATIC metrics/monado_metrics.pb.c metrics/monado_metrics.pb.h)
+
+if(ANDROID)
+	target_compile_options(xrt-external-metrics PRIVATE -Wno-gnu-offsetof-extensions)
+endif()
+
+target_include_directories(xrt-external-metrics PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/metrics/)
+
+target_link_libraries(xrt-external-metrics PUBLIC xrt-external-nanopb)
 
 if(ANDROID)
 	add_library(
