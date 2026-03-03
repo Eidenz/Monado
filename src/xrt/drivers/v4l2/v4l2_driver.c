@@ -31,6 +31,14 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 
+/**
+ * On musl libc, the ioctl function operation is an int, where as glic takes an unsigned long.
+ * This requires casting to avoid warnings.
+ */
+#ifndef __GLIBC__
+#define ioctl(fd, op, ...) ioctl(fd, (int)(op), __VA_ARGS__)
+#endif
+
 
 /*
  *
