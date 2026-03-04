@@ -730,7 +730,7 @@ ndk:arm64-v8a:clang-tidy:
   needs:
     - ndk:arm64-v8a
   script:
-    - run-clang-tidy -quiet -p build
+    - run-clang-tidy -quiet -allow-no-checks -p build
 
 
 debian:trixie:package:
