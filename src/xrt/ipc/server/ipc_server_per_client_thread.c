@@ -311,9 +311,9 @@ pipe_print_get_last_error(volatile struct ipc_client_state *ics, const char *fun
 	// This is the error path.
 	DWORD err = GetLastError();
 	if (err == ERROR_BROKEN_PIPE) {
-		IPC_INFO(ics->server, "%s: %d %s", func, err, ipc_winerror(err));
+		IPC_INFO(ics->server, "%s: %lu %s", func, err, ipc_winerror(err));
 	} else {
-		IPC_ERROR(ics->server, "%s failed: %d %s", func, err, ipc_winerror(err));
+		IPC_ERROR(ics->server, "%s failed: %lu %s", func, err, ipc_winerror(err));
 	}
 }
 

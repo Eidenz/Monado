@@ -97,7 +97,7 @@ ipc_connect_pipe(struct ipc_connection *ipc_c, const char *pipe_name)
 	HANDLE pipe_inst = CreateFileA(pipe_name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
 	if (pipe_inst == INVALID_HANDLE_VALUE) {
 		DWORD err = GetLastError();
-		IPC_ERROR(ipc_c, "Connect to %s failed: %d %s", pipe_name, err, ipc_winerror(err));
+		IPC_ERROR(ipc_c, "Connect to %s failed: %lu %s", pipe_name, err, ipc_winerror(err));
 	}
 	return pipe_inst;
 }
@@ -111,7 +111,7 @@ ipc_connect_pipe(struct ipc_connection *ipc_c, const char *pipe_name)
 		return pipe_inst;
 	}
 	DWORD err = GetLastError();
-	IPC_ERROR(ipc_c, "Connect to %s failed: %d %s", pipe_name, err, ipc_winerror(err));
+	IPC_ERROR(ipc_c, "Connect to %s failed: %lu %s", pipe_name, err, ipc_winerror(err));
 	if (err != ERROR_FILE_NOT_FOUND) {
 		return INVALID_HANDLE_VALUE;
 	}
@@ -119,12 +119,12 @@ ipc_connect_pipe(struct ipc_connection *ipc_c, const char *pipe_name)
 	HMODULE hmod;
 	if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
 	                        (LPCSTR)ipc_connect_pipe, &hmod)) {
-		IPC_ERROR(ipc_c, "GetModuleHandleExA failed: %d %s", err, ipc_winerror(err));
+		IPC_ERROR(ipc_c, "GetModuleHandleExA failed: %lu %s", err, ipc_winerror(err));
 		return INVALID_HANDLE_VALUE;
 	}
 	char current_path[MAX_PATH] = {0};
 	if (!GetModuleFileNameA(hmod, current_path, sizeof(current_path))) {
-		IPC_ERROR(ipc_c, "GetModuleFileNameA failed: %d %s", err, ipc_winerror(err));
+		IPC_ERROR(ipc_c, "GetModuleFileNameA failed: %lu %s", err, ipc_winerror(err));
 		return INVALID_HANDLE_VALUE;
 	}
 	char *p = strrchr(current_path, '\\');
@@ -142,7 +142,7 @@ ipc_connect_pipe(struct ipc_connection *ipc_c, const char *pipe_name)
 		p = strrchr(service_path, '\\');
 		if (!p) {
 			err = GetLastError();
-			IPC_INFO(ipc_c, XRT_SERVICE_EXECUTABLE " not found in %s: %d %s", service_path, err,
+			IPC_INFO(ipc_c, XRT_SERVICE_EXECUTABLE " not found in %s: %lu %s", service_path, err,
 			         ipc_winerror(err));
 			return INVALID_HANDLE_VALUE;
 		}
@@ -150,7 +150,7 @@ ipc_connect_pipe(struct ipc_connection *ipc_c, const char *pipe_name)
 		snprintf(service_path, MAX_PATH, "%s\\service\\%s", current_path, XRT_SERVICE_EXECUTABLE);
 		if (!CreateProcessA(NULL, service_path, NULL, NULL, false, 0, NULL, NULL, &si, &pi)) {
 			err = GetLastError();
-			IPC_INFO(ipc_c, XRT_SERVICE_EXECUTABLE " not found at %s: %d %s", service_path, err,
+			IPC_INFO(ipc_c, XRT_SERVICE_EXECUTABLE " not found at %s: %lu %s", service_path, err,
 			         ipc_winerror(err));
 			return INVALID_HANDLE_VALUE;
 		}
@@ -165,7 +165,7 @@ ipc_connect_pipe(struct ipc_connection *ipc_c, const char *pipe_name)
 		}
 		err = GetLastError();
 		if (err != ERROR_FILE_NOT_FOUND || WaitForSingleObject(pi.hProcess, 100) != WAIT_TIMEOUT) {
-			IPC_ERROR(ipc_c, "Connect to %s failed: %d %s", pipe_name, err, ipc_winerror(err));
+			IPC_ERROR(ipc_c, "Connect to %s failed: %lu %s", pipe_name, err, ipc_winerror(err));
 			break;
 		}
 	}
@@ -194,7 +194,7 @@ ipc_client_socket_connect(struct ipc_connection *ipc_c)
 	DWORD mode = PIPE_READMODE_MESSAGE | PIPE_WAIT;
 	if (!SetNamedPipeHandleState(pipe_inst, &mode, NULL, NULL)) {
 		DWORD err = GetLastError();
-		IPC_ERROR(ipc_c, "SetNamedPipeHandleState(PIPE_READMODE_MESSAGE | PIPE_WAIT) failed: %d %s", err,
+		IPC_ERROR(ipc_c, "SetNamedPipeHandleState(PIPE_READMODE_MESSAGE | PIPE_WAIT) failed: %lu %s", err,
 		          ipc_winerror(err));
 		return false;
 	}
