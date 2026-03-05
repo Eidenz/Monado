@@ -441,7 +441,7 @@ ipc_handle_instance_describe_client(volatile struct ipc_client_state *ics,
 	P("Client info:");
 	PNT("id: %u", ics->client_state.id);
 	PNT("application_name: '%s'", client_desc->info.application_name);
-	PNT("pid: %i", client_desc->pid);
+	PNT("pid: " PID_T_FMT, client_desc->pid);
 	PNT("extensions:");
 
 	EXT(ext_hand_tracking_enabled);

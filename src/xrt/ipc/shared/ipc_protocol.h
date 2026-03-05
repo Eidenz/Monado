@@ -50,6 +50,15 @@
 typedef int pid_t;
 #endif
 
+// Define the format to use to print a pid type
+#if defined(XRT_ENV_MINGW)
+// On Mingw64, this is an int64, aka a signed long long
+#define PID_T_FMT "%lli"
+#else
+// On Linux and 'native' Windows, this is an int
+#define PID_T_FMT "%d"
+#endif
+
 /*
  *
  * Shared memory structs.
