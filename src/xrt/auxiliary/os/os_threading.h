@@ -360,7 +360,7 @@ os_hardware_thread_count(void)
 #if defined(XRT_OS_LINUX) || defined(XRT_OS_OSX)
 	return (int64_t)sysconf(_SC_NPROCESSORS_ONLN);
 #elif defined(XRT_OS_WINDOWS)
-	SYSTEM_INFO sysinfo = {0};
+	SYSTEM_INFO sysinfo = XRT_STRUCT_INIT;
 	GetSystemInfo(&sysinfo);
 	return (int64_t)sysinfo.dwNumberOfProcessors;
 #else
