@@ -293,8 +293,7 @@ comp_window_mswin_thread(struct comp_window_mswin *cwm)
 	wcex.hIconSm        = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
 #endif
 	COMP_INFO(ct->c, "Registering window class");
-	ATOM window_class = RegisterClassExW(&wcex);
-	if (!window_class) {
+	if (0 == RegisterClassExW(&wcex)) {
 		COMP_ERROR_GETLASTERROR(ct->c, "Failed to register window class: %s",
 		                        "Failed to register window class");
 		comp_window_mswin_mark_exited(cwm);
@@ -304,7 +303,7 @@ comp_window_mswin_thread(struct comp_window_mswin *cwm)
 	comp_window_mswin_window_loop(cwm);
 
 	COMP_INFO(ct->c, "Unregistering window class");
-	if (0 == UnregisterClassW((LPCWSTR)window_class, NULL)) {
+	if (0 == UnregisterClassW(szWindowClass, NULL)) {
 		COMP_ERROR_GETLASTERROR(ct->c, "Failed to unregister window class: %s",
 		                        "Failed to unregister window class");
 	}
