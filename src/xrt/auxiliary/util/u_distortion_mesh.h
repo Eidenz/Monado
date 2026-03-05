@@ -70,6 +70,8 @@ struct u_vive_values
 {
 	float aspect_x_over_y;
 	float grow_for_undistort;
+	struct xrt_vec2 intrinsic_focus;
+	struct xrt_vec2 intrinsic_center;
 
 	float undistort_r2_cutoff;
 

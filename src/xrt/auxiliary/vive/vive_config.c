@@ -105,11 +105,21 @@ _get_distortion_properties(struct vive_config *d, const cJSON *eye_transform_jso
 		math_quat_from_matrix_3x3(&rot, &d->display.rot[eye]);
 	}
 
-	// TODO: store grow_for_undistort per eye
-	// clang-format off
 	JSON_FLOAT(eye_json, "grow_for_undistort", &d->distortion.values[eye].grow_for_undistort);
 	JSON_FLOAT(eye_json, "undistort_r2_cutoff", &d->distortion.values[eye].undistort_r2_cutoff);
-	// clang-format on
+
+	// The values are extracted from the matrix based on the pinhole model
+	// https://docs.opencv.org/2.4/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html
+	// [ fx,  0, cx,
+	//    0, fy, cy,
+	//    0,  0, -1 ]
+	const cJSON *intrinsics = cJSON_GetObjectItemCaseSensitive(eye_json, "intrinsics");
+	struct xrt_matrix_3x3 intrinsics_matrix;
+	u_json_get_matrix_3x3(intrinsics, &intrinsics_matrix);
+	d->distortion.values[eye].intrinsic_focus.x = intrinsics_matrix.v[0];
+	d->distortion.values[eye].intrinsic_focus.y = intrinsics_matrix.v[4];
+	d->distortion.values[eye].intrinsic_center.x = intrinsics_matrix.v[2];
+	d->distortion.values[eye].intrinsic_center.y = intrinsics_matrix.v[5];
 
 	const char *names[3] = {
 	    "distortion_red",
@@ -331,64 +341,63 @@ vive_init_defaults(struct vive_config *d)
 	}
 }
 
-static bool
+static void
 _calculate_fov(struct vive_config *d)
 {
-	// TODO: Replace hard coded values from OpenHMD with config
-	double w_meters = 0.122822 / 2.0;
-	double h_meters = 0.068234;
-	double lens_horizontal_separation = 0.057863;
-	double eye_to_screen_distance = 0.023226876441867737;
-
-	if (d->variant == VIVE_VARIANT_INDEX) {
-		lens_horizontal_separation = 0.06;
-		h_meters = 0.07;
-		// eye relief knob adjusts this around [0.0255(near)-0.275(far)]
-		eye_to_screen_distance = 0.0255;
-	} else if (d->variant == VIVE_VARIANT_PRO) {
-		lens_horizontal_separation = 0.055;
-		eye_to_screen_distance = 0.02544;
-		h_meters = 0.066755;
-		w_meters = 0.120000 / 2.0;
-	} else if (d->variant == VIVE_VARIANT_PRO2) {
-		lens_horizontal_separation = 0.055;
-		h_meters = 0.07;
-		// eye relief knob adjusts this around [0.0255(near)-0.275(far)]
-		eye_to_screen_distance = 0.0255;
-	}
-
-	double fov = 2 * atan2(w_meters - lens_horizontal_separation / 2.0, eye_to_screen_distance);
-
-	struct xrt_vec2 lens_center[2];
+	float width = d->display.eye_target_width_in_pixels;
+	float height = d->display.eye_target_height_in_pixels;
 	for (uint8_t eye = 0; eye < 2; eye++) {
-		lens_center[eye].y = (float)h_meters / 2.0f;
-	}
+		// All intrinsic values must be divided 1 plus the
+		// grow_for_undistort value from the HMD config before other
+		// values can be extracted from them.
+		float scale = d->distortion.values[eye].grow_for_undistort + 1.f;
 
-	// Left
-	lens_center[0].x = (float)(w_meters - lens_horizontal_separation / 2.0);
+		float intrinsic_focus_x = d->distortion.values[eye].intrinsic_focus.x / scale;
+		float intrinsic_focus_y = d->distortion.values[eye].intrinsic_focus.y / scale;
+		float intrinsic_center_x = d->distortion.values[eye].intrinsic_center.x / scale;
+		float intrinsic_center_y = d->distortion.values[eye].intrinsic_center.y / scale;
 
-	// Right
-	lens_center[1].x = (float)lens_horizontal_separation / 2.0f;
+		// All values are in pixel units and derived from the matrix
+		// featured in the intrinsics section of Valve's LH config docs.
+		float focus_x = intrinsic_focus_x * width / 2.f;
+		float focus_y = intrinsic_focus_y * height / 2.f;
+		float center_x = (intrinsic_center_x - 1.f) * (-1.f) * width / 2.f;
+		float center_y = (intrinsic_center_y + 1.f) * height / 2.f;
 
-	for (uint8_t eye = 0; eye < 2; eye++) {
-		bool bret = math_compute_fovs(  //
-		    w_meters,                   //
-		    (double)lens_center[eye].x, //
-		    fov,                        //
-		    h_meters,                   //
-		    (double)lens_center[eye].y, //
-		    0,                          //
-		    &d->distortion.fov[eye]);   //
-		if (!bret) {
-			VIVE_ERROR(d, "Failed to compute the partial fields of view.");
-			return false;
-		}
+		/**
+		 * This function calculates the angles from the center of the
+		 * view to the edges of the display to obtain the 4 FOV values.
+		 * The center and focus values form a right-angled triangle,
+		 * where the focal distance (distance to display) is the
+		 * adjacent, and distance between edge and center being the
+		 * opposite, as shown by the diagram below.
+		 *
+		 * [------ s ------]
+		 * [- c -]
+		 * +-----+---------+ display
+		 *  \    |        /
+		 *   |   |       /
+		 *   \   |f    /
+		 *    \  |    /
+		 *     | |  /
+		 *      \| /
+		 *       * eye
+		 * s = screen size (width or height)
+		 * c = center
+		 * f = focus
+		 *
+		 * The 4 FOV angles can be calculated by taking the arctan of
+		 * the opposite (distance between screen edge and center) over
+		 * the adjacent (focal distance).
+		 */
+		d->distortion.fov[eye].angle_up = +atanf(center_y / focus_y);
+		d->distortion.fov[eye].angle_down = -atanf((height - center_y) / focus_y);
+		d->distortion.fov[eye].angle_left = -atanf(center_x / focus_x);
+		d->distortion.fov[eye].angle_right = +atanf((width - center_x) / focus_x);
 	}
 
 	// Apply any tweaks to the FoV.
 	vive_tweak_fov(d);
-
-	return true;
 }
 
 
@@ -517,11 +526,7 @@ vive_config_parse(struct vive_config *d, char *json_string, enum u_logging_level
 		}
 	}
 
-	if (!_calculate_fov(d)) {
-		VIVE_ERROR(d, "Could not calculate fields of view.");
-		vive_config_teardown(d);
-		return false;
-	}
+	_calculate_fov(d);
 
 	cJSON_Delete(json);
 
