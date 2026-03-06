@@ -235,41 +235,17 @@ device_bouncer(struct xrt_device *xdev, Args... args)
 static const char *analog_gain_settings_key = "analogGain";
 
 /**
- * Map a 0-1 (or > 1) brightness value into the analogGain value stored in SteamVR settings.
+ * Map a 0-1 (or > 1) brightness value into the analogGain value.
  */
 float
 brightness_to_analog_gain(float brightness)
 {
-	// Lookup table from brightness to analog gain value
-	// Courtesy of OyasumiVR, MIT license, Copyright (c) 2022 Raphiiko
-	// https://github.com/Raphiiko/OyasumiVR/blob/c9e7fbcc2ea6caa07a8233a75218598087043171/src-ui/app/services/brightness-control/hardware-brightness-drivers/valve-index-hardware-brightness-control-driver.ts#L92
-	// TODO: We should support having a lookup table per headset model. If not present, fallback to lerp between the
-	// given min and max analog gain. Maybe we can assume 100% brightness = 1.0 analog gain, but we need info from
-	// more headsets.
-	static const auto lookup = std::map<float, float>{{
-	    {0.20, 0.03},  {0.23, 0.04},  {0.26, 0.05},  {0.27, 0.055}, {0.28, 0.06},  {0.30, 0.07},  {0.32, 0.08},
-	    {0.33, 0.09},  {0.34, 0.095}, {0.35, 0.1},   {0.36, 0.105}, {0.37, 0.11},  {0.37, 0.115}, {0.38, 0.12},
-	    {0.39, 0.125}, {0.40, 0.13},  {0.40, 0.135}, {0.41, 0.14},  {0.42, 0.145}, {0.42, 0.15},  {0.43, 0.155},
-	    {0.43, 0.16},  {0.44, 0.165}, {0.45, 0.17},  {0.45, 0.175}, {0.46, 0.18},  {0.46, 0.185}, {0.47, 0.19},
-	    {0.48, 0.195}, {0.48, 0.2},   {0.49, 0.21},  {0.53, 0.25},  {0.58, 0.3},   {0.59, 0.315}, {0.60, 0.32},
-	    {0.60, 0.33},  {0.61, 0.34},  {0.62, 0.35},  {0.66, 0.4},   {0.69, 0.445}, {0.70, 0.45},  {0.70, 0.46},
-	    {0.71, 0.465}, {0.71, 0.47},  {0.71, 0.475}, {0.72, 0.48},  {0.72, 0.49},  {0.73, 0.5},   {0.79, 0.6},
-	    {0.85, 0.7},   {0.90, 0.8},   {0.95, 0.9},   {1.00, 1},     {1.50, 1.50},
-	}};
+	if (brightness >= 1.f)
+		return brightness;
+	if (brightness <= 0.f)
+		return 0.f;
 
-	if (const auto upper_it = lookup.upper_bound(brightness); upper_it == lookup.end()) {
-		return lookup.rbegin()->second;
-	} else if (upper_it == lookup.begin()) {
-		return upper_it->second;
-	} else {
-		// Linearly interpolate between the greater and lower points
-		const auto lower_it = std::prev(upper_it);
-		const auto brightness_range = (upper_it->first - lower_it->first);
-		const auto blend_amount = ((brightness - lower_it->first) / brightness_range);
-		return std::lerp(lower_it->second, upper_it->second, blend_amount);
-	}
-
-	return brightness;
+	return powf(brightness, 2.2);
 }
 xrt_pose
 bone_to_pose(const vr::VRBoneTransform_t &bone)
