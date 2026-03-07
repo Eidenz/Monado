@@ -828,6 +828,18 @@ math_pose_transform(const struct xrt_pose *transform, const struct xrt_pose *pos
 void
 math_pose_transform_point(const struct xrt_pose *transform, const struct xrt_vec3 *point, struct xrt_vec3 *out_point);
 
+/*!
+ * Convert a pose from the OpenCV coordinate system to the OpenXR coordinate system. OpenCV camera space coordinates has
+ * +Y down and +Z away from the user.
+ *
+ * The input and output may be the same pointer.
+ *
+ * @relates xrt_pose
+ * @ingroup aux_math
+ */
+void
+math_pose_convert_opencv(const struct xrt_pose *in, struct xrt_pose *out);
+
 
 /*
  *
