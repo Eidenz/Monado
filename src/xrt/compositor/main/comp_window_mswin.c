@@ -349,7 +349,7 @@ comp_window_mswin_init(struct comp_target *ct)
 	return ret;
 }
 
-static void
+XRT_MAYBE_UNUSED static void
 comp_window_mswin_configure(struct comp_window_mswin *w, int32_t width, int32_t height)
 {
 	if (w->base.base.c->settings.fullscreen && !w->fullscreen_requested) {
