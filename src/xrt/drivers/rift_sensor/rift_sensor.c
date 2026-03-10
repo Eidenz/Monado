@@ -53,7 +53,9 @@ rift_sensor_destroy(struct rift_sensor *sensor)
 static void
 rift_sensor_context_destroy(struct rift_sensor_context *context)
 {
-	os_thread_helper_destroy(&context->usb_thread);
+	if (context->usb_thread.initialized) {
+		os_thread_helper_destroy(&context->usb_thread);
+	}
 
 	u_var_remove_root(context);
 
@@ -79,7 +81,9 @@ rift_sensor_context_node_break_apart(struct xrt_frame_node *node)
 
 	SENSOR_DEBUG(context, "Breaking apart Rift sensor context node");
 
-	os_thread_helper_stop_and_wait(&context->usb_thread);
+	if (context->usb_thread.initialized) {
+		os_thread_helper_stop_and_wait(&context->usb_thread);
+	}
 }
 
 static void
