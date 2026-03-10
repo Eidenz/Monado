@@ -387,24 +387,36 @@ uvc_fs_stream_stop(struct xrt_fs *xfs)
 	int ret;
 	struct uvc_fs *stream = uvc_fs(xfs);
 
+	stream->is_running = false;
+
+	for (size_t i = 0; i < stream->num_transfers; i++) {
+		if (stream->transfer[i] != NULL) {
+			libusb_cancel_transfer(stream->transfer[i]);
+		}
+	}
+
+	// Wait for active transfers to finish
+	int attempts = 0;
+	while (stream->active_transfers > 0 && attempts < 50) {
+		ret = libusb_handle_events_timeout_completed(stream->usb_ctx,
+		                                             &(struct timeval){.tv_sec = 0, .tv_usec = 100000}, NULL);
+
+		if (ret < 0 && ret != LIBUSB_ERROR_INTERRUPTED) {
+			UVC_ERROR(stream, "libusb_handle_events failed: %d", ret);
+			break;
+		}
+		attempts++;
+	}
+
+	if (stream->active_transfers > 0) {
+		UVC_WARN(stream, "Timed out waiting for %zu USB transfers to complete", stream->active_transfers);
+	}
+
 	ret = libusb_set_interface_alt_setting(stream->devh, 1, 0);
 	if (ret) {
 		UVC_WARN(stream, "Failed to clear USB alt setting to 0 for sensor errno %d (%s)", errno,
 		         strerror(errno));
 	}
-
-	stream->is_running = false;
-	libusb_lock_event_waiters(stream->usb_ctx);
-
-	// Wait for active transfers to finish
-	while (stream->active_transfers > 0) {
-		ret = libusb_wait_for_event(stream->usb_ctx, NULL);
-
-		if (ret) {
-			break;
-		}
-	}
-	libusb_unlock_event_waiters(stream->usb_ctx);
 
 	// Free frames
 	for (size_t i = 0; i < stream->num_alloced_frames; i++) {
