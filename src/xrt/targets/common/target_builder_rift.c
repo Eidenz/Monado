@@ -37,6 +37,10 @@
 #include "pssense/pssense_interface.h"
 #endif
 
+#ifdef XRT_BUILD_DRIVER_CONTACTGLOVE
+#include "contactglove/contactglove_interface.h"
+#endif
+
 
 // Require a pixel of this brightness to be included in a blob at all, to help filter out general noise.
 #define RIFT_SENSOR_BLOB_REQUIRED_THRESHOLD 0x40
@@ -102,6 +106,9 @@ static const char *driver_list[] = {
 #ifdef XRT_BUILD_DRIVER_PSSENSE
     "pssense",
 #endif
+#ifdef XRT_BUILD_DRIVER_CONTACTGLOVE
+    "contactglove",
+#endif
 };
 
 
@@ -162,6 +169,15 @@ rift_estimate_system(struct xrt_builder *xb,
 	struct xrt_prober_device *dev_controller_right =
 	    u_builder_find_prober_device(xpdevs, xpdev_count, PSSENSE_VID, PSSENSE_PID_RIGHT, XRT_BUS_TYPE_BLUETOOTH);
 	if (dev_controller_right != NULL) {
+		estimate->certain.right = true;
+	}
+#endif
+
+#ifdef XRT_BUILD_DRIVER_CONTACTGLOVE
+	dev = u_builder_find_prober_device(xpdevs, xpdev_count, CONTACTGLOVE2_VID, CONTACTGLOVE2_PID, XRT_BUS_TYPE_USB);
+	// All dongles can create two hand devices
+	if (dev != NULL) {
+		estimate->certain.left = true;
 		estimate->certain.right = true;
 	}
 #endif
@@ -297,6 +313,43 @@ rift_open_system_impl(struct xrt_builder *xb,
 
 	tbrh->left = left_xdev;
 	tbrh->right = right_xdev;
+#endif
+
+#ifdef XRT_BUILD_DRIVER_CONTACTGLOVE
+	struct xrt_prober_device *dongle_xpdev =
+	    u_builder_find_prober_device(xpdevs, xpdev_count, CONTACTGLOVE2_VID, CONTACTGLOVE2_PID, XRT_BUS_TYPE_USB);
+
+	unsigned char serial_number[64] = {0};
+	ret = xrt_prober_get_string_descriptor(xp, dongle_xpdev, XRT_PROBER_STRING_SERIAL_NUMBER, serial_number,
+	                                       sizeof(serial_number));
+	if (ret < 0) {
+		RIFT_WARN(rb, "Failed to get ContactGlove dongle serial number with code %d", ret);
+	}
+
+	struct os_serial_device *contactglove_dongle_serial;
+	ret = xrt_prober_open_serial_device(xp, dongle_xpdev, &CONTACTGLOVE2_SERIAL_PARAMETERS,
+	                                    &contactglove_dongle_serial);
+	if (ret == 0) {
+		struct contactglove_dongle *dongle;
+
+		ret = contactglove_create(CONTACTGLOVE_TYPE_CONTACTGLOVE2, (char *)serial_number,
+		                          contactglove_dongle_serial, &dongle,
+		                          xsysd->static_xdevs + xsysd->static_xdev_count);
+
+		if (ret > 0) {
+			xsysd->static_xdev_count += ret;
+			tbrh->left = xsysd->static_xdevs[xsysd->static_xdev_count - 2];
+			tbrh->right = xsysd->static_xdevs[xsysd->static_xdev_count - 1];
+			tbrh->hand_tracking.unobstructed.left = tbrh->left;
+			tbrh->hand_tracking.unobstructed.right = tbrh->right;
+			RIFT_DEBUG(rb, "Created ContactGlove devices for serial number %s", serial_number);
+		} else {
+			RIFT_WARN(rb, "Failed to create ContactGlove devices with code %d", ret);
+			os_serial_destroy(contactglove_dongle_serial);
+		}
+	} else {
+		RIFT_WARN(rb, "Failed to open ContactGlove dongle serial device with code %d", ret);
+	}
 #endif
 
 	xret = xrt_prober_unlock_list(xp, &xpdevs);
