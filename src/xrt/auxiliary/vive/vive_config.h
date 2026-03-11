@@ -63,7 +63,7 @@ enum VIVE_CONTROLLER_VARIANT
  *
  * @ingroup aux_vive
  */
-struct index_camera
+struct vive_index_camera
 {
 	// Note! All the values in this struct are directly pasted in from the JSON values.
 	// As such, in my opinion, plus_x, plus_z and position are all "wrong" - all the code I've had to write that
@@ -102,7 +102,7 @@ struct index_camera
  *
  * @ingroup aux_vive
  */
-struct lh_sensor
+struct vive_lh_sensor
 {
 	uint8_t channel;
 	struct xrt_vec3 pos;
@@ -118,9 +118,9 @@ struct lh_sensor
  *
  * @ingroup aux_vive
  */
-struct lh_model
+struct vive_lh_model
 {
-	struct lh_sensor *sensors;
+	struct vive_lh_sensor *sensors;
 	uint8_t sensor_count;
 };
 
@@ -193,7 +193,7 @@ struct vive_config
 	struct
 	{
 		//! The two cameras.
-		struct index_camera view[2];
+		struct vive_index_camera view[2];
 
 		//! Left view in right camera space.
 		struct xrt_pose left_in_right;
@@ -205,7 +205,7 @@ struct vive_config
 		bool valid;
 	} cameras;
 
-	struct lh_model lh;
+	struct vive_lh_model lh;
 };
 
 /*!

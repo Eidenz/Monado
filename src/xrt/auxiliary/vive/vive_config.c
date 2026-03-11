@@ -162,7 +162,7 @@ _get_lighthouse(const cJSON *lh_config, struct vive_config *d)
 		return;
 	}
 
-	struct lh_sensor *s = U_TYPED_ARRAY_CALLOC(struct lh_sensor, channels_size);
+	struct vive_lh_sensor *s = U_TYPED_ARRAY_CALLOC(struct vive_lh_sensor, channels_size);
 
 	uint8_t i = 0;
 	const cJSON *item = NULL;
@@ -230,7 +230,7 @@ _get_imu(cJSON *dev_json, struct vive_imu_properties *imu)
 }
 
 static bool
-_get_camera(struct index_camera *cam, const cJSON *cam_json)
+_get_camera(struct vive_index_camera *cam, const cJSON *cam_json)
 {
 	bool succeeded = true;
 	const cJSON *extrinsics = u_json_get(cam_json, "extrinsics");
