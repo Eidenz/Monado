@@ -539,17 +539,126 @@ htc_grow_remap(htc_eye_distortion &dist, int eye, xrt_vec2 *inout_uv)
 	              0.5;
 }
 
+
+static void
+apply_pre_warp(htc_eye_distortion &dist, float x, float y, float &out_x, float &out_y)
+{
+	// Run the pre-warp to get the homogeneous coordinates
+	xrt_vec3 in_homogeneous = {x, y, 1.0f};
+	math_matrix_3x3_transform_vec3(&dist.warp.pre, &in_homogeneous, &in_homogeneous);
+
+	out_x = in_homogeneous.x / in_homogeneous.z;
+	out_y = in_homogeneous.y / in_homogeneous.z;
+}
+
+static void
+apply_traditional(htc_eye_distortion &dist, int channel, int parameters, float x, float y, float &out_x, float &out_y)
+{
+	double r2 = x * x + y * y;
+
+	double *k = dist.coeffecients[channel].k;
+
+	// double radial_distortion = ((r6 * k[3]) + (r4 * k[2]) + (r2 * k[1]) + k[0]);
+	double radial_distortion = k[0];
+	double ri = 1;
+	for (int i = 0; i < parameters; i++) {
+		ri *= r2;
+		radial_distortion += (ri * k[i + 1]);
+	}
+
+	out_x = x * radial_distortion;
+	out_y = y * radial_distortion;
+}
+
+static void
+apply_tangential(htc_eye_distortion &dist, int channel, float &x, float &y)
+{
+	double r2 = x * x + y * y;
+
+	double p1 = dist.coeffecients[channel].p[0];
+	double p2 = dist.coeffecients[channel].p[1];
+
+	x += (p2 * (2.0 * x * x + r2) + 2.0 * p1 * x * y);
+	y += (p1 * (2.0 * y * y + r2) + 2.0 * p2 * x * y);
+}
+
+static void
+apply_prism(htc_eye_distortion &dist, int channel, float &x, float &y)
+{
+	double r2 = x * x + y * y;
+
+	double s1 = dist.coeffecients[channel].s[0];
+	double s2 = dist.coeffecients[channel].s[1];
+
+	x += r2 * s1;
+	x += r2 * s2;
+}
+
+static void
+apply_post_warp(htc_eye_distortion &dist, float x, float y, float &out_x, float &out_y)
+{
+	xrt_vec3 in_homogeneous = {x, y, 1.0f};
+	math_matrix_3x3_transform_vec3(&dist.warp.post, &in_homogeneous, &in_homogeneous);
+
+	out_x = in_homogeneous.x / in_homogeneous.z;
+	out_y = in_homogeneous.y / in_homogeneous.z;
+}
+
+static void
+htc_traditional(htc_eye_distortion &dist, int channel, xrt_vec2 *inout_pixels)
+{
+	assert(channel < 3);
+
+	// Run the pre-warp to get the homogeneous coordinates
+	float x, y;
+	apply_pre_warp(dist, inout_pixels->x, inout_pixels->y, x, y);
+
+	float pre_warp_final_u, pre_warp_final_v;
+	apply_traditional(dist, channel, 3, x, y, pre_warp_final_u, pre_warp_final_v);
+
+	apply_post_warp(dist, pre_warp_final_u, pre_warp_final_v, inout_pixels->x, inout_pixels->y);
+}
+
+static void
+htc_traditional_tangential(htc_eye_distortion &dist, int channel, xrt_vec2 *inout_pixels)
+{
+	assert(channel < 3);
+
+	float x, y;
+	apply_pre_warp(dist, inout_pixels->x, inout_pixels->y, x, y);
+
+	float pre_warp_final_u, pre_warp_final_v;
+	apply_traditional(dist, channel, 3, x, y, pre_warp_final_u, pre_warp_final_v);
+	apply_tangential(dist, channel, pre_warp_final_u, pre_warp_final_v);
+
+	apply_post_warp(dist, pre_warp_final_u, pre_warp_final_v, inout_pixels->x, inout_pixels->y);
+}
+
+static void
+htc_radial_tangential_prism(htc_eye_distortion &dist, int channel, xrt_vec2 *inout_pixels)
+{
+	assert(channel < 3);
+
+	float x, y;
+	apply_pre_warp(dist, inout_pixels->x, inout_pixels->y, x, y);
+
+	float pre_warp_final_u, pre_warp_final_v;
+	apply_traditional(dist, channel, 5, x, y, pre_warp_final_u, pre_warp_final_v);
+	apply_tangential(dist, channel, pre_warp_final_u, pre_warp_final_v);
+	apply_prism(dist, channel, pre_warp_final_u, pre_warp_final_v);
+
+	apply_post_warp(dist, pre_warp_final_u, pre_warp_final_v, inout_pixels->x, inout_pixels->y);
+}
+
 static bool
 htc_strengthen_high_order(htc_eye_distortion &dist, int channel, xrt_vec2 *inout_pixels)
 {
 	assert(channel < 3);
 
 	// Run the pre-warp to get the homogeneous coordinates
-	xrt_vec3 in_homogeneous = {inout_pixels->x, inout_pixels->y, 1.0f};
-	math_matrix_3x3_transform_vec3(&dist.warp.pre, &in_homogeneous, &in_homogeneous);
+	float x, y;
+	apply_pre_warp(dist, inout_pixels->x, inout_pixels->y, x, y);
 
-	float x = in_homogeneous.x / in_homogeneous.z;
-	float y = in_homogeneous.y / in_homogeneous.z;
 	double r2 = x * x + y * y;
 	double r = sqrt(r2);
 	double r4 = r2 * r2;
@@ -582,6 +691,8 @@ htc_strengthen_high_order(htc_eye_distortion &dist, int channel, xrt_vec2 *inout
 	     ((r10 * r) * k[11])) +
 	    ((r10 * (r * r)) * k[12]);
 
+	// @todo add the "max radius" here and return "false"
+
 	double xsq3 = (x * 3.0) * x;
 	double xsq4_ysq = (((x * 4.0) * x) * y) * y;
 	double xsq2 = (x + x) * x;
@@ -604,11 +715,7 @@ htc_strengthen_high_order(htc_eye_distortion &dist, int channel, xrt_vec2 *inout
 	double pre_warp_final_u = (((radial_series * x) + x_tangential) + (r2 * s1)) + (r4 * s2);
 	double pre_warp_final_v = (((y * radial_series) + y_tangential) + (r2 * s3)) + (r4 * s4);
 
-	in_homogeneous = {(float)pre_warp_final_u, (float)pre_warp_final_v, 1.0f};
-	math_matrix_3x3_transform_vec3(&dist.warp.post, &in_homogeneous, &in_homogeneous);
-
-	inout_pixels->x = in_homogeneous.x / in_homogeneous.z;
-	inout_pixels->y = in_homogeneous.y / in_homogeneous.z;
+	apply_post_warp(dist, pre_warp_final_u, pre_warp_final_v, inout_pixels->x, inout_pixels->y);
 
 	return true;
 }
@@ -625,17 +732,24 @@ htc_distort_internal(htc_config *config, int eye, int channel, const xrt_vec2 *i
 
 	float enlarge_ratio = dist.enlarge_ratio;
 
-	// We only support the strengthen_high_order model for now
-	if (dist.model != HTC_DISTORTION_MODEL_STRENGTHEN_HIGH_ORDER) {
-		return false;
-	}
-
 	xrt_vec2 distorted;
 	htc_to_lens_pixels(config, eye, in, &distorted);
 
-	if (!htc_strengthen_high_order(dist, channel, &distorted)) {
-		distorted.x = -10000;
-		distorted.y = -10000;
+	switch (dist.model) {
+	case HTC_DISTORTION_MODEL_TRADITIONAL_SIMPLE: htc_traditional(dist, channel, &distorted); break;
+	case HTC_DISTORTION_MODEL_TRADITIONAL_WITH_TANGENTIAL:
+		htc_traditional_tangential(dist, channel, &distorted);
+		break;
+	case HTC_DISTORTION_MODEL_RADIAL_TANGENTIAL_PRISM:
+		htc_radial_tangential_prism(dist, channel, &distorted);
+		break;
+	case HTC_DISTORTION_MODEL_STRENGTHEN_HIGH_ORDER:
+		if (!htc_strengthen_high_order(dist, channel, &distorted)) {
+			distorted.x = -10000;
+			distorted.y = -10000;
+		}
+		break;
+	default: return false;
 	}
 
 	xrt_vec2 normalized_centers = {
