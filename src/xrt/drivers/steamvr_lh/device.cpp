@@ -967,7 +967,7 @@ HmdDevice::compute_distortion(uint32_t view, float u, float v, xrt_uv_triplet *o
 		struct xrt_vec2 uv = {u, v};
 
 		// If computing through VP2 method fails, fall back to the standard method.
-		if (vp2_distort(config, view, &uv, out_result)) {
+		if (htc_config_compute_distortion(&config->base, view, &uv, out_result)) {
 			return XRT_SUCCESS;
 		}
 	}
@@ -1353,8 +1353,8 @@ HmdDevice::init_vive_pro_2(struct xrt_prober *xp)
 
 	vp2_config *config = vp2_get_config(this->vp2.hid);
 
-	vp2_get_fov(config, 0, &this->hmd_parts->base.distortion.fov[0]);
-	vp2_get_fov(config, 1, &this->hmd_parts->base.distortion.fov[1]);
+	htc_config_get_fov(&config->base, 0, &this->hmd_parts->base.distortion.fov[0]);
+	htc_config_get_fov(&config->base, 1, &this->hmd_parts->base.distortion.fov[1]);
 
 	this->supported.brightness_control = true;
 

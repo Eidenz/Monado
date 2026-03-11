@@ -65,8 +65,8 @@ survive_vp2_setup_hmd(struct survive_device *survive)
 {
 	struct vp2_config *config = vp2_get_config(survive->hmd.vp2_hid);
 
-	vp2_get_fov(config, 0, &survive->base.hmd->distortion.fov[0]);
-	vp2_get_fov(config, 1, &survive->base.hmd->distortion.fov[1]);
+	htc_config_get_fov(&config->base, 0, &survive->base.hmd->distortion.fov[0]);
+	htc_config_get_fov(&config->base, 1, &survive->base.hmd->distortion.fov[1]);
 
 	enum vp2_resolution resolution = vp2_get_resolution(survive->hmd.vp2_hid);
 
@@ -113,7 +113,7 @@ survive_vp2_compute_distortion(
 	struct xrt_vec2 uv = {.x = u, .y = v};
 
 	// Try VP2 distortion first, fallback if fails.
-	if (vp2_distort(config, view, &uv, result)) {
+	if (htc_config_compute_distortion(&config->base, view, &uv, result)) {
 		return XRT_SUCCESS;
 	}
 

@@ -585,6 +585,7 @@ if(XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE OR XRT_BUILD_DRIVER_SURVIVE)
 			aux_util
 			aux_math
 			aux_vive
+			aux_htc
 			xrt-external-cjson
 		)
 endif()

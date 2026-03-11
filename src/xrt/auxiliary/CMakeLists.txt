@@ -47,6 +47,11 @@ if(XRT_MODULE_AUX_VIVE)
 	add_subdirectory(vive)
 endif()
 
+# Modern HTC helper library, not related to lighthouse.
+if(XRT_MODULE_AUX_VIVE)
+	add_subdirectory(htc)
+endif()
+
 # Android library.
 if(ANDROID)
 	add_subdirectory(android)
