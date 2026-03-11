@@ -63,7 +63,7 @@ htc_get_distortion_parameter_count(
 		return true;
 	}
 	case HTC_DISTORTION_MODEL_STRENGTHEN_HIGH_ORDER: {
-		radial = 13;
+		radial = 12;
 		tangential = 6;
 		prism = 4;
 		wvr = 6;
@@ -307,11 +307,15 @@ htc_eye_parse(JSONNode &node, htc_eye_distortion &eye, bool left)
 	for (int colour = 0; colour < 3; colour++) {
 		const char *colour_name = htc_colour_name(colour);
 
+		// k0 is always 1.0, but isn't included in cosmos, so let's just hardcode it
+		eye.coeffecients[colour].k[0] = 1.0;
+		eye.wvr[colour].k[0] = 1.0;
+
 		// Main coefficients
 		for (size_t coeff = 0; coeff < radial_count; coeff++) {
-			snprintf(buf, sizeof(buf), "k%zu", coeff);
+			snprintf(buf, sizeof(buf), "k%zu", coeff + 1);
 
-			eye.coeffecients[colour].k[coeff] = coeffs[colour_name][buf].asDouble();
+			eye.coeffecients[colour].k[coeff + 1] = coeffs[colour_name][buf].asDouble();
 		}
 
 		for (size_t coeff = 0; coeff < tangential_count; coeff++) {
@@ -329,7 +333,7 @@ htc_eye_parse(JSONNode &node, htc_eye_distortion &eye, bool left)
 			assert(coeffs_wvr.has_value());
 
 			snprintf(buf, sizeof(buf), "k%zu", coeff + 1);
-			eye.wvr[colour].k[coeff] = (*coeffs_wvr)[colour_name][buf].asDouble();
+			eye.wvr[colour].k[coeff + 1] = (*coeffs_wvr)[colour_name][buf].asDouble();
 		}
 	}
 
@@ -349,7 +353,13 @@ htc_eye_parse(JSONNode &node, htc_eye_distortion &eye, bool left)
 	}
 
 	// Enlarge ratio
-	eye.enlarge_ratio = node["enlarge_ratio"][eye_name].asDouble();
+	JSONNode enlarge_ration_node = node["enlarge_ratio"];
+	// Parsing nonsense, unknown which version made this change, somewhere between 1.5 and 1.10
+	if (enlarge_ration_node.isDouble()) {
+		eye.enlarge_ratio = enlarge_ration_node.asDouble();
+	} else {
+		eye.enlarge_ratio = enlarge_ration_node[eye_name].asDouble();
+	}
 
 	// Grow for undistort
 	for (int i = 0; i < 4; i++) {
