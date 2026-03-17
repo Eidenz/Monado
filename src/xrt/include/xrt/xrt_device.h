@@ -666,10 +666,11 @@ struct xrt_device
 	 *
 	 * @param[in] xdev The device.
 	 * @param[in] form_factor Form factor to check.
-	 *
-	 * @return true if given form factor is available; otherwise false.
+	 * @param[out] out_available true if given form factor is available; otherwise false.
 	 */
-	bool (*is_form_factor_available)(struct xrt_device *xdev, enum xrt_form_factor form_factor);
+	xrt_result_t (*is_form_factor_available)(struct xrt_device *xdev,
+	                                         enum xrt_form_factor form_factor,
+	                                         bool *out_available);
 
 	/*!
 	 * @brief Get battery status information.
@@ -1052,10 +1053,10 @@ xrt_device_ref_space_usage(struct xrt_device *xdev,
  *
  * @public @memberof xrt_device
  */
-XRT_NONNULL_ALL static inline bool
-xrt_device_is_form_factor_available(struct xrt_device *xdev, enum xrt_form_factor form_factor)
+XRT_NONNULL_ALL static inline xrt_result_t
+xrt_device_is_form_factor_available(struct xrt_device *xdev, enum xrt_form_factor form_factor, bool *out_available)
 {
-	return xdev->is_form_factor_available(xdev, form_factor);
+	return xdev->is_form_factor_available(xdev, form_factor, out_available);
 }
 
 /*!

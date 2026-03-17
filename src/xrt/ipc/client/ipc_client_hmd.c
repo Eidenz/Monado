@@ -200,21 +200,19 @@ ipc_client_hmd_compute_distortion(
 	IPC_CHK_ALWAYS_RET(ich->ipc_c, xret, "ipc_call_device_compute_distortion");
 }
 
-static bool
-ipc_client_hmd_is_form_factor_available(struct xrt_device *xdev, enum xrt_form_factor form_factor)
+static xrt_result_t
+ipc_client_hmd_is_form_factor_available(struct xrt_device *xdev, enum xrt_form_factor form_factor, bool *out_available)
 {
 	ipc_client_hmd_t *ich = ipc_client_hmd(xdev);
 	xrt_result_t xret;
 
-	bool available = false;
 	xret = ipc_call_device_is_form_factor_available( //
 	    ich->ipc_c,                                  //
 	    ich->device_id,                              //
 	    form_factor,                                 //
-	    &available);                                 //
-	IPC_CHK_ONLY_PRINT(ich->ipc_c, xret, "ipc_call_device_is_form_factor_available");
+	    out_available);                              //
 
-	return available;
+	IPC_CHK_ALWAYS_RET(ich->ipc_c, xret, "ipc_call_device_is_form_factor_available");
 }
 
 static xrt_result_t

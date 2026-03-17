@@ -430,12 +430,14 @@ private: // Functions
 	}
 	G_CATCH_GUARDS
 
-	static bool
-	isFormFactorAvailableWrap(struct xrt_device *xdev, enum xrt_form_factor form_factor) noexcept
+	static xrt_result_t
+	isFormFactorAvailableWrap(struct xrt_device *xdev,
+	                          enum xrt_form_factor form_factor,
+	                          bool *out_available) noexcept
 	try {
-		return GET(xdev).isFormFactorAvailable(form_factor);
+		return GET(xdev).isFormFactorAvailable(form_factor, out_available);
 	}
-	G_CATCH_GUARDS_WITH_RETURN(false)
+	G_CATCH_GUARDS
 
 	static xrt_result_t
 	getBatteryStatusWrap(struct xrt_device *xdev, bool *out_present, bool *out_charging, float *out_charge) noexcept

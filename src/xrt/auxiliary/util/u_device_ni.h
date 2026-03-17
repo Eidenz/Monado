@@ -208,8 +208,8 @@ u_device_ni_ref_space_usage(struct xrt_device *xdev,
  *
  * @ingroup aux_util
  */
-bool
-u_device_ni_is_form_factor_available(struct xrt_device *xdev, enum xrt_form_factor form_factor);
+xrt_result_t
+u_device_ni_is_form_factor_available(struct xrt_device *xdev, enum xrt_form_factor form_factor, bool *out_available);
 
 /*!
  * Not implemented function for @ref xrt_device::get_battery_status.

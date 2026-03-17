@@ -158,11 +158,12 @@ public:
 		return XRT_SUCCESS;
 	}
 
-	bool
-	isFormFactorAvailable(enum xrt_form_factor form_factor)
+	xrt_result_t
+	isFormFactorAvailable(enum xrt_form_factor form_factor, bool *out_available)
 	{
 		form_factor_call_count++;
-		return false;
+		*out_available = false;
+		return XRT_SUCCESS;
 	}
 
 	static void
@@ -467,8 +468,10 @@ TEST_CASE("DeviceBase_HmdDevice")
 	{
 		REQUIRE(dev.form_factor_call_count == 0);
 
-		bool available = xdev->is_form_factor_available(xdev, XRT_FORM_FACTOR_HMD);
+		bool available = false;
+		xrt_result_t result = xdev->is_form_factor_available(xdev, XRT_FORM_FACTOR_HMD, &available);
 
+		REQUIRE(result == XRT_SUCCESS);
 		REQUIRE_FALSE(available);
 		REQUIRE(dev.form_factor_call_count == 1);
 	}
@@ -877,11 +880,12 @@ public:
 		return XRT_SUCCESS;
 	}
 
-	bool
-	isFormFactorAvailable(enum xrt_form_factor form_factor)
+	xrt_result_t
+	isFormFactorAvailable(enum xrt_form_factor form_factor, bool *out_available)
 	{
 		is_form_factor_available_count++;
-		return true;
+		*out_available = true;
+		return XRT_SUCCESS;
 	}
 
 	xrt_result_t
@@ -1103,7 +1107,10 @@ TEST_CASE("DeviceBase_AllFeaturesDevice")
 
 		// Test is_form_factor_available
 		REQUIRE(dev.is_form_factor_available_count == 0);
-		bool form_factor_available = xdev->is_form_factor_available(xdev, XRT_FORM_FACTOR_HMD);
+		bool form_factor_available = false;
+		xrt_result_t form_factor_result =
+		    xdev->is_form_factor_available(xdev, XRT_FORM_FACTOR_HMD, &form_factor_available);
+		REQUIRE(form_factor_result == XRT_SUCCESS);
 		REQUIRE(dev.is_form_factor_available_count == 1);
 		REQUIRE(form_factor_available == true);
 

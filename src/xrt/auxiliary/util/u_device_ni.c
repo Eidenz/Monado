@@ -181,11 +181,12 @@ u_device_ni_ref_space_usage(struct xrt_device *xdev,
 	return XRT_ERROR_NOT_IMPLEMENTED;
 }
 
-bool
-u_device_ni_is_form_factor_available(struct xrt_device *xdev, enum xrt_form_factor form_factor)
+xrt_result_t
+u_device_ni_is_form_factor_available(struct xrt_device *xdev, enum xrt_form_factor form_factor, bool *out_available)
 {
 	E(is_form_factor_available);
-	return false;
+	*out_available = false;
+	return XRT_ERROR_NOT_IMPLEMENTED;
 }
 
 xrt_result_t

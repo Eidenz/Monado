@@ -2884,9 +2884,7 @@ ipc_handle_device_is_form_factor_available(volatile struct ipc_client_state *ics
 	struct xrt_device *xdev = NULL;
 	GET_XDEV_OR_RETURN(ics, device_id, xdev);
 
-	*out_available = xrt_device_is_form_factor_available(xdev, form_factor);
-
-	return XRT_SUCCESS;
+	return xrt_device_is_form_factor_available(xdev, form_factor, out_available);
 }
 
 xrt_result_t

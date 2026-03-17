@@ -210,10 +210,19 @@ oxr_system_select(struct oxr_logger *log,
 	}
 
 	struct xrt_device *xdev = GET_STATIC_XDEV_BY_ROLE(selected, head);
-	if (xdev->supported.form_factor_check &&
-	    !xrt_device_is_form_factor_available(xdev, xr_form_factor_to_xrt(form_factor))) {
-		return oxr_error(log, XR_ERROR_FORM_FACTOR_UNAVAILABLE, "request form factor %i is unavailable now",
-		                 form_factor);
+	if (xdev->supported.form_factor_check) {
+		bool available = false;
+		xrt_result_t xret =
+		    xrt_device_is_form_factor_available(xdev, xr_form_factor_to_xrt(form_factor), &available);
+		if (xret != XRT_SUCCESS) {
+			return oxr_error(log, XR_ERROR_RUNTIME_FAILURE,
+			                 "Call to xrt_device_is_form_factor_available failed: %s",
+			                 u_str_xrt_result(xret));
+		}
+		if (!available) {
+			return oxr_error(log, XR_ERROR_FORM_FACTOR_UNAVAILABLE,
+			                 "request form factor %i is unavailable now", form_factor);
+		}
 	}
 
 	*out_selected = selected;
