@@ -46,3 +46,6 @@ rift_sensor_get_variant(struct rift_sensor *sensor);
 
 void
 rift_sensor_get_calibration(struct rift_sensor *sensor, struct t_camera_calibration *out_calibration);
+
+void
+rift_sensor_setup_frame_timestamp_callback(struct rift_sensor *sensor, struct rift_hmd *hmd);
