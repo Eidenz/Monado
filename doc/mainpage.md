@@ -56,6 +56,8 @@ State Trackers consume implementations of these APIs provided by other modules.
   IPC, OpenXR, etc) are brought together for use.
 * @ref ipc-design
 * @ref frame-pacing
+* @ref htc-drivers - How the various drivers for HTC headsets interact with
+  each other.
 
 The key interfaces to begin learning Monado are:
 
