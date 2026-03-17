@@ -9,6 +9,7 @@
 
 #include "util/u_json.hpp"
 #include "util/u_logging.h"
+#include "util/u_debug.h"
 
 #include "math/m_api.h"
 
@@ -21,6 +22,9 @@
 
 
 using xrt::auxiliary::util::json::JSONNode;
+
+// Allows users to force disable the HTC-specific distortion. Useful when lens-modding headsets like Vive Pro 2.
+DEBUG_GET_ONCE_BOOL_OPTION(force_disable_distortion, "HTC_FORCE_DISABLE_DISTORTION", false)
 
 static const char *
 htc_colour_name(int colour)
@@ -893,6 +897,10 @@ htc_config_compute_distortion(struct htc_config *config,
                               struct xrt_uv_triplet *out_result)
 {
 	assert(eye < 2);
+
+	if (debug_get_bool_option_force_disable_distortion()) {
+		return false;
+	}
 
 	bool success = true;
 
