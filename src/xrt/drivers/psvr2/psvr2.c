@@ -737,17 +737,12 @@ set_brightness(struct psvr2_hmd *hmd, float brightness)
 }
 
 bool
-get_serial(struct psvr2_hmd *hmd, char serial[static(SERIAL_LENGTH + 1)])
+get_firmware_info(struct psvr2_hmd *hmd, struct pkt_firmware_info *out_firmware_info)
 {
-	uint8_t buf[504];
-
-	if (!get_psvr2_control(hmd, 0x81, 0x1, buf, sizeof(buf))) {
-		PSVR2_ERROR(hmd, "Failed to get device information packet.");
+	if (!get_psvr2_control(hmd, 0x81, 0x1, (uint8_t *)out_firmware_info, sizeof(*out_firmware_info))) {
+		PSVR2_ERROR(hmd, "Failed to get device firmware info packet.");
 		return false;
 	}
-
-	memcpy(serial, buf + 56, SERIAL_LENGTH);
-	serial[SERIAL_LENGTH] = '\0';
 
 	return true;
 }
@@ -1363,11 +1358,14 @@ psvr2_hmd_create(struct xrt_prober_device *xpdev)
 	}
 	hmd->brightness = initial_brightness;
 
-	char serial[SERIAL_LENGTH + 1];
-	if (get_serial(hmd, serial)) {
-		snprintf(hmd->base.serial, XRT_DEVICE_NAME_LEN, "%s", serial);
+	struct pkt_firmware_info firmware_info;
+	if (get_firmware_info(hmd, &firmware_info)) {
+		snprintf(hmd->base.serial, XRT_DEVICE_NAME_LEN, "%.*s", (int)sizeof(firmware_info.pcb_id),
+		         firmware_info.pcb_id);
+
+		PSVR2_INFO(hmd, "Headset has firmware version of %08x", __le32_to_cpu(firmware_info.version));
 	} else {
-		PSVR2_WARN(hmd, "Failed to get serial number");
+		PSVR2_WARN(hmd, "Failed to get device firmware info, serial number will not be correct.");
 	}
 
 	// Start USB communications
