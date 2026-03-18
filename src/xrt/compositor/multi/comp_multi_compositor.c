@@ -977,6 +977,9 @@ multi_compositor_create(struct multi_system_compositor *msc,
 
 	struct multi_compositor *mc = U_TYPED_CALLOC(struct multi_compositor);
 
+	// Initialize state - base session is anything that's not an overlay
+	mc->state.is_base_session = !xsi->is_overlay;
+
 	mc->base.base.get_swapchain_create_properties = multi_compositor_get_swapchain_create_properties;
 	mc->base.base.create_swapchain = multi_compositor_create_swapchain;
 	mc->base.base.import_swapchain = multi_compositor_import_swapchain;

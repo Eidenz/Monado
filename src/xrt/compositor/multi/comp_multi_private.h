@@ -129,6 +129,7 @@ struct multi_compositor
 		int64_t z_order;
 
 		bool session_active;
+		bool is_base_session;
 	} state;
 
 	struct
@@ -373,6 +374,9 @@ struct multi_system_compositor
 
 	//! List of active clients.
 	struct multi_compositor *clients[MULTI_MAX_CLIENTS];
+
+	//! Chroma key parameters in HSV space
+	struct xrt_layer_chroma_key_data chroma_key;
 };
 
 /*!

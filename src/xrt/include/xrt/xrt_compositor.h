@@ -178,6 +178,26 @@ enum xrt_blend_factor
 	XRT_BLEND_FACTOR_MAX_ENUM_FB = 0x7FFFFFFF,
 };
 
+
+/*!
+ * Chroma key parameters in HSV space.
+ * Alpha 0-1 interpolates between hsv_min and hsv_max
+ * with curve as a power curve defined by the curve exponent.
+ *
+ * Used for projection layers.
+ */
+struct xrt_layer_chroma_key_data
+{
+	//!< Minimum HSV bounds
+	struct xrt_colour_hsv_f32 hsv_min;
+	//! Maximum HSV bounds
+	struct xrt_colour_hsv_f32 hsv_max;
+	//! Power curve for alpha falloff (1.0 = linear)
+	float curve;
+	//! Despill strength (0.0 = none, 1.0 = full)
+	float despill;
+};
+
 /*!
  * Advanced blend
  * provides explicit control over source and destination blend factors,
@@ -232,6 +252,8 @@ struct xrt_layer_projection_view_data
 struct xrt_layer_projection_data
 {
 	struct xrt_layer_projection_view_data v[XRT_MAX_VIEWS];
+
+	struct xrt_layer_chroma_key_data chroma_key;
 };
 
 /*!
@@ -269,6 +291,8 @@ struct xrt_layer_projection_depth_data
 	struct xrt_layer_projection_view_data v[XRT_MAX_VIEWS];
 
 	struct xrt_layer_depth_data d[XRT_MAX_VIEWS];
+
+	struct xrt_layer_chroma_key_data chroma_key;
 };
 
 /*!
@@ -2402,6 +2426,22 @@ struct xrt_multi_compositor_control
 	 * that non-overlay clients can be handled like overlay ones.
 	 */
 	xrt_result_t (*set_z_order)(struct xrt_system_compositor *xsc, struct xrt_compositor *xc, int64_t z_order);
+
+	/*!
+	 * Set the chroma key parameters for the base app's projection layers.
+	 * This is used to punch holes through opaque projection layers and adjust their blend mode.
+	 * Uses HSV min/max range for flexible color targeting.
+	 *
+	 * @param hsv_min Minimum HSV bounds
+	 * @param hsv_max Maximum HSV bounds
+	 * @param curve Power curve for alpha falloff
+	 * @param despill Despill strength
+	 */
+	xrt_result_t (*set_base_chroma_key_params)(struct xrt_system_compositor *xsc,
+	                                           struct xrt_colour_hsv_f32 hsv_min,
+	                                           struct xrt_colour_hsv_f32 hsv_max,
+	                                           float curve,
+	                                           float despill);
 
 	/*!
 	 * Tell this client/session if the main application is visible or not.

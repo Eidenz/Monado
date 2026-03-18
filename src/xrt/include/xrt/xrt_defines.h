@@ -402,6 +402,19 @@ struct xrt_colour_rgb_f32
 };
 
 /*!
+ * A 3 element HSV colour with floating point channels.
+ * All values are in [0, 1] range, with hue wrapping at 1.
+ *
+ * @ingroup xrt_iface math
+ */
+struct xrt_colour_hsv_f32
+{
+	float h;
+	float s;
+	float v;
+};
+
+/*!
  * A 4 element colour with floating point channels.
  *
  * @ingroup xrt_iface math
