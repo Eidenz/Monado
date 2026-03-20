@@ -382,7 +382,8 @@ Context::run_frame()
 			to_activate.swap(pending_activations);
 		}
 		for (auto &pa : to_activate) {
-			CTX_INFO("Activating pre-registered device at slot %zu", pa.slot);
+			CTX_INFO("Activating pre-registered device at slot %zu (serial: %s)", pa.slot,
+			         controller[pa.slot]->serial);
 			controller[pa.slot]->set_driver(pa.driver);
 			controller[pa.slot]->pre_registered = false;
 			vr::EVRInitError err = pa.driver->Activate(pa.slot + 1);
@@ -390,6 +391,8 @@ Context::run_frame()
 				CTX_ERR("Activating pre-registered controller at slot %zu failed: error %u",
 				        pa.slot, err);
 			}
+			CTX_INFO("Post-activation slot %zu: device_type=%d", pa.slot,
+			         (int)controller[pa.slot]->device_type);
 		}
 	}
 
@@ -867,7 +870,34 @@ get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 	bool update_gen = false;
 	int head, eyes, face, left, right, gamepad;
 
-	u_device_assign_xdev_roles(xsysd->xdevs, xsysd->xdev_count, &head, &eyes, &face, &left, &right, &gamepad);
+	// Two-pass role assignment: prefer activated devices over pre-registered placeholders.
+	// This ensures correct roles with duplicate hardware while keeping apps aware of controllers.
+
+	// First pass: only consider activated (non-pre-registered) devices.
+	struct xrt_device *filtered[XRT_SYSTEM_MAX_DEVICES] = {};
+	for (size_t i = 0; i < xsysd->xdev_count; i++) {
+		if (xsysd->xdevs[i] == NULL) {
+			continue;
+		}
+		auto *dev = static_cast<Device *>(xsysd->xdevs[i]);
+		filtered[i] = dev->pre_registered ? nullptr : xsysd->xdevs[i];
+	}
+
+	u_device_assign_xdev_roles(filtered, xsysd->xdev_count, &head, &eyes, &face, &left, &right, &gamepad);
+
+	// Second pass: if left/right still unassigned, fall back to pre-registered devices
+	// so apps see controllers from boot even before they power on.
+	if (left == XRT_DEVICE_ROLE_UNASSIGNED || right == XRT_DEVICE_ROLE_UNASSIGNED) {
+		int head2, eyes2, face2, left2, right2, gamepad2;
+		u_device_assign_xdev_roles(xsysd->xdevs, xsysd->xdev_count, &head2, &eyes2, &face2, &left2, &right2,
+		                           &gamepad2);
+		if (left == XRT_DEVICE_ROLE_UNASSIGNED) {
+			left = left2;
+		}
+		if (right == XRT_DEVICE_ROLE_UNASSIGNED) {
+			right = right2;
+		}
+	}
 
 	if (left != out_roles->left || right != out_roles->right || gamepad != out_roles->gamepad) {
 		update_gen = true;
@@ -1005,8 +1035,21 @@ preregister_devices(Context *ctx, u_logging_level level)
 		auto dev_config = JSONNode::loadFromFile(config_path);
 
 		std::string model;
+		std::string manufacturer;
+		std::string controller_role;
 		if (!dev_config.isInvalid()) {
 			model = dev_config["model_number"].asString();
+			auto mfr_node = dev_config["manufacturer"];
+			if (!mfr_node.isInvalid()) {
+				manufacturer = mfr_node.asString();
+			}
+			// Only controllers have tracked_controller_role
+			if (device_class != "generic_tracker") {
+				auto role_node = dev_config["tracked_controller_role"];
+				if (!role_node.isInvalid()) {
+					controller_role = role_node.asString();
+				}
+			}
 		}
 
 		// Map model to input profile
@@ -1045,22 +1088,25 @@ preregister_devices(Context *ctx, u_logging_level level)
 		dev->init_output();
 		dev->pre_registered = true;
 
-		// Set device type from config. Must be set now (not during Activate) because
-		// changing device_type after IPC clients connect causes shared memory mismatch.
+		// Set device display name from config (normally set during Activate
+		// from Prop_ManufacturerName + Prop_ModelNumber)
+		if (!manufacturer.empty() && !model.empty()) {
+			std::snprintf(dev->str, std::size(dev->str), "%s %s", manufacturer.c_str(), model.c_str());
+		} else if (!model.empty()) {
+			std::snprintf(dev->str, std::size(dev->str), "%s", model.c_str());
+		}
+
+		// Set device_type from config so IPC clients see proper controller types.
+		// get_roles() prefers activated devices over pre-registered ones,
+		// so duplicate hardware still gets correct role assignment.
 		if (device_class == "generic_tracker") {
 			dev->device_type = XRT_DEVICE_TYPE_GENERIC_TRACKER;
-		} else if (device_class == "controller") {
-			std::string role;
-			if (!dev_config.isInvalid()) {
-				role = dev_config["tracked_controller_role"].asString();
-			}
-			if (role == "left_hand") {
-				dev->device_type = XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER;
-			} else if (role == "right_hand") {
-				dev->device_type = XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER;
-			} else {
-				dev->device_type = XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER;
-			}
+		} else if (controller_role == "left_hand") {
+			dev->device_type = XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER;
+		} else if (controller_role == "right_hand") {
+			dev->device_type = XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER;
+		} else {
+			dev->device_type = XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER;
 		}
 
 		// Set binding profiles
@@ -1081,7 +1127,9 @@ preregister_devices(Context *ctx, u_logging_level level)
 		}
 
 		ctx->controller[device_idx] = dev;
-		U_LOG_IFL_I(level, "Pre-registered device %s as %s at slot %zu", serial.c_str(), profile, device_idx);
+		U_LOG_IFL_I(level, "Pre-registered device %s as %s at slot %zu (role='%s', device_type=%d)",
+		            serial.c_str(), profile, device_idx, controller_role.c_str(),
+		            (int)dev->device_type);
 	}
 }
 

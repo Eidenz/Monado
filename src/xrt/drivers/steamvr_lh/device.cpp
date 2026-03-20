@@ -1503,19 +1503,9 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 		return Device::handle_property_write(fixedProp);
 	}
 	case vr::Prop_ControllerRoleHint_Int32: {
-		// If device_type was already set (e.g. from pre-registration), don't change it.
-		// Changing device_type after IPC clients have connected causes shared memory
-		// inconsistency and client crashes.
-		if (this->device_type != XRT_DEVICE_TYPE_UNKNOWN) {
-			// Still call set_active_hand for proper hand tracking setup.
-			vr::ETrackedControllerRole role = *static_cast<vr::ETrackedControllerRole *>(prop.pvBuffer);
-			if (role == vr::TrackedControllerRole_LeftHand)
-				set_active_hand(XRT_HAND_LEFT);
-			else if (role == vr::TrackedControllerRole_RightHand)
-				set_active_hand(XRT_HAND_RIGHT);
-			break;
-		}
 		vr::ETrackedControllerRole role = *static_cast<vr::ETrackedControllerRole *>(prop.pvBuffer);
+		DEV_INFO("Prop_ControllerRoleHint_Int32: role=%d for %s (xrt_name=%d)", (int)role, this->serial,
+		         (int)this->name);
 		switch (role) {
 		case vr::TrackedControllerRole_Invalid: {
 			this->device_type = XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER;
@@ -1532,7 +1522,14 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 			break;
 		}
 		case vr::TrackedControllerRole_OptOut: {
-			this->device_type = XRT_DEVICE_TYPE_GENERIC_TRACKER;
+			// Only set tracker type for actual tracker devices.
+			// Index/Vive controllers may receive OptOut when the
+			// proprietary driver can't determine handedness.
+			if (this->name == XRT_DEVICE_VIVE_TRACKER) {
+				this->device_type = XRT_DEVICE_TYPE_GENERIC_TRACKER;
+			} else {
+				this->device_type = XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER;
+			}
 			break;
 		}
 		default: {
@@ -1541,6 +1538,7 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 			break;
 		}
 		}
+		DEV_INFO("  -> device_type now %d", (int)this->device_type);
 		break;
 	}
 	case vr::Prop_DeviceProvidesBatteryStatus_Bool: {
