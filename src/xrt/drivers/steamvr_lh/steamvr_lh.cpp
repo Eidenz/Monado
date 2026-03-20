@@ -416,9 +416,7 @@ Context::run_frame()
 				CTX_ERR("Activating pre-registered controller at slot %zu failed: error %u",
 				        activate_slot, err);
 			}
-			CTX_INFO("Post-activation slot %zu: device_type=%d", activate_slot,
-			         (int)controller[activate_slot]->device_type);
-		}
+			}
 	}
 
 	for (vr::IServerTrackedDeviceProvider *const &provider : providers)
@@ -931,9 +929,6 @@ get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 	if (update_gen) {
 		out_roles->generation_id++;
 
-		U_LOG_I("get_roles: role change detected! gen=%lu left=%d->%d right=%d->%d",
-		        (unsigned long)out_roles->generation_id, out_roles->left, left, out_roles->right, right);
-
 		out_roles->left = left;
 		out_roles->right = right;
 		out_roles->gamepad = gamepad;
@@ -1155,9 +1150,8 @@ preregister_devices(Context *ctx, u_logging_level level)
 		}
 
 		ctx->controller[device_idx] = dev;
-		U_LOG_IFL_I(level, "Pre-registered device %s as %s at slot %zu (role='%s', device_type=%d)",
-		            serial.c_str(), profile, device_idx, controller_role.c_str(),
-		            (int)dev->device_type);
+		U_LOG_IFL_I(level, "Pre-registered device %s as %s at slot %zu",
+		            serial.c_str(), profile, device_idx);
 	}
 }
 

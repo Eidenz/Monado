@@ -1504,8 +1504,6 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 	}
 	case vr::Prop_ControllerRoleHint_Int32: {
 		vr::ETrackedControllerRole role = *static_cast<vr::ETrackedControllerRole *>(prop.pvBuffer);
-		DEV_INFO("Prop_ControllerRoleHint_Int32: role=%d for %s (xrt_name=%d)", (int)role, this->serial,
-		         (int)this->name);
 		switch (role) {
 		case vr::TrackedControllerRole_Invalid: {
 			this->device_type = XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER;
@@ -1538,7 +1536,6 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 			break;
 		}
 		}
-		DEV_INFO("  -> device_type now %d", (int)this->device_type);
 		break;
 	}
 	case vr::Prop_DeviceProvidesBatteryStatus_Bool: {
