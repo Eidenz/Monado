@@ -47,6 +47,7 @@ __pycache__/
 build/
 build*/
 cmake-build-*/
+cbuild/
 
 # Ignore local settings
 .vscode

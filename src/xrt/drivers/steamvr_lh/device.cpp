@@ -52,14 +52,6 @@ DEBUG_GET_ONCE_BOOL_OPTION(lh_emulate_hand, "LH_EMULATE_HAND", true)
 DEBUG_GET_ONCE_FLOAT_OPTION(lh_override_ipd, "LH_OVERRIDE_IPD_MM", -1.0f)
 DEBUG_GET_ONCE_BOOL_OPTION(lh_standby_on_exit, "LH_STANDBY_ON_EXIT", false)
 
-// Each device will have its own input class.
-struct InputClass
-{
-	xrt_device_name name;
-	const std::vector<xrt_input_name> poses;
-	const std::unordered_map<std::string_view, xrt_input_name> non_poses;
-};
-
 namespace {
 using namespace std::string_view_literals;
 // From https://github.com/ValveSoftware/openvr/blob/master/docs/Driver_API_Documentation.md#bone-structure
@@ -256,6 +248,15 @@ bone_to_pose(const vr::VRBoneTransform_t &bone)
 }
 } // namespace
 
+const InputClass *
+find_input_class(std::string_view profile_name)
+{
+	auto it = controller_classes.find(profile_name);
+	if (it == controller_classes.end())
+		return nullptr;
+	return &it->second;
+}
+
 Property::Property(vr::PropertyTypeTag_t tag, void *buffer, uint32_t bufferSize)
 {
 	this->tag = tag;
@@ -302,6 +303,12 @@ Device::~Device()
 	m_relation_history_destroy(&relation_hist);
 }
 
+void
+Device::set_driver(vr::ITrackedDeviceServerDriver *new_driver)
+{
+	this->driver = new_driver;
+}
+
 Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx), driver(builder.driver)
 {
 	m_relation_history_create(&relation_hist);
@@ -324,10 +331,12 @@ Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx),
 
 	this->xrt_device::destroy = [](xrt_device *xdev) {
 		auto *dev = static_cast<Device *>(xdev);
-		if (debug_get_bool_option_lh_standby_on_exit()) {
-			dev->driver->EnterStandby();
+		if (dev->driver) {
+			if (debug_get_bool_option_lh_standby_on_exit()) {
+				dev->driver->EnterStandby();
+			}
+			dev->driver->Deactivate();
 		}
-		dev->driver->Deactivate();
 		delete dev;
 	};
 
@@ -340,8 +349,10 @@ Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx),
 void
 ControllerDevice::set_input_class(const InputClass *input_class)
 {
-	// this should only be called once
-	assert(inputs_vec.empty());
+	// Skip if already configured (pre-registered devices get this called again during Activate).
+	if (!inputs_vec.empty()) {
+		return;
+	}
 	this->input_class = input_class;
 
 	// reserve to ensure our pointers don't get invalidated
@@ -353,6 +364,13 @@ ControllerDevice::set_input_class(const InputClass *input_class)
 		assert(inputs_vec.capacity() >= inputs_vec.size() + 1);
 		inputs_vec.push_back({true, 0, input, {}});
 		inputs_map.insert({path, &inputs_vec.back()});
+	}
+
+	// Pre-allocate an inactive hand tracking input slot so that input_count
+	// is stable before IPC clients connect. set_skeleton() will activate it
+	// with the correct hand when the skeleton data arrives.
+	if (debug_get_bool_option_lh_emulate_hand()) {
+		inputs_vec.push_back({false, 0, XRT_INPUT_HT_CONFORMING_LEFT, {}});
 	}
 
 	this->inputs = inputs_vec.data();
@@ -460,13 +478,15 @@ ControllerDevice::set_skeleton(std::span<const vr::VRBoneTransform_t> bones,
 {
 	assert(bones.size() == eBone_Count);
 	generate_palm_pose_offset(bones, hand);
-	if (!is_simulated && debug_get_bool_option_lh_emulate_hand()) {
-		assert(inputs_vec.capacity() >= inputs_vec.size() + 1);
+	if (!is_simulated && debug_get_bool_option_lh_emulate_hand() && !has_hand_tracking) {
 		const xrt_input_name tracker_name =
 		    (hand == XRT_HAND_RIGHT) ? XRT_INPUT_HT_CONFORMING_RIGHT : XRT_INPUT_HT_CONFORMING_LEFT;
-		inputs_vec.push_back({true, 0, tracker_name, {}});
-		inputs_map.insert({path, &inputs_vec.back()});
-		this->input_count = inputs_vec.size();
+		// Update the placeholder slot pre-allocated by set_input_class()
+		// rather than pushing a new entry (which would change input_count
+		// and break IPC clients that cached the old count).
+		auto &ht_input = inputs_vec.back();
+		ht_input = {true, 0, tracker_name, {}};
+		inputs_map.insert({path, &ht_input});
 		has_hand_tracking = true;
 	}
 }
@@ -622,10 +642,14 @@ Device::get_input_from_name(const std::string_view name)
 void
 ControllerDevice::set_haptic_handle(vr::VRInputComponentHandle_t handle)
 {
-	// this should only be set once
-	assert(output == nullptr);
 	DEV_DEBUG("setting haptic handle for %" PRIu64, handle);
 	haptic_handle = handle;
+
+	// Output may already be set up from pre-registration.
+	if (output != nullptr) {
+		return;
+	}
+
 	xrt_output_name name;
 	switch (this->name) {
 	case XRT_DEVICE_VIVE_WAND: {
@@ -650,6 +674,26 @@ ControllerDevice::set_haptic_handle(vr::VRInputComponentHandle_t handle)
 	}
 	}
 	output = std::make_unique<xrt_output>(xrt_output{name});
+	this->output_count = 1;
+	this->outputs = output.get();
+}
+
+void
+ControllerDevice::init_output()
+{
+	if (output != nullptr) {
+		return;
+	}
+
+	xrt_output_name oname;
+	switch (this->name) {
+	case XRT_DEVICE_VIVE_WAND: oname = XRT_OUTPUT_NAME_VIVE_HAPTIC; break;
+	case XRT_DEVICE_INDEX_CONTROLLER: oname = XRT_OUTPUT_NAME_INDEX_HAPTIC; break;
+	case XRT_DEVICE_FLIPVR: oname = XRT_OUTPUT_NAME_FLIPVR_HAPTIC; break;
+	case XRT_DEVICE_VIVE_TRACKER: oname = XRT_OUTPUT_NAME_VIVE_TRACKER_HAPTIC; break;
+	default: return;
+	}
+	output = std::make_unique<xrt_output>(xrt_output{oname});
 	this->output_count = 1;
 	this->outputs = output.get();
 }
@@ -1459,6 +1503,18 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 		return Device::handle_property_write(fixedProp);
 	}
 	case vr::Prop_ControllerRoleHint_Int32: {
+		// If device_type was already set (e.g. from pre-registration), don't change it.
+		// Changing device_type after IPC clients have connected causes shared memory
+		// inconsistency and client crashes.
+		if (this->device_type != XRT_DEVICE_TYPE_UNKNOWN) {
+			// Still call set_active_hand for proper hand tracking setup.
+			vr::ETrackedControllerRole role = *static_cast<vr::ETrackedControllerRole *>(prop.pvBuffer);
+			if (role == vr::TrackedControllerRole_LeftHand)
+				set_active_hand(XRT_HAND_LEFT);
+			else if (role == vr::TrackedControllerRole_RightHand)
+				set_active_hand(XRT_HAND_RIGHT);
+			break;
+		}
 		vr::ETrackedControllerRole role = *static_cast<vr::ETrackedControllerRole *>(prop.pvBuffer);
 		switch (role) {
 		case vr::TrackedControllerRole_Invalid: {

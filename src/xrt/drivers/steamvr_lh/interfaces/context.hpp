@@ -72,6 +72,16 @@ private:
 	std::deque<Event> events;
 	std::mutex event_queue_mut;
 
+	//! Pending activations queued by TrackedDeviceAdded from background threads.
+	//! Processed during run_frame() to avoid data races on shared maps.
+	struct PendingActivation
+	{
+		size_t slot;
+		vr::ITrackedDeviceServerDriver *driver;
+	};
+	std::vector<PendingActivation> pending_activations;
+	std::mutex pending_activation_mut;
+
 	Device *
 	prop_container_to_device(vr::PropertyContainerHandle_t handle);
 

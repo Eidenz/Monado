@@ -19,6 +19,7 @@
 
 #include "openvr_driver.h"
 #include "util/u_var.h"
+#include "util/u_json.hpp"
 #include "vdf_parser.hpp"
 #include "steamvr_lh_interface.h"
 #include "interfaces/context.hpp"
@@ -32,6 +33,9 @@
 #include "xrt/xrt_config_arch.h"
 
 #include "math/m_api.h"
+
+#include <algorithm>
+#include <cctype>
 
 namespace {
 
@@ -78,6 +82,7 @@ namespace {
 DEBUG_GET_ONCE_LOG_OPTION(lh_log, "LIGHTHOUSE_LOG", U_LOGGING_INFO)
 DEBUG_GET_ONCE_BOOL_OPTION(lh_load_slimevr, "LH_LOAD_SLIMEVR", false)
 DEBUG_GET_ONCE_NUM_OPTION(lh_discover_wait_ms, "LH_DISCOVER_WAIT_MS", 3000)
+DEBUG_GET_ONCE_BOOL_OPTION(lh_preregister, "LH_PREREGISTER", true)
 
 static constexpr size_t MAX_CONTROLLERS = 16;
 
@@ -302,6 +307,22 @@ Context::setup_hmd(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 bool
 Context::setup_controller(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 {
+	// Check for a pre-registered device with matching serial
+	for (size_t i = 0; i < MAX_CONTROLLERS; ++i) {
+		if (controller[i] && controller[i]->pre_registered && std::strcmp(controller[i]->serial, serial) == 0) {
+			CTX_INFO("Queuing activation for pre-registered device %s at slot %zu", serial, i);
+
+			// Defer activation to run_frame() to avoid data races:
+			// TrackedDeviceAdded may be called from the lighthouse driver's
+			// background thread, while run_frame/RunFrame accesses shared maps.
+			{
+				std::lock_guard lk(pending_activation_mut);
+				pending_activations.push_back({i, driver});
+			}
+			return true;
+		}
+	}
+
 	// Find the first available slot for a new controller
 	size_t device_idx = 0;
 	for (; device_idx < MAX_CONTROLLERS; ++device_idx) {
@@ -350,6 +371,28 @@ Context::setup_controller(const char *serial, vr::ITrackedDeviceServerDriver *dr
 void
 Context::run_frame()
 {
+	// Process any pending activations from late-arriving pre-registered devices.
+	// This must happen here (same thread as RunFrame) so that Activate() callbacks
+	// (CreateBooleanComponent, CreateScalarComponent, etc.) don't race with
+	// Update* callbacks triggered by RunFrame().
+	{
+		std::vector<PendingActivation> to_activate;
+		{
+			std::lock_guard lk(pending_activation_mut);
+			to_activate.swap(pending_activations);
+		}
+		for (auto &pa : to_activate) {
+			CTX_INFO("Activating pre-registered device at slot %zu", pa.slot);
+			controller[pa.slot]->set_driver(pa.driver);
+			controller[pa.slot]->pre_registered = false;
+			vr::EVRInitError err = pa.driver->Activate(pa.slot + 1);
+			if (err != vr::VRInitError_None) {
+				CTX_ERR("Activating pre-registered controller at slot %zu failed: error %u",
+				        pa.slot, err);
+			}
+		}
+	}
+
 	for (vr::IServerTrackedDeviceProvider *const &provider : providers)
 		provider->RunFrame();
 }
@@ -862,6 +905,186 @@ destroy(struct xrt_system_devices *xsysd)
 	free(svrs);
 }
 
+/**
+ * Map a model_number from a per-device config.json to an InputClass profile name.
+ */
+static const char *
+model_to_profile(const std::string &model, const std::string &device_class)
+{
+	if (model.find("Knuckles") != std::string::npos)
+		return "index_controller";
+	if (model.find("Vive Controller") != std::string::npos)
+		return "vive_controller";
+	if (model.find("Tundra") != std::string::npos)
+		return "tundra_tracker";
+	// Fallback for generic trackers
+	if (device_class == "generic_tracker")
+		return "vive_tracker";
+	// Fallback for other controllers
+	if (device_class == "controller")
+		return "index_controller";
+	return nullptr;
+}
+
+/**
+ * Pre-register known lighthouse devices from SteamVR config files.
+ * Creates placeholder ControllerDevice instances so they appear in xrt_system_devices
+ * even before the physical devices power on.
+ */
+static void
+preregister_devices(Context *ctx, u_logging_level level)
+{
+	using xrt::auxiliary::util::json::JSONNode;
+
+	if (!debug_get_bool_option_lh_preregister()) {
+		return;
+	}
+
+	// Parse optional serial whitelist
+	std::vector<std::string> whitelist;
+	const char *whitelist_env = getenv("LH_PREREGISTER_SERIALS");
+	if (whitelist_env && whitelist_env[0] != '\0') {
+		std::string_view wl(whitelist_env);
+		while (!wl.empty()) {
+			size_t comma = wl.find(',');
+			std::string entry(wl.substr(0, comma));
+			// Normalize to uppercase
+			std::transform(entry.begin(), entry.end(), entry.begin(), ::toupper);
+			whitelist.push_back(std::move(entry));
+			wl = (comma == std::string_view::npos) ? "" : wl.substr(comma + 1);
+		}
+		U_LOG_IFL_I(level, "Pre-register whitelist: %s", whitelist_env);
+	}
+
+	// Load lighthousedb.json
+	std::string lhdb_path = STEAM_INSTALL_DIR + "/config/lighthouse/lighthousedb.json";
+	auto lhdb = JSONNode::loadFromFile(lhdb_path);
+	if (lhdb.isInvalid()) {
+		U_LOG_IFL_W(level, "Could not load %s for device pre-registration", lhdb_path.c_str());
+		return;
+	}
+
+	auto known_objects_node = lhdb["known_objects"];
+	if (known_objects_node.isInvalid()) {
+		U_LOG_IFL_W(level, "No known_objects in lighthousedb.json");
+		return;
+	}
+
+	auto known_objects = known_objects_node.asArray();
+	for (const auto &obj : known_objects) {
+		std::string device_class = obj["deviceClass"].asString();
+		std::string serial = obj["serialNumber"].asString();
+
+		// Skip HMDs — those aren't controllers/trackers
+		if (device_class == "hmd" || serial.empty()) {
+			continue;
+		}
+
+		// Normalize serial to uppercase
+		std::transform(serial.begin(), serial.end(), serial.begin(), ::toupper);
+
+		// Check whitelist
+		if (!whitelist.empty()) {
+			bool found = false;
+			for (const auto &w : whitelist) {
+				if (w == serial) {
+					found = true;
+					break;
+				}
+			}
+			if (!found) {
+				continue;
+			}
+		}
+
+		// Read per-device config for model info
+		std::string serial_lower = serial;
+		std::transform(serial_lower.begin(), serial_lower.end(), serial_lower.begin(), ::tolower);
+		std::string config_path =
+		    STEAM_INSTALL_DIR + "/config/lighthouse/" + serial_lower + "/config.json";
+		auto dev_config = JSONNode::loadFromFile(config_path);
+
+		std::string model;
+		if (!dev_config.isInvalid()) {
+			model = dev_config["model_number"].asString();
+		}
+
+		// Map model to input profile
+		const char *profile = model_to_profile(model, device_class);
+		if (!profile) {
+			U_LOG_IFL_W(level, "Could not determine profile for %s (model: %s, class: %s)", serial.c_str(),
+			            model.c_str(), device_class.c_str());
+			continue;
+		}
+
+		const InputClass *input_class = find_input_class(profile);
+		if (!input_class) {
+			U_LOG_IFL_W(level, "Unknown input class '%s' for %s", profile, serial.c_str());
+			continue;
+		}
+
+		// Find first free controller slot
+		size_t device_idx = 0;
+		for (; device_idx < MAX_CONTROLLERS; ++device_idx) {
+			if (!ctx->controller[device_idx])
+				break;
+		}
+		if (device_idx == MAX_CONTROLLERS) {
+			U_LOG_IFL_W(level, "No free controller slots for pre-registration");
+			break;
+		}
+
+		// Create placeholder device with null driver
+		auto *dev = new ControllerDevice(device_idx + 1,
+		                                 DeviceBuilder{ctx->shared_from_this(), nullptr, serial.c_str(),
+		                                               STEAM_INSTALL_DIR});
+
+		// Configure input class, output, and binding profiles
+		dev->name = input_class->name;
+		dev->set_input_class(input_class);
+		dev->init_output();
+		dev->pre_registered = true;
+
+		// Set device type from config. Must be set now (not during Activate) because
+		// changing device_type after IPC clients connect causes shared memory mismatch.
+		if (device_class == "generic_tracker") {
+			dev->device_type = XRT_DEVICE_TYPE_GENERIC_TRACKER;
+		} else if (device_class == "controller") {
+			std::string role;
+			if (!dev_config.isInvalid()) {
+				role = dev_config["tracked_controller_role"].asString();
+			}
+			if (role == "left_hand") {
+				dev->device_type = XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER;
+			} else if (role == "right_hand") {
+				dev->device_type = XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER;
+			} else {
+				dev->device_type = XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER;
+			}
+		}
+
+		// Set binding profiles
+		switch (input_class->name) {
+		case XRT_DEVICE_VIVE_WAND:
+			dev->binding_profiles = vive_binding_profiles_wand;
+			dev->binding_profile_count = vive_binding_profiles_wand_count;
+			break;
+		case XRT_DEVICE_INDEX_CONTROLLER:
+			dev->binding_profiles = vive_binding_profiles_index;
+			dev->binding_profile_count = vive_binding_profiles_index_count;
+			break;
+		case XRT_DEVICE_FLIPVR:
+			dev->binding_profiles = vive_binding_profiles_flipvr;
+			dev->binding_profile_count = vive_binding_profiles_flipvr_count;
+			break;
+		default: break;
+		}
+
+		ctx->controller[device_idx] = dev;
+		U_LOG_IFL_I(level, "Pre-registered device %s as %s at slot %zu", serial.c_str(), profile, device_idx);
+	}
+}
+
 extern "C" enum xrt_result
 steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices **out_xsysd)
 {
@@ -926,6 +1149,9 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices **out
 	svrs->ctx = Context::create(STEAM_INSTALL_DIR, steamvr, std::move(drivers));
 	if (svrs->ctx == nullptr)
 		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
+
+	// Pre-register known devices before discovery so they're included in xrt_system_devices
+	preregister_devices(svrs->ctx.get(), level);
 
 	U_LOG_IFL_I(level, "Lighthouse initialization complete, giving time to setup connected devices...");
 	// RunFrame needs to be called to detect controllers

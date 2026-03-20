@@ -32,7 +32,17 @@
 #include <mutex>
 
 class Context;
-struct InputClass;
+
+struct InputClass
+{
+	xrt_device_name name;
+	const std::vector<xrt_input_name> poses;
+	const std::unordered_map<std::string_view, xrt_input_name> non_poses;
+};
+
+//! Look up an InputClass by profile name (e.g. "index_controller", "vive_tracker").
+const InputClass *
+find_input_class(std::string_view profile_name);
 
 struct DeviceBuilder
 {
@@ -70,6 +80,9 @@ class Device : public xrt_device
 public:
 	m_relation_history *relation_hist;
 
+	//! Whether this device was pre-registered and not yet activated by the proprietary driver.
+	bool pre_registered{false};
+
 	virtual ~Device();
 
 	xrt_input *
@@ -97,6 +110,10 @@ public:
 
 	xrt_result_t
 	get_battery_status(bool *out_present, bool *out_charging, float *out_charge);
+
+	//! Set the proprietary driver handle (used for late-activating pre-registered devices).
+	void
+	set_driver(vr::ITrackedDeviceServerDriver *new_driver);
 
 protected:
 	Device(const DeviceBuilder &builder);
@@ -256,10 +273,14 @@ public:
 	void
 	set_active_hand(xrt_hand hand);
 
-protected:
 	void
 	set_input_class(const InputClass *input_class);
 
+	//! Pre-initialize the haptic output so output_count is stable before IPC clients connect.
+	void
+	init_output();
+
+protected:
 	void
 	generate_palm_pose_offset(std::span<const vr::VRBoneTransform_t> bones, xrt_hand hand);
 
