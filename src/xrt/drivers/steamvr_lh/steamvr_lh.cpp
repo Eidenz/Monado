@@ -382,17 +382,42 @@ Context::run_frame()
 			to_activate.swap(pending_activations);
 		}
 		for (auto &pa : to_activate) {
-			CTX_INFO("Activating pre-registered device at slot %zu (serial: %s)", pa.slot,
-			         controller[pa.slot]->serial);
-			controller[pa.slot]->set_driver(pa.driver);
-			controller[pa.slot]->pre_registered = false;
-			vr::EVRInitError err = pa.driver->Activate(pa.slot + 1);
+			size_t activate_slot = pa.slot;
+			xrt_device_type activating_type = controller[pa.slot]->device_type;
+
+			// If there's a pre-registered controller of the same role in an earlier slot,
+			// swap into that slot so we inherit its role assignment without needing
+			// IPC clients to detect a role change (which they don't poll for).
+			for (size_t i = 0; i < activate_slot; ++i) {
+				if (controller[i] && controller[i]->pre_registered &&
+				    controller[i]->device_type == activating_type) {
+					CTX_INFO("Swapping slot %zu (%s) with slot %zu (%s) for role inheritance",
+					         pa.slot, controller[pa.slot]->serial, i, controller[i]->serial);
+
+					// Swap controller pointers
+					std::swap(controller[i], controller[pa.slot]);
+
+					// Also swap in xsysd->xdevs (offset by 1 for HMD at index 0)
+					if (xsysd) {
+						std::swap(xsysd->xdevs[i + 1], xsysd->xdevs[pa.slot + 1]);
+					}
+
+					activate_slot = i;
+					break;
+				}
+			}
+
+			CTX_INFO("Activating pre-registered device at slot %zu (serial: %s)", activate_slot,
+			         controller[activate_slot]->serial);
+			controller[activate_slot]->set_driver(pa.driver);
+			controller[activate_slot]->pre_registered = false;
+			vr::EVRInitError err = pa.driver->Activate(activate_slot + 1);
 			if (err != vr::VRInitError_None) {
 				CTX_ERR("Activating pre-registered controller at slot %zu failed: error %u",
-				        pa.slot, err);
+				        activate_slot, err);
 			}
-			CTX_INFO("Post-activation slot %zu: device_type=%d", pa.slot,
-			         (int)controller[pa.slot]->device_type);
+			CTX_INFO("Post-activation slot %zu: device_type=%d", activate_slot,
+			         (int)controller[activate_slot]->device_type);
 		}
 	}
 
@@ -906,6 +931,9 @@ get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 	if (update_gen) {
 		out_roles->generation_id++;
 
+		U_LOG_I("get_roles: role change detected! gen=%lu left=%d->%d right=%d->%d",
+		        (unsigned long)out_roles->generation_id, out_roles->left, left, out_roles->right, right);
+
 		out_roles->left = left;
 		out_roles->right = right;
 		out_roles->gamepad = gamepad;
@@ -1243,6 +1271,10 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices **out
 			xsysd->xdevs[xsysd->xdev_count++] = svrs->ctx->controller[i];
 		}
 	}
+
+	// Give context a reference to xsysd so run_frame() can update xdevs
+	// when swapping controller slots during late activation.
+	svrs->ctx->xsysd = xsysd;
 
 	*out_xsysd = xsysd;
 
