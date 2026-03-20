@@ -1,5 +1,32 @@
 # Monado - XR Runtime (XRT)
 
+## Quick Install (SteamVR Lighthouse + Envision)
+
+```bash
+# Build
+cmake -B cbuild -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_INSTALL_PREFIX=/usr \
+  -DXRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE=ON \
+  -DXRT_BUILD_DRIVER_SURVIVE=OFF
+cmake --build cbuild -j$(nproc)
+
+# Install (stop Monado services first, restart socket after)
+sudo systemctl stop monado.service monado.socket
+sudo cmake --install cbuild
+sudo systemctl start monado.socket
+```
+
+This fork adds **fake hotplug** for the SteamVR Lighthouse driver: devices from
+your `lighthousedb.json` are pre-registered at startup so trackers (and
+controllers) can be powered on after an app is already running — no restart
+needed.
+
+Set `LH_PREREGISTER_SERIALS` to limit which devices are pre-registered
+(comma-separated serials, e.g. `LHR-AAA,LHR-BBB`). If unset, all known devices
+are pre-registered.
+
+---
+
 <!--
 Copyright 2018-2021, Collabora, Ltd.
 
