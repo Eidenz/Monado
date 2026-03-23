@@ -1855,6 +1855,7 @@
 			"type": "tracked_controller",
 			"monado_device": "XRT_DEVICE_LOGITECH_MX_INK_CONTROLLER",
 			"extension": "LOGITECH_mx_ink_stylus_interaction",
+			"extended_by": ["grip_surface", "ext/hand_interaction_poses"],
 			"subaction_paths": [
 				"/user/hand/left",
 				"/user/hand/right"
