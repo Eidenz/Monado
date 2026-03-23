@@ -430,6 +430,7 @@ if(XRT_BUILD_DRIVER_HANDTRACKING)
 		drv_ht
 		PRIVATE
 			xrt-interfaces
+			tracking-includes
 			aux_os
 			aux_util
 			aux_math

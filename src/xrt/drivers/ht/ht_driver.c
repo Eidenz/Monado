@@ -28,9 +28,7 @@
 
 #include "tracking/t_hand_tracking.h"
 
-// Save me, Obi-Wan!
-
-#include "../../tracking/hand/mercury/hg_interface.h"
+#include "hand/mercury/hg_interface.h"
 
 #ifdef XRT_BUILD_DRIVER_DEPTHAI
 #include "../depthai/depthai_interface.h"
