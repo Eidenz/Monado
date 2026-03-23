@@ -16,6 +16,8 @@
 #include "tracking/t_hand_tracking.h"
 #include "tracking/t_camera_models.h"
 
+#include "onnx/onnx_wrapper.hpp"
+
 #include "xrt/xrt_defines.h"
 #include "xrt/xrt_frame.h"
 #include "xrt/xrt_tracking.h"
@@ -53,6 +55,7 @@ namespace xrt::tracking::hand::mercury {
 
 using namespace xrt::auxiliary::util;
 using namespace xrt::auxiliary::math;
+using namespace xrt::auxiliary::onnx;
 
 #define HG_TRACE(hgt, ...) U_LOG_IFL_T(hgt->log_level, __VA_ARGS__)
 #define HG_DEBUG(hgt, ...) U_LOG_IFL_D(hgt->log_level, __VA_ARGS__)
@@ -152,13 +155,9 @@ struct model_input_wrap
 	const char *name;
 };
 
-struct onnx_wrap
+struct onnx_state
 {
-	const OrtApi *api = nullptr;
-	OrtEnv *env = nullptr;
-
-	OrtMemoryInfo *meminfo = nullptr;
-	OrtSession *session = nullptr;
+	std::unique_ptr<OnnxWrapper> wrap = {};
 
 	std::vector<model_input_wrap> wraps = {};
 };
@@ -200,8 +199,8 @@ struct keypoint_estimation_run_info
 struct ht_view
 {
 	HandTracking *hgt;
-	onnx_wrap detection;
-	onnx_wrap keypoint[2];
+	onnx_state detection;
+	onnx_state keypoint[2];
 	int view;
 
 	struct t_camera_extra_info_one_view camera_info;
@@ -363,19 +362,19 @@ public:
 
 
 void
-init_hand_detection(HandTracking *hgt, onnx_wrap *wrap);
+init_hand_detection(HandTracking *hgt, onnx_state *wrap);
 
 void
 run_hand_detection(void *ptr);
 
 void
-init_keypoint_estimation(HandTracking *hgt, onnx_wrap *wrap);
+init_keypoint_estimation(HandTracking *hgt, onnx_state *wrap);
 
 void
 run_keypoint_estimation(void *ptr);
 
 void
-release_onnx_wrap(onnx_wrap *wrap);
+release_onnx_state(onnx_state *wrap);
 
 
 void

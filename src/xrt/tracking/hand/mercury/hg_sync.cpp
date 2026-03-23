@@ -676,16 +676,16 @@ HandTracking::~HandTracking()
 
 	xrt_frame_reference(&this->visualizers.old_frame, NULL);
 
-	release_onnx_wrap(&this->views[0].keypoint[0]);
-	release_onnx_wrap(&this->views[0].keypoint[1]);
-	release_onnx_wrap(&this->views[0].detection);
-
-
-	release_onnx_wrap(&this->views[1].keypoint[0]);
-	release_onnx_wrap(&this->views[1].keypoint[1]);
-	release_onnx_wrap(&this->views[1].detection);
-
+	// Stop all the workers before we release the ONNX state
 	u_worker_group_reference(&this->group, NULL);
+
+	release_onnx_state(&this->views[0].keypoint[0]);
+	release_onnx_state(&this->views[0].keypoint[1]);
+	release_onnx_state(&this->views[0].detection);
+
+	release_onnx_state(&this->views[1].keypoint[0]);
+	release_onnx_state(&this->views[1].keypoint[1]);
+	release_onnx_state(&this->views[1].detection);
 
 	t_stereo_camera_calibration_reference(&this->calib, NULL);
 

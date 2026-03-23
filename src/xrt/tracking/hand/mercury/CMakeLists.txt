@@ -20,6 +20,7 @@ target_link_libraries(
 		aux_tracking
 		aux_os
 		aux_util
+		aux_onnx
 		xrt-optimized-math
 		${OpenCV_LIBRARIES}
 		ONNXRuntime::ONNXRuntime
@@ -39,6 +40,7 @@ target_link_libraries(
 		aux_tracking
 		aux_os
 		aux_util
+		aux_onnx
 		xrt-optimized-math
 		${OpenCV_LIBRARIES}
 		ONNXRuntime::ONNXRuntime # no, wrong
@@ -55,6 +57,7 @@ target_link_libraries(
 		aux_tracking
 		aux_os
 		aux_util
+		aux_onnx
 		ONNXRuntime::ONNXRuntime
 		t_ht_mercury_kine_lm
 		t_ht_mercury_model
