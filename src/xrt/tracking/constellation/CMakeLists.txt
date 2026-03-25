@@ -12,6 +12,7 @@ add_library(
 	led_search_model.h
 	pose_metrics.c
 	pose_metrics.h
+	pose_optimize.h
 	t_rift_blobwatch.c
 	t_rift_blobwatch.h
 	lambdatwist/cubic.h
@@ -31,3 +32,9 @@ target_link_libraries(
 		aux_util
 		aux_math
 	)
+
+if(XRT_HAVE_OPENCV)
+	target_include_directories(constellation PRIVATE ${OpenCV_INCLUDE_DIRS})
+	target_link_libraries(constellation PRIVATE ${OpenCV_LIBRARIES})
+	target_sources(constellation PRIVATE pose_optimize.cpp)
+endif()
