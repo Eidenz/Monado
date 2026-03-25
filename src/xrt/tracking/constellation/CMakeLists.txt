@@ -3,6 +3,15 @@
 
 add_library(
 	constellation STATIC
+	camera_model.h
+	correspondence_search.c
+	correspondence_search.h
+	image_point_sort.cpp
+	image_point_sort.h
+	led_search_model.c
+	led_search_model.h
+	pose_metrics.c
+	pose_metrics.h
 	t_rift_blobwatch.c
 	t_rift_blobwatch.h
 	lambdatwist/cubic.h
@@ -13,4 +22,12 @@ add_library(
 	lambdatwist/refine_lambda.h
 	lambdatwist/vec.h
 	)
-target_link_libraries(constellation PRIVATE xrt-interfaces aux_os aux_util aux_math)
+target_link_libraries(
+	constellation
+	PRIVATE
+		xrt-interfaces
+		tracking-includes
+		aux_os
+		aux_util
+		aux_math
+	)
