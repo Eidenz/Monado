@@ -7,6 +7,8 @@
     # remove the packages from the ...ToUpstream lists below
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     flake-parts.url = "github:hercules-ci/flake-parts";
+    # Allow the use of git dependencies
+    nixpkgs-xr.url = "github:nix-community/nixpkgs-xr";
   };
 
   outputs =
@@ -19,7 +21,12 @@
         "aarch64-darwin"
       ];
       perSystem =
-        { pkgs, lib, ... }:
+        {
+          system,
+          pkgs,
+          lib,
+          ...
+        }:
         let
           devTools = with pkgs; [
             # Tools that are required in order to develop with Monado
@@ -30,7 +37,7 @@
             clang-tools
             cmake-format
             codespell
-            # Reccomended for debugging
+            # Recommended for debugging
             gdb
             lldb
             vulkan-tools
@@ -50,6 +57,10 @@
           buildInputsToUpstream = with pkgs; [
             # If there are any buildInputs that are not in nixpkgs, add them here
             # buildInputs are any packages that are needed at runtime (i.e. dependencies)
+
+            # Survive has not received a new tagged release in years, so use the
+            # version provided by nixpkgs-xr instead
+            (inputs.nixpkgs-xr.packages.${system}.libsurvive)
           ];
 
           package = pkgs.monado.overrideAttrs (oldAttrs: {

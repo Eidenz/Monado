@@ -208,7 +208,6 @@ rgb_estimate_system(struct xrt_builder *xb, cJSON *config, struct xrt_prober *xp
 {
 	U_ZERO(estimate);
 
-	struct u_builder_search_results results = {0};
 	struct xrt_prober_device **xpdevs = NULL;
 	size_t xpdev_count = 0;
 	xrt_result_t xret = XRT_SUCCESS;
@@ -253,6 +252,7 @@ rgb_estimate_system(struct xrt_builder *xb, cJSON *config, struct xrt_prober *xp
 	    {PSMV_VID, PSMV_PID_ZCM1, XRT_BUS_TYPE_BLUETOOTH},
 	    {PSMV_VID, PSMV_PID_ZCM2, XRT_BUS_TYPE_BLUETOOTH},
 	};
+	struct u_builder_search_results results = {0};
 
 	u_builder_search(xp, xpdevs, xpdev_count, move_filters, ARRAY_SIZE(move_filters), &results);
 
@@ -285,7 +285,6 @@ rgb_open_system_impl(struct xrt_builder *xb,
                      struct xrt_frame_context *xfctx,
                      struct u_builder_roles_helper *ubrh)
 {
-	struct u_builder_search_results results = {0};
 	struct xrt_prober_device **xpdevs = NULL;
 	size_t xpdev_count = 0;
 	xrt_result_t xret = XRT_SUCCESS;
@@ -347,12 +346,12 @@ rgb_open_system_impl(struct xrt_builder *xb,
 		head = simulated_hmd_create(SIMULATED_MOVEMENT_WOBBLE, &center);
 	}
 
-
 #ifdef XRT_BUILD_DRIVER_PSMV
 	static struct u_builder_search_filter move_filters[2] = {
 	    {PSMV_VID, PSMV_PID_ZCM1, XRT_BUS_TYPE_BLUETOOTH},
 	    {PSMV_VID, PSMV_PID_ZCM2, XRT_BUS_TYPE_BLUETOOTH},
 	};
+	struct u_builder_search_results results = {0};
 
 	u_builder_search(xp, xpdevs, xpdev_count, move_filters, ARRAY_SIZE(move_filters), &results);
 

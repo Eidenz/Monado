@@ -574,3 +574,9 @@ rift_sensor_get_calibration(struct rift_sensor *sensor, struct t_camera_calibrat
 {
 	*out_calibration = sensor->calibration;
 }
+
+void
+rift_sensor_setup_frame_timestamp_callback(struct rift_sensor *sensor, struct rift_hmd *hmd)
+{
+	uvc_fs_set_source_timestamp_callback(sensor->frame_server, rift_hmd_frame_timestamp_callback, hmd);
+}

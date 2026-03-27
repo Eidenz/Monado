@@ -834,10 +834,15 @@ struct rift_hmd
 	struct os_hid_device *radio_dev;
 
 	struct os_thread_helper sensor_thread;
-	bool processed_sample_packet;
+
 	uint32_t last_remote_sample_time_us;
 	timepoint_ns last_remote_sample_time_ns;
 	timepoint_ns last_sample_local_timestamp_ns;
+
+	uint32_t last_remote_exposure_time_us;
+	timepoint_ns last_remote_exposure_time_ns;
+	//! The time of the last exposure, locked by sensor_thread.
+	timepoint_ns last_local_exposure_time_ns;
 
 	struct m_imu_3dof fusion;
 	struct m_clock_windowed_skew_tracker *clock_tracker;

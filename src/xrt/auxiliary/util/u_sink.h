@@ -10,9 +10,12 @@
 
 #pragma once
 
-#include "os/os_threading.h"
 #include "xrt/xrt_frame.h"
 #include "xrt/xrt_tracking.h"
+
+#include "os/os_threading.h"
+
+#include "tracking/t_constellation.h"
 
 
 #ifdef __cplusplus
@@ -279,6 +282,28 @@ void
 u_imu_sink_force_monotonic_create(struct xrt_frame_context *xfctx,
                                   struct xrt_imu_sink *downstream,
                                   struct xrt_imu_sink **out_imu_sink);
+
+
+/*!
+ * @public @memberof xrt_blob_sink
+ * @see xrt_frame_context
+ * Visualizes blobs by rendering them to a frame and pushing that frame to a downstream sink.
+ * Useful for debugging blob detection.
+ *
+ * @param[in] xfctx The frame context to add this sink to.
+ * @param[in] downstream_blob_sink The blob sink to forward the blobs to.
+ * @param[in] downstream_frame_sink The frame sink to push the visualized frames to.
+ * @param[in] frame_width The width of the frames to render the blobs to.
+ * @param[in] frame_height The height of the frames to render the blobs to.
+ * @param[out] out_xbs The created blob sink.
+ */
+void
+u_sink_blob_visualizer_create(struct xrt_frame_context *xfctx,
+                              struct t_blob_sink *downstream_blob_sink,
+                              struct u_sink_debug *downstream_frame_sink,
+                              uint32_t frame_width,
+                              uint32_t frame_height,
+                              struct t_blob_sink **out_xbs);
 
 
 #ifdef __cplusplus

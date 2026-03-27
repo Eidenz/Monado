@@ -138,17 +138,10 @@ rift_sensor_thread_tick(struct rift_hmd *hmd)
 			break;
 		}
 
-		if (!hmd->processed_sample_packet) {
-			hmd->last_remote_sample_time_us = report.sample_timestamp;
-			hmd->processed_sample_packet = true;
-		}
-
 		// wrap-around intentional and A-OK, given these are unsigned
 		uint32_t remote_sample_delta_us = report.sample_timestamp - hmd->last_remote_sample_time_us;
-
 		hmd->last_remote_sample_time_us = report.sample_timestamp;
-
-		hmd->last_remote_sample_time_ns += (int64_t)remote_sample_delta_us * OS_NS_PER_USEC;
+		hmd->last_remote_sample_time_ns += (timepoint_ns)remote_sample_delta_us * OS_NS_PER_USEC;
 
 		m_clock_windowed_skew_tracker_push(hmd->clock_tracker, recv_time_ns, hmd->last_remote_sample_time_ns);
 
@@ -157,6 +150,18 @@ rift_sensor_thread_tick(struct rift_hmd *hmd)
 		if (!m_clock_windowed_skew_tracker_to_local(hmd->clock_tracker, hmd->last_remote_sample_time_ns,
 		                                            &local_timestamp_ns)) {
 			break;
+		}
+
+		// Update the exposure time
+		uint32_t remote_exposure_delta_us = report.tracking_timestamp - hmd->last_remote_exposure_time_us;
+		hmd->last_remote_exposure_time_us = report.tracking_timestamp;
+		hmd->last_remote_exposure_time_ns += (timepoint_ns)remote_exposure_delta_us * OS_NS_PER_USEC;
+
+		if (remote_exposure_delta_us > 0) {
+			os_thread_helper_lock(&hmd->sensor_thread);
+			m_clock_windowed_skew_tracker_to_local(hmd->clock_tracker, hmd->last_remote_exposure_time_ns,
+			                                       &hmd->last_local_exposure_time_ns);
+			os_thread_helper_unlock(&hmd->sensor_thread);
 		}
 
 		if (report.num_samples > 1)
@@ -836,6 +841,7 @@ rift_devices_create(struct os_hid_device *hmd_dev,
 	u_var_add_f32(hmd, &hmd->extra_display_info.icd, "ICD");
 	u_var_add_ro_i64_ns(hmd, &hmd->last_remote_sample_time_ns, "last_remote_sample_time_ns");
 	u_var_add_ro_i64_ns(hmd, &hmd->last_sample_local_timestamp_ns, "last_sample_local_timestamp_ns");
+	u_var_add_ro_i64_ns(hmd, &hmd->last_remote_exposure_time_ns, "last_remote_exposure_time_ns");
 	u_var_add_f32(hmd, &hmd->icd_override_m, "icd_override_m");
 	u_var_add_bool(hmd, &hmd->presence, "presence");
 
@@ -881,6 +887,23 @@ rift_get_radio_id(struct rift_hmd *hmd, uint8_t out_radio_id[5])
 	}
 
 	memcpy(out_radio_id, hmd->radio_address, sizeof(hmd->radio_address));
+
+	return true;
+}
+
+bool
+rift_hmd_frame_timestamp_callback(void *user_data, timepoint_ns *timestamp, uint32_t pts)
+{
+	struct rift_hmd *hmd = (struct rift_hmd *)user_data;
+
+	// @todo: We can do some fancy logic with the pts where we try to match older frames based on PTS changes, but
+	//        if things are running at full speed, this callback should trigger 1-2ms after the exposure on all
+	//        cameras, so that can be added if this turns out to become a problem, as of now, just pulling the
+	//        latest exposure timestamp should be fine.
+
+	os_thread_helper_lock(&hmd->sensor_thread);
+	*timestamp = hmd->last_local_exposure_time_ns;
+	os_thread_helper_unlock(&hmd->sensor_thread);
 
 	return true;
 }

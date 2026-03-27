@@ -23,6 +23,8 @@ add_library(
 	u_bitwise.h
 	u_builders.c
 	u_builders.h
+	u_cobs.c
+	u_cobs.h
 	u_debug.c
 	u_debug.h
 	u_deque.cpp
@@ -208,6 +210,7 @@ endif()
 add_library(
 	aux_util_sink STATIC
 	u_sink.h
+	u_sink_blob_visualizer.c
 	u_sink_combiner.c
 	u_sink_force_genlock.c
 	u_sink_converter.c

@@ -11,6 +11,10 @@
 #include "xrt/xrt_prober.h"
 #include "xrt/xrt_frameserver.h"
 
+#include "tracking/t_constellation.h"
+
+#include "constellation/t_rift_blobwatch.h"
+
 #include "util/u_builders.h"
 #include "util/u_debug.h"
 #include "util/u_misc.h"
@@ -26,6 +30,14 @@
 #include "rift_sensor/rift_sensor_interface.h"
 #endif
 
+
+// Require a pixel of this brightness to be included in a blob at all, to help filter out general noise.
+#define RIFT_SENSOR_BLOB_REQUIRED_THRESHOLD 0x40
+// On CV1, the camera tends to detect very little noise, so we can be much more lenient with what pixels are considered
+// for being a blob.
+#define RIFT_SENSOR_PIXEL_THRESHOLD_CV1 0x24
+// On DK2, the camera sees much more noise, so we need to be much stricter about what pixels get included as a blob.
+#define RIFT_SENSOR_PIXEL_THRESHOLD_DK2 0x7f
 
 /*
  *
@@ -45,6 +57,9 @@ struct rift_builder
 	struct rift_sensor_context *sensor_context;
 	struct rift_sensor **sensors;
 	size_t num_sensors;
+
+	struct t_blobwatch **blobwatches;
+	struct u_sink_debug *blobwatch_debug_sinks;
 #endif
 };
 
@@ -256,7 +271,9 @@ rift_open_system_impl(struct xrt_builder *xb,
 		if (num_sensors < 0) {
 			RIFT_WARN(rb, "Rift sensor context get sensors failed with code %d", (int)num_sensors);
 		}
-		rb->num_sensors = (size_t)num_sensors;
+
+		rb->blobwatches = U_TYPED_ARRAY_CALLOC(struct t_blobwatch *, num_sensors);
+		rb->blobwatch_debug_sinks = U_TYPED_ARRAY_CALLOC(struct u_sink_debug, num_sensors);
 
 		for (ssize_t i = 0; i < num_sensors; i++) {
 			struct rift_sensor *sensor = rb->sensors[i];
@@ -266,11 +283,48 @@ rift_open_system_impl(struct xrt_builder *xb,
 				continue;
 			}
 
+			rift_sensor_setup_frame_timestamp_callback(sensor, rb->hmd);
+
+			struct u_sink_debug *debug_sink = &rb->blobwatch_debug_sinks[rb->num_sensors];
+			struct t_blobwatch **blobwatch = &rb->blobwatches[rb->num_sensors];
+
+			u_sink_debug_init(debug_sink);
+
+			struct t_blob_sink *blob_sink;
+			u_sink_blob_visualizer_create(xfctx, NULL, debug_sink, RIFT_SENSOR_WIDTH, RIFT_SENSOR_HEIGHT,
+			                              &blob_sink);
+
+			struct xrt_frame_sink *frame_sink;
+			struct t_rift_blobwatch_params params = {
+			    .pixel_threshold = variant == RIFT_VARIANT_CV1 ? RIFT_SENSOR_PIXEL_THRESHOLD_CV1
+			                                                   : RIFT_SENSOR_PIXEL_THRESHOLD_DK2,
+			    .blob_required_threshold = RIFT_SENSOR_BLOB_REQUIRED_THRESHOLD,
+			    .max_match_dist = 50.0f,
+			};
+			ret = t_rift_blobwatch_create(&params, xfctx, blob_sink, &frame_sink, blobwatch);
+			if (ret != 0) {
+				RIFT_WARN(rb, "Failed to create Rift blobwatch for sensor %zd with code %d", i, ret);
+				continue;
+			}
+
+			u_sink_create_format_converter(xfctx, XRT_FORMAT_L8, frame_sink, &frame_sink);
+
+			if (!u_sink_simple_queue_create(xfctx, frame_sink, &frame_sink)) {
+				RIFT_WARN(rb, "Failed to create Rift blobwatch queue for sensor %zd", i);
+				continue;
+			}
+
 			struct xrt_fs *fs = rift_sensor_get_frame_server(sensor);
-			if (!xrt_fs_stream_start(fs, NULL, XRT_FS_CAPTURE_TYPE_TRACKING, 0)) {
+
+			if (!xrt_fs_stream_start(fs, frame_sink, XRT_FS_CAPTURE_TYPE_TRACKING, 0)) {
 				RIFT_WARN(rb, "Failed to start Rift sensor frame server stream for sensor %zd", i);
 				continue;
 			}
+
+			u_var_add_sink_debug(rb, debug_sink, "Sensor Blobwatch");
+			RIFT_DEBUG(rb, "Rift sensor %zd initialized and streaming at index %zd", i, rb->num_sensors);
+
+			rb->num_sensors++;
 
 			// @note radio_id may be null on DK2, but DK2 doesn't use the radio ID so this is fine.
 			ret = rift_sensor_enable_exposure_sync(rb->sensor_context, sensor, radio_id);
@@ -302,6 +356,23 @@ rift_destroy(struct xrt_builder *xb)
 #ifdef XRT_BUILD_DRIVER_RIFT_SENSOR
 	if (rb->sensors) {
 		free(rb->sensors);
+	}
+
+	if (rb->blobwatch_debug_sinks) {
+		for (size_t i = 0; i < rb->num_sensors; i++) {
+			u_sink_debug_destroy(&rb->blobwatch_debug_sinks[i]);
+		}
+
+		free(rb->blobwatch_debug_sinks);
+		rb->blobwatch_debug_sinks = NULL;
+	}
+
+	if (rb->blobwatches) {
+		// @note The blobwatches are freed when their frame nodes are destroyed, so we don't need to destroy
+		// them here, just free the array.
+
+		free(rb->blobwatches);
+		rb->blobwatches = NULL;
 	}
 #endif
 

@@ -39,6 +39,8 @@ struct xrt_system_devices;
 struct xrt_space_overseer;
 struct xrt_session_event_sink;
 struct os_hid_device;
+struct os_serial_device;
+struct os_serial_parameters;
 
 /*!
  * The maximum number of devices that a single
@@ -241,6 +243,21 @@ struct xrt_prober
 	                          struct os_hid_device **out_hid_dev);
 
 	/*!
+	 * Open a serial device using native serial support.
+	 *
+	 * @param xp Pointer to self
+	 * @param xpdev prober device
+	 * @param parameters Serial parameters to use when opening the device
+	 * @param[out] out_hid_dev instance of @ref os_hid_device for the given interface
+	 *
+	 * @return 0 on success, <0 on error.
+	 */
+	int (*open_serial_device)(struct xrt_prober *xp,
+	                          struct xrt_prober_device *xpdev,
+	                          const struct os_serial_parameters *parameters,
+	                          struct os_serial_device **out_serial_dev);
+
+	/*!
 	 * Opens the selected video device and returns a @ref xrt_fs, does not
 	 * start it.
 	 */
@@ -414,6 +431,22 @@ xrt_prober_open_hid_interface(struct xrt_prober *xp,
                               struct os_hid_device **out_hid_dev)
 {
 	return xp->open_hid_interface(xp, xpdev, iface, out_hid_dev);
+}
+
+/*!
+ * @copydoc xrt_prober::open_serial_device
+ *
+ * Helper function for @ref xrt_prober::open_serial_device.
+ *
+ * @public @memberof xrt_prober
+ */
+XRT_NONNULL_ALL static inline int
+xrt_prober_open_serial_device(struct xrt_prober *xp,
+                              struct xrt_prober_device *xpdev,
+                              const struct os_serial_parameters *parameters,
+                              struct os_serial_device **out_serial_dev)
+{
+	return xp->open_serial_device(xp, xpdev, parameters, out_serial_dev);
 }
 
 /*!

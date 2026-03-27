@@ -761,6 +761,8 @@ enum xrt_device_name
 	XRT_DEVICE_BLUBUR_S1,
 	XRT_DEVICE_PSVR2,
 	XRT_DEVICE_FLIPVR,
+	XRT_DEVICE_CONTACTGLOVE2,
+	XRT_DEVICE_CONTACTGLOVE2_WITH_MAGNETRA2,
 
 	// Other misc stuff.
 	XRT_DEVICE_HAND_TRACKER,
@@ -1392,6 +1394,21 @@ enum xrt_input_name
 	XRT_INPUT_MX_INK_DOCKED                                     = XRT_INPUT_NAME(0x1408, BOOLEAN),
 	XRT_INPUT_MX_INK_TIP_FORCE                                  = XRT_INPUT_NAME(0x1409, VEC1_ZERO_TO_ONE),
 	XRT_INPUT_MX_INK_TIP_POSE                                   = XRT_INPUT_NAME(0x140A, POSE),
+
+	XRT_INPUT_MAGNETRA2_A_CLICK                                 = XRT_INPUT_NAME(0X1500, BOOLEAN),
+	XRT_INPUT_MAGNETRA2_B_CLICK                                 = XRT_INPUT_NAME(0X1501, BOOLEAN),
+	XRT_INPUT_MAGNETRA2_X_CLICK                                 = XRT_INPUT_NAME(0X1502, BOOLEAN),
+	XRT_INPUT_MAGNETRA2_Y_CLICK                                 = XRT_INPUT_NAME(0X1503, BOOLEAN),
+	XRT_INPUT_MAGNETRA2_SYSTEM_CLICK                            = XRT_INPUT_NAME(0X1504, BOOLEAN),
+	XRT_INPUT_MAGNETRA2_PAIRING_CLICK                           = XRT_INPUT_NAME(0X1505, BOOLEAN),
+	XRT_INPUT_MAGNETRA2_TRIGGER_VALUE                           = XRT_INPUT_NAME(0X1506, VEC1_ZERO_TO_ONE),
+	XRT_INPUT_MAGNETRA2_TRIGGER_CLICK                           = XRT_INPUT_NAME(0X1507, BOOLEAN),
+	XRT_INPUT_MAGNETRA2_SQUEEZE_VALUE                           = XRT_INPUT_NAME(0X1508, VEC1_ZERO_TO_ONE),
+	XRT_INPUT_MAGNETRA2_THUMBSTICK                              = XRT_INPUT_NAME(0X1509, VEC2_MINUS_ONE_TO_ONE),
+	XRT_INPUT_MAGNETRA2_THUMBSTICK_CLICK                        = XRT_INPUT_NAME(0X150A, BOOLEAN),
+	XRT_INPUT_MAGNETRA2_GRIP_POSE                               = XRT_INPUT_NAME(0X150B, POSE),
+	XRT_INPUT_MAGNETRA2_AIM_POSE                                = XRT_INPUT_NAME(0X150C, POSE),
+
 	// clang-format on
 };
 
@@ -1627,6 +1644,9 @@ enum xrt_output_name
 
 	// XR_KHR_generic_controller
 	XRT_OUTPUT_NAME_GENERIC_VIBRATION                           = XRT_OUTPUT_NAME(0x0B00, VIBRATION),
+
+	XRT_OUTPUT_NAME_CONTACTGLOVE2_HAPTIC                        = XRT_OUTPUT_NAME(0x0C00, VIBRATION),
+
 	// clang-format on
 	// Make sure to add a trailing comma to any new entries.
 };

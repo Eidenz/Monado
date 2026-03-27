@@ -324,6 +324,23 @@ on_f32_arr(const char *name, void *ptr)
 }
 
 static void
+on_u16_arr(const char *name, void *ptr)
+{
+	struct u_var_u16_arr *u16_arr = ptr;
+
+	igDragScalarN(         //
+	    name,              //
+	    ImGuiDataType_U16, //
+	    u16_arr->data,     //
+	    u16_arr->length,   //
+	    0.2,               //
+	    NULL,              //
+	    NULL,              //
+	    NULL,              //
+	    1.0f);             //
+}
+
+static void
 on_timing(const char *name, void *ptr)
 {
 	struct u_var_timing *frametime_arr = ptr;
@@ -675,6 +692,7 @@ on_elem(struct u_var_info *info, void *priv)
 	case U_VAR_KIND_RGB_U8: on_color_rgb_u8(name, ptr); break;
 	case U_VAR_KIND_U8: igDragScalar(name, ImGuiDataType_U8, ptr, drag_speed, NULL, NULL, NULL, power); break;
 	case U_VAR_KIND_U16: igDragScalar(name, ImGuiDataType_U16, ptr, drag_speed, NULL, NULL, NULL, power); break;
+	case U_VAR_KIND_U16_ARR: on_u16_arr(name, ptr); break;
 	case U_VAR_KIND_U64: igDragScalar(name, ImGuiDataType_U64, ptr, drag_speed, NULL, NULL, NULL, power); break;
 	case U_VAR_KIND_I32: igInputInt(name, (int *)ptr, 1, 10, i_flags); break;
 	case U_VAR_KIND_I64: igInputScalar(name, ImGuiDataType_S64, ptr, NULL, NULL, NULL, i_flags); break;

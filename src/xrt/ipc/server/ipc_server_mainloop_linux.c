@@ -40,6 +40,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
+#include <signal.h>
 #include <assert.h>
 #include <limits.h>
 #include "util/u_debug.h"
@@ -175,6 +176,27 @@ init_listen_socket(struct ipc_server_mainloop *ml)
 	return fd;
 }
 
+static volatile sig_atomic_t got_shutdown_signal = 0;
+
+static void
+shutdown_signal_handler(int sig)
+{
+	(void)sig;
+	got_shutdown_signal = 1;
+}
+
+static void
+install_signal_handlers(void)
+{
+	struct sigaction sa = {0};
+	sa.sa_handler = shutdown_signal_handler;
+	sigemptyset(&sa.sa_mask);
+	// SA_RESETHAND: after first signal, reset to default so a second signal kills immediately.
+	sa.sa_flags = SA_RESETHAND;
+	sigaction(SIGTERM, &sa, NULL);
+	sigaction(SIGINT, &sa, NULL);
+}
+
 static int
 init_epoll(struct ipc_server_mainloop *ml, bool no_stdin)
 {
@@ -251,6 +273,13 @@ ipc_server_mainloop_poll(struct ipc_server *vs, struct ipc_server_mainloop *ml)
 		return;
 	}
 
+	// Check if a signal handler set the shutdown flag.
+	if (got_shutdown_signal) {
+		U_LOG_I("Got shutdown signal, shutting down.");
+		ipc_server_handle_shutdown_signal(vs);
+		return;
+	}
+
 	for (int i = 0; i < ret; i++) {
 		// If we get data on stdin, stop.
 		if (events[i].data.fd == 0) {
@@ -275,6 +304,8 @@ ipc_server_mainloop_init(struct ipc_server_mainloop *ml, bool no_stdin)
 		ipc_server_mainloop_deinit(ml);
 		return ret;
 	}
+
+	install_signal_handlers();
 
 	ret = init_epoll(ml, no_stdin);
 	if (ret < 0) {

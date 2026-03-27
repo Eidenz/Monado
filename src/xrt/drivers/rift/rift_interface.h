@@ -13,6 +13,8 @@
 #include "xrt/xrt_defines.h"
 #include "xrt/xrt_prober.h"
 
+#include "util/u_time.h"
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -73,6 +75,9 @@ rift_devices_create(struct os_hid_device *hmd_dev,
 
 bool
 rift_get_radio_id(struct rift_hmd *hmd, uint8_t out_radio_id[5]);
+
+bool
+rift_hmd_frame_timestamp_callback(void *user_data, timepoint_ns *timestamp, uint32_t pts);
 
 /*!
  * @dir drivers/rift

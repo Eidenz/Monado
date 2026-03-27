@@ -94,6 +94,11 @@ struct prober_device
 
 	struct
 	{
+		const char *path;
+	} serial;
+
+	struct
+	{
 		uint64_t id;
 
 		char product[P_PROBER_BLUETOOTH_PRODUCT_COUNT];

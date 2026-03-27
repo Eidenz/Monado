@@ -1,11 +1,13 @@
 // Copyright 2019-2024, Collabora, Ltd.
 // Copyright 2024-2025, NVIDIA CORPORATION.
+// Copyright 2026, Beyley Cardellio
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
  * @brief  Main prober code.
  * @author Jakob Bornecrantz <jakob@collabora.com>
  * @author Korcan Hussein <korcan.hussein@collabora.com>
+ * @author Beyley Cardellio <ep1cm1n10n123@gmail.com>
  * @ingroup st_prober
  */
 
@@ -21,6 +23,8 @@
 #include "util/u_trace_marker.h"
 
 #include "os/os_hid.h"
+#include "os/os_serial.h"
+
 #include "p_prober.h"
 
 #ifdef XRT_HAVE_V4L2
@@ -104,6 +108,12 @@ p_open_hid_interface(struct xrt_prober *xp,
                      struct xrt_prober_device *xpdev,
                      int hid_iface,
                      struct os_hid_device **out_hid_dev);
+
+static int
+p_open_serial_device(struct xrt_prober *xp,
+                     struct xrt_prober_device *xpdev,
+                     const struct os_serial_parameters *parameters,
+                     struct os_serial_device **out_serial_dev);
 
 static int
 p_open_video_device(struct xrt_prober *xp,
@@ -444,6 +454,7 @@ initialize(struct prober *p, struct xrt_prober_entry_lists *lists)
 	p->base.create_system = p_create_system;
 	p->base.select = p_select_device;
 	p->base.open_hid_interface = p_open_hid_interface;
+	p->base.open_serial_device = p_open_serial_device;
 	p->base.open_video_device = p_open_video_device;
 	p->base.list_video_devices = p_list_video_devices;
 	p->base.get_builders = p_get_builders;
@@ -537,6 +548,11 @@ teardown_devices(struct prober *p)
 			//! @todo Free somewhere else
 		}
 #endif
+
+		if (pdev->serial.path != NULL) {
+			free((char *)pdev->usb.path);
+			pdev->usb.path = NULL;
+		}
 
 #ifdef XRT_HAVE_LIBUVC
 		if (pdev->uvc.dev != NULL) {
@@ -1229,6 +1245,31 @@ p_open_hid_interface(struct xrt_prober *xp,
 #else
 #error "no port of hid code"
 #endif
+}
+
+static int
+p_open_serial_device(struct xrt_prober *xp,
+                     struct xrt_prober_device *xpdev,
+                     const struct os_serial_parameters *parameters,
+                     struct os_serial_device **out_serial_dev)
+{
+	XRT_TRACE_MARKER();
+
+	struct prober_device *pdev = (struct prober_device *)xpdev;
+	int ret;
+
+	if (pdev->serial.path != NULL) {
+		ret = os_serial_open(pdev->serial.path, parameters, out_serial_dev);
+		if (ret != 0) {
+			U_LOG_E("Failed to open serial device '%s' got '%i'", pdev->serial.path, ret);
+			return ret;
+		}
+
+		return 0;
+	}
+
+	U_LOG_E("Could not find the requested serial device on the system!");
+	return -1;
 }
 
 static int

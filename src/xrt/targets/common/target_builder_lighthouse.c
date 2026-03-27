@@ -51,7 +51,7 @@
 #include "ht/ht_interface.h"
 #include "ht_ctrl_emu/ht_ctrl_emu_interface.h"
 #include "multi_wrapper/multi.h"
-#include "../../tracking/hand/mercury/hg_interface.h"
+#include "hand/mercury/hg_interface.h"
 #endif
 
 #ifdef XRT_BUILD_DRIVER_OPENGLOVES
