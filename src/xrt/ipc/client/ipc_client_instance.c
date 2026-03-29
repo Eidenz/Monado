@@ -24,7 +24,6 @@
 #include "util/u_file.h"
 #include "util/u_debug.h"
 #include "util/u_git_tag.h"
-#include "util/u_system_helpers.h"
 
 #include "shared/ipc_protocol.h"
 #include "shared/ipc_shmem.h"

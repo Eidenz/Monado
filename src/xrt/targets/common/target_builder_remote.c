@@ -1,4 +1,5 @@
 // Copyright 2022-2023, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -11,9 +12,7 @@
 #include "xrt/xrt_prober.h"
 
 #include "util/u_misc.h"
-#include "util/u_builders.h"
 #include "util/u_config_json.h"
-#include "util/u_system_helpers.h"
 
 #include "target_builder_interface.h"
 

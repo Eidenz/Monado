@@ -19,7 +19,6 @@
 #include "util/u_misc.h"
 #include "util/u_debug.h"
 #include "util/u_git_tag.h"
-#include "util/u_builders.h"
 
 #ifdef XRT_FEATURE_CLIENT_DEBUG_GUI
 #include "util/u_debug_gui.h"

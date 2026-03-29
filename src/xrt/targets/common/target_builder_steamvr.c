@@ -1,5 +1,6 @@
 // Copyright 2023, Duncan Spaulding.
 // Copyright 2022-2023, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -8,9 +9,7 @@
  * @author Jakob Bornecrantz <jakob@collabora.com>
  * @ingroup xrt_iface
  */
-#include "util/u_builders.h"
 #include "xrt/xrt_config_drivers.h"
-
 
 #include <assert.h>
 #include <stdbool.h>

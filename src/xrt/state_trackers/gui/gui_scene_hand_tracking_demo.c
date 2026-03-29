@@ -1,4 +1,5 @@
 // Copyright 2019-2023, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -25,7 +26,6 @@
 #include "util/u_sink.h"
 #include "util/u_debug.h"
 #include "util/u_device.h"
-#include "util/u_builders.h"
 #include "util/u_config_json.h"
 #include "util/u_pretty_print.h"
 #include "util/u_system_helpers.h"

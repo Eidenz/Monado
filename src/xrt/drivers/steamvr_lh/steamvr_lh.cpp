@@ -1,4 +1,5 @@
 // Copyright 2023, Shawn Wallace
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -26,10 +27,10 @@
 #include "util/u_device.h"
 #include "util/u_misc.h"
 #include "util/u_device.h"
-#include "util/u_system_helpers.h"
 #include "vive/vive_bindings.h"
 #include "util/u_device.h"
 #include "xrt/xrt_config_arch.h"
+#include "xrt/xrt_system.h"
 
 #include "math/m_api.h"
 

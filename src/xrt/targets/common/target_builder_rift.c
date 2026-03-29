@@ -1,4 +1,5 @@
 // Copyright 2026, Beyley Cardellio
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -10,6 +11,7 @@
 #include "xrt/xrt_config_drivers.h"
 #include "xrt/xrt_prober.h"
 #include "xrt/xrt_frameserver.h"
+#include "xrt/xrt_system.h"
 
 #include "tracking/t_constellation.h"
 
@@ -19,7 +21,6 @@
 #include "util/u_debug.h"
 #include "util/u_misc.h"
 #include "util/u_logging.h"
-#include "util/u_system_helpers.h"
 #include "util/u_trace_marker.h"
 #include "util/u_var.h"
 #include "util/u_sink.h"
