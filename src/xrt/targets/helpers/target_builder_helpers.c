@@ -17,6 +17,8 @@
 #include "util/u_space_overseer.h"
 #include "util/u_builder_helpers.h"
 
+#include "b_system_devices.h"
+
 #include "target_builder_helpers.h"
 
 
@@ -98,10 +100,10 @@ t_builder_roles_helper_open_system(struct xrt_builder *xb,
 	xrt_result_t xret;
 
 	// Use the static system devices helper, no dynamic roles.
-	struct u_system_devices_static *usysds = u_system_devices_static_allocate();
-	struct xrt_tracking_origin *origin = &usysds->base.origin;
-	struct xrt_system_devices *xsysd = &usysds->base.base;
-	struct xrt_frame_context *xfctx = &usysds->base.xfctx;
+	struct b_system_devices_static *bsysds = b_system_devices_static_allocate();
+	struct xrt_tracking_origin *origin = &bsysds->base.origin;
+	struct xrt_system_devices *xsysd = &bsysds->base.base;
+	struct xrt_frame_context *xfctx = &bsysds->base.xfctx;
 
 	xret = fn(  //
 	    xb,     // xb
@@ -130,8 +132,9 @@ t_builder_roles_helper_open_system(struct xrt_builder *xb,
 	U_SET_HT_ROLE(conforming)
 #undef U_SET_HT_ROLE
 
-	u_system_devices_static_finalize( //
-	    usysds,                       // usysds
+
+	b_system_devices_static_finalize( //
+	    bsysds,                       // bsysds
 	    tbrh.left,                    // left
 	    tbrh.right,                   // right
 	    tbrh.gamepad);                // gamepad

@@ -9,12 +9,14 @@
  * @ingroup ipc_client
  */
 
+#include "util/u_system_helpers.h"
+#include "util/u_var.h"
+
+#include "b_system_devices.h"
+
 #include "ipc_client.h"
 #include "ipc_client_generated.h"
 #include "ipc_client_system_devices.h"
-
-#include "util/u_system_helpers.h"
-#include "util/u_var.h"
 
 
 /*
@@ -87,7 +89,7 @@ ipc_client_system_devices_destroy(struct xrt_system_devices *xsysd)
 	// Finalize the tracking origin manager (which cleans up all cached tracking origins)
 	ipc_client_tracking_origin_manager_fini(&usysd->tracking_origin_manager);
 
-	u_system_devices_close(&usysd->base.base);
+	b_system_devices_close(&usysd->base.base);
 
 	free(usysd);
 }

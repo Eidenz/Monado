@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "util/u_system_helpers.h"
+#include "b_system_devices.h"
 #include "ipc_client_tracking_origin.h"
 
 
@@ -25,7 +25,7 @@ struct ipc_connection;
 struct ipc_client_system_devices
 {
 	//! @public Base
-	struct u_system_devices base;
+	struct b_system_devices base;
 
 	//! Connection to service.
 	struct ipc_connection *ipc_c;

@@ -17,8 +17,6 @@
 
 #include "util/u_threading.h"
 #include "util/u_logging.h"
-#include "util/u_system_helpers.h"
-
 #include "shared/ipc_utils.h"
 #include "shared/ipc_protocol.h"
 #include "shared/ipc_message_channel.h"

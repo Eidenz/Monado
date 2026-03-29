@@ -10,4 +10,4 @@ target_link_libraries(
 	PUBLIC xrt-interfaces
 	)
 
-target_sources(base PRIVATE b_documentation.h b_stub.c)
+target_sources(base PRIVATE b_documentation.h b_stub.c b_system_devices.h b_system_devices.c)

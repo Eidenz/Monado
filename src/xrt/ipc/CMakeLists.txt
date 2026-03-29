@@ -118,7 +118,7 @@ if(WIN32)
 
 	target_link_libraries(ipc_client PRIVATE winmm)
 endif()
-target_link_libraries(ipc_client PRIVATE aux_util ipc_shared)
+target_link_libraries(ipc_client PRIVATE aux_util ipc_shared base)
 
 if(ANDROID)
 	# Need android_instance_base on the client side too.

@@ -12,6 +12,7 @@
 
 #include "xrt/xrt_space.h"
 #include "xrt/xrt_prober.h"
+#include "xrt/xrt_system.h"
 
 
 #ifdef __cplusplus
@@ -126,8 +127,8 @@ t_builder_create_space_overseer_legacy(struct xrt_session_event_sink *broadcast,
  * space overseer. Currently uses the functions below to create a full system
  * with the help of @p fn argument. But this might change in the future.
  *
- * * @ref u_system_devices_static_allocate
- * * @ref u_system_devices_static_finalize
+ * * @ref b_system_devices_static_allocate
+ * * @ref b_system_devices_static_finalize
  * * @ref t_builder_create_space_overseer_legacy
  *
  * @ingroup xrt_iface
