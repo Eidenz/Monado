@@ -31,7 +31,7 @@
 #include "xrt/xrt_results.h"
 
 #include "xrt/xrt_space.h"
-#include "util/u_space_overseer.h"
+#include "b_space_overseer.h"
 
 #ifndef XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE
 #error "This builder requires the SteamVR Lighthouse driver"
@@ -169,11 +169,11 @@ steamvr_open_system(struct xrt_builder *xb,
 	 * Space overseer.
 	 */
 
-	struct u_space_overseer *uso = u_space_overseer_create(broadcast);
+	struct b_space_overseer *uso = b_space_overseer_create(broadcast);
 
 	struct xrt_pose T_stage_local = XRT_POSE_IDENTITY;
 
-	u_space_overseer_legacy_setup( //
+	b_space_overseer_legacy_setup( //
 	    uso,                       // uso
 	    xsysd->xdevs,              // xdevs
 	    xsysd->xdev_count,         // xdev_count

@@ -105,7 +105,7 @@ struct t_builder
  * Create a legacy space overseer, most builders probably want to have a more
  * advanced setup then this, especially stand alone ones. Uses
  * @ref u_builder_setup_tracking_origins internally and
- * @ref u_space_overseer_legacy_setup.
+ * @ref b_space_overseer_legacy_setup.
  *
  * @ingroup xrt_iface
  */

@@ -17,7 +17,6 @@
 #include "util/u_logging.h"
 #include "util/u_config_json.h"
 #include "util/u_pretty_print.h"
-#include "util/u_space_overseer.h"
 
 #include "target_builder_helpers.h"
 #include "target_builder_interface.h"

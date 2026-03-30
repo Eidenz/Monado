@@ -79,7 +79,7 @@ xrt_space_reference(struct xrt_space **dst, struct xrt_space *src)
  *
  * The space overseer is used by the state tracker to query the poses of spaces
  * and devices in that space system. While the default implementation
- * @ref u_space_overseer implements the spaces as a graph of relatable spaces,
+ * @ref b_space_overseer implements the spaces as a graph of relatable spaces,
  * that is a implementation detail (the interface also lends itself to that
  * since bases have parents). As such the graph is not exposed in this interface
  * and spaces are technically free floating.

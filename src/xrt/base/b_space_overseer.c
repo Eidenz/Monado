@@ -1,12 +1,12 @@
 // Copyright 2023, Collabora, Ltd.
-// Copyright 2025, NVIDIA CORPORATION.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
  * @brief A implementation of the @ref xrt_space_overseer interface.
  *
  * @author Jakob Bornecrantz <jakob@collabora.com>
- * @ingroup aux_util
+ * @ingroup base
  */
 
 #include "xrt/xrt_space.h"
@@ -21,7 +21,7 @@
 #include "util/u_misc.h"
 #include "util/u_hashmap.h"
 #include "util/u_logging.h"
-#include "util/u_space_overseer.h"
+#include "b_space_overseer.h"
 
 #include <assert.h>
 #include <math.h>
@@ -87,7 +87,7 @@ struct u_space
 /*!
  * Default implementation of the xrt_space_overseer object.
  */
-struct u_space_overseer
+struct b_space_overseer
 {
 	struct xrt_space_overseer base;
 
@@ -141,10 +141,10 @@ u_space(struct xrt_space *xs)
 	return (struct u_space *)xs;
 }
 
-static inline struct u_space_overseer *
-u_space_overseer(struct xrt_space_overseer *xso)
+static inline struct b_space_overseer *
+b_space_overseer(struct xrt_space_overseer *xso)
 {
-	return (struct u_space_overseer *)xso;
+	return (struct b_space_overseer *)xso;
 }
 
 static const char *
@@ -162,7 +162,7 @@ type_to_small_string(enum xrt_reference_space_type type)
 }
 
 static struct u_space *
-get_semantic_space(struct u_space_overseer *uso, enum xrt_reference_space_type type)
+get_semantic_space(struct b_space_overseer *uso, enum xrt_reference_space_type type)
 {
 	switch (type) {
 	case XRT_SPACE_REFERENCE_TYPE_VIEW: return u_space(uso->base.semantic.view);
@@ -212,7 +212,7 @@ hashmap_unreference_space_items(void *item, void *priv)
 }
 
 static struct u_space *
-find_xdev_space_read_locked(struct u_space_overseer *uso, struct xrt_device *xdev)
+find_xdev_space_read_locked(struct b_space_overseer *uso, struct xrt_device *xdev)
 {
 	void *ptr = NULL;
 	uint64_t key = (uint64_t)(intptr_t)xdev;
@@ -227,7 +227,7 @@ find_xdev_space_read_locked(struct u_space_overseer *uso, struct xrt_device *xde
 }
 
 static struct u_space *
-find_xto_space_read_locked(struct u_space_overseer *uso, struct xrt_tracking_origin *xto)
+find_xto_space_read_locked(struct b_space_overseer *uso, struct xrt_tracking_origin *xto)
 {
 	void *ptr = NULL;
 	uint64_t key = (uint64_t)(intptr_t)xto;
@@ -286,7 +286,7 @@ get_offset_or_ident_read_locked(const struct u_space *us, struct xrt_pose *offse
  */
 
 static void
-notify_ref_space_usage_device(struct u_space_overseer *uso, enum xrt_reference_space_type type, bool used)
+notify_ref_space_usage_device(struct b_space_overseer *uso, enum xrt_reference_space_type type, bool used)
 {
 	struct xrt_device *xdev = NULL;
 	enum xrt_input_name name = 0;
@@ -386,7 +386,7 @@ traverse_then_push_inverse(struct xrt_relation_chain *xrc, struct u_space *space
 }
 
 static void
-build_relation_chain_read_locked(struct u_space_overseer *uso,
+build_relation_chain_read_locked(struct b_space_overseer *uso,
                                  struct xrt_relation_chain *xrc,
                                  struct u_space *base,
                                  struct u_space *target,
@@ -401,7 +401,7 @@ build_relation_chain_read_locked(struct u_space_overseer *uso,
 }
 
 static void
-build_relation_chain(struct u_space_overseer *uso,
+build_relation_chain(struct b_space_overseer *uso,
                      struct xrt_relation_chain *xrc,
                      struct u_space *base,
                      struct u_space *target,
@@ -472,7 +472,7 @@ create_space(enum u_space_type type, struct u_space *parent)
 }
 
 static void
-create_and_set_root_space(struct u_space_overseer *uso)
+create_and_set_root_space(struct b_space_overseer *uso)
 {
 	assert(uso->base.semantic.root == NULL);
 
@@ -495,7 +495,7 @@ create_and_set_root_space(struct u_space_overseer *uso)
  * and linking the device to that space.
  */
 static xrt_result_t
-add_device_helper(struct u_space_overseer *uso, struct xrt_device *xdev)
+add_device_helper(struct b_space_overseer *uso, struct xrt_device *xdev)
 {
 	struct xrt_tracking_origin *torig = xdev->tracking_origin;
 	assert(torig != NULL);
@@ -515,7 +515,7 @@ add_device_helper(struct u_space_overseer *uso, struct xrt_device *xdev)
 		xs = (struct xrt_space *)ptr;
 	} else if (torig->type == XRT_TRACKING_TYPE_ATTACHABLE) {
 		/*
-		 * If we ever make u_space_overseer sub-classable make sure
+		 * If we ever make b_space_overseer sub-classable make sure
 		 * this calls the right function, can't call interface function
 		 * as the lock is held here.
 		 */
@@ -523,7 +523,7 @@ add_device_helper(struct u_space_overseer *uso, struct xrt_device *xdev)
 		u_hashmap_int_insert(uso->xto_map, key, xs);
 	} else {
 		/*
-		 * If we ever make u_space_overseer sub-classable make sure
+		 * If we ever make b_space_overseer sub-classable make sure
 		 * this calls the right function, can't call interface function
 		 * as the lock is held here.
 		 */
@@ -536,7 +536,7 @@ add_device_helper(struct u_space_overseer *uso, struct xrt_device *xdev)
 
 	pthread_rwlock_unlock(&uso->lock);
 
-	u_space_overseer_link_space_to_device(uso, xs, xdev);
+	b_space_overseer_link_space_to_device(uso, xs, xdev);
 
 	return XRT_SUCCESS;
 }
@@ -582,7 +582,7 @@ create_pose_space(struct xrt_space_overseer *xso,
 	assert(out_space != NULL);
 	assert(*out_space == NULL);
 
-	struct u_space_overseer *uso = u_space_overseer(xso);
+	struct b_space_overseer *uso = b_space_overseer(xso);
 
 	// Only need the read lock.
 	pthread_rwlock_rdlock(&uso->lock);
@@ -611,7 +611,7 @@ locate_space(struct xrt_space_overseer *xso,
              const struct xrt_pose *offset,
              struct xrt_space_relation *out_relation)
 {
-	struct u_space_overseer *uso = u_space_overseer(xso);
+	struct b_space_overseer *uso = b_space_overseer(xso);
 
 	struct u_space *ubase_space = u_space(base_space);
 	struct u_space *uspace = u_space(space);
@@ -668,7 +668,7 @@ locate_spaces(struct xrt_space_overseer *xso,
               const struct xrt_pose *offsets,
               struct xrt_space_relation *out_relations)
 {
-	struct u_space_overseer *uso = u_space_overseer(xso);
+	struct b_space_overseer *uso = b_space_overseer(xso);
 
 	struct u_space *ubase_space = u_space(base_space);
 
@@ -716,7 +716,7 @@ locate_device(struct xrt_space_overseer *xso,
               struct xrt_device *xdev,
               struct xrt_space_relation *out_relation)
 {
-	struct u_space_overseer *uso = u_space_overseer(xso);
+	struct b_space_overseer *uso = b_space_overseer(xso);
 
 	struct u_space *ubase_space = u_space(base_space);
 
@@ -741,7 +741,7 @@ locate_device(struct xrt_space_overseer *xso,
 static xrt_result_t
 ref_space_inc(struct xrt_space_overseer *xso, enum xrt_reference_space_type type)
 {
-	struct u_space_overseer *uso = u_space_overseer(xso);
+	struct b_space_overseer *uso = b_space_overseer(xso);
 
 	// No more checking then this.
 	assert(type < XRT_SPACE_REFERENCE_TYPE_COUNT);
@@ -767,7 +767,7 @@ ref_space_inc(struct xrt_space_overseer *xso, enum xrt_reference_space_type type
 static xrt_result_t
 ref_space_dec(struct xrt_space_overseer *xso, enum xrt_reference_space_type type)
 {
-	struct u_space_overseer *uso = u_space_overseer(xso);
+	struct b_space_overseer *uso = b_space_overseer(xso);
 
 	// No more checking then this.
 	assert(type < XRT_SPACE_REFERENCE_TYPE_COUNT);
@@ -793,7 +793,7 @@ ref_space_dec(struct xrt_space_overseer *xso, enum xrt_reference_space_type type
 static xrt_result_t
 recenter_local_spaces(struct xrt_space_overseer *xso)
 {
-	struct u_space_overseer *uso = u_space_overseer(xso);
+	struct b_space_overseer *uso = b_space_overseer(xso);
 	xrt_result_t xret;
 
 	// Take the full lock from the start.
@@ -907,7 +907,7 @@ create_local_space(struct xrt_space_overseer *xso,
                    struct xrt_space **out_local_floor_space)
 {
 	assert(xso->semantic.root != NULL);
-	struct u_space_overseer *uso = u_space_overseer(xso);
+	struct b_space_overseer *uso = b_space_overseer(xso);
 	if (!uso->per_app_local_spaces) {
 		xrt_space_reference(out_local_space, xso->semantic.local);
 		xrt_space_reference(out_local_floor_space, xso->semantic.local_floor);
@@ -960,7 +960,7 @@ create_local_space(struct xrt_space_overseer *xso,
 static xrt_result_t
 get_tracking_origin_offset(struct xrt_space_overseer *xso, struct xrt_tracking_origin *xto, struct xrt_pose *out_offset)
 {
-	struct u_space_overseer *uso = u_space_overseer(xso);
+	struct b_space_overseer *uso = b_space_overseer(xso);
 	xrt_result_t xret = XRT_SUCCESS;
 
 	pthread_rwlock_rdlock(&uso->lock);
@@ -983,7 +983,7 @@ set_tracking_origin_offset(struct xrt_space_overseer *xso,
                            struct xrt_tracking_origin *xto,
                            const struct xrt_pose *offset)
 {
-	struct u_space_overseer *uso = u_space_overseer(xso);
+	struct b_space_overseer *uso = b_space_overseer(xso);
 	xrt_result_t xret = XRT_SUCCESS;
 
 	pthread_rwlock_rdlock(&uso->lock);
@@ -1006,7 +1006,7 @@ get_reference_space_offset(struct xrt_space_overseer *xso,
                            enum xrt_reference_space_type type,
                            struct xrt_pose *out_offset)
 {
-	struct u_space_overseer *uso = u_space_overseer(xso);
+	struct b_space_overseer *uso = b_space_overseer(xso);
 	xrt_result_t xret = XRT_SUCCESS;
 
 	pthread_rwlock_rdlock(&uso->lock);
@@ -1034,7 +1034,7 @@ set_reference_space_offset(struct xrt_space_overseer *xso,
 		return XRT_ERROR_UNSUPPORTED_SPACE_TYPE;
 	}
 
-	struct u_space_overseer *uso = u_space_overseer(xso);
+	struct b_space_overseer *uso = b_space_overseer(xso);
 
 	if (uso->can_do_local_spaces_recenter) {
 		return XRT_ERROR_RECENTERING_NOT_SUPPORTED;
@@ -1106,7 +1106,7 @@ unlock:
 static xrt_result_t
 add_device(struct xrt_space_overseer *xso, struct xrt_device *xdev)
 {
-	struct u_space_overseer *uso = u_space_overseer(xso);
+	struct b_space_overseer *uso = b_space_overseer(xso);
 
 	return add_device_helper(uso, xdev);
 }
@@ -1114,7 +1114,7 @@ add_device(struct xrt_space_overseer *xso, struct xrt_device *xdev)
 static xrt_result_t
 attach_device(struct xrt_space_overseer *xso, struct xrt_device *xdev, struct xrt_space *space)
 {
-	struct u_space_overseer *uso = u_space_overseer(xso);
+	struct b_space_overseer *uso = b_space_overseer(xso);
 
 	// Check that the device has the correct tracking origin type.
 	if (xdev->tracking_origin == NULL || xdev->tracking_origin->type != XRT_TRACKING_TYPE_ATTACHABLE) {
@@ -1160,7 +1160,7 @@ err_unlock:
 static void
 destroy(struct xrt_space_overseer *xso)
 {
-	struct u_space_overseer *uso = u_space_overseer(xso);
+	struct b_space_overseer *uso = b_space_overseer(xso);
 
 	xrt_space_reference(&uso->base.semantic.unbounded, NULL);
 	xrt_space_reference(&uso->base.semantic.stage, NULL);
@@ -1196,10 +1196,10 @@ destroy(struct xrt_space_overseer *xso)
  *
  */
 
-struct u_space_overseer *
-u_space_overseer_create(struct xrt_session_event_sink *broadcast)
+struct b_space_overseer *
+b_space_overseer_create(struct xrt_session_event_sink *broadcast)
 {
-	struct u_space_overseer *uso = U_TYPED_CALLOC(struct u_space_overseer);
+	struct b_space_overseer *uso = U_TYPED_CALLOC(struct b_space_overseer);
 	uso->base.create_local_space = create_local_space;
 	uso->base.create_offset_space = create_offset_space;
 	uso->base.create_pose_space = create_pose_space;
@@ -1235,7 +1235,7 @@ u_space_overseer_create(struct xrt_session_event_sink *broadcast)
 }
 
 void
-u_space_overseer_legacy_setup(struct u_space_overseer *uso,
+b_space_overseer_legacy_setup(struct b_space_overseer *uso,
                               struct xrt_device **xdevs,
                               uint32_t xdev_count,
                               struct xrt_device *head,
@@ -1265,11 +1265,11 @@ u_space_overseer_legacy_setup(struct u_space_overseer *uso,
 
 	if (head != NULL && head->supported.stage) {
 		// stage poses are polled from the driver
-		u_space_overseer_create_pose_space(uso, head, XRT_INPUT_GENERIC_STAGE_SPACE_POSE,
+		b_space_overseer_create_pose_space(uso, head, XRT_INPUT_GENERIC_STAGE_SPACE_POSE,
 		                                   &uso->base.semantic.stage);
 	} else {
 		// stage offset is managed by space overseer
-		u_space_overseer_create_null_space(uso, uso->base.semantic.root, &uso->base.semantic.stage);
+		b_space_overseer_create_null_space(uso, uso->base.semantic.root, &uso->base.semantic.stage);
 	}
 
 	// If the system wants to support the space, set root as unbounded.
@@ -1278,7 +1278,7 @@ u_space_overseer_legacy_setup(struct u_space_overseer *uso,
 	}
 
 	// Set local to the local offset.
-	u_space_overseer_create_offset_space(uso, uso->base.semantic.root, local_offset, &uso->base.semantic.local);
+	b_space_overseer_create_offset_space(uso, uso->base.semantic.root, local_offset, &uso->base.semantic.local);
 
 	// Set local floor to be under local, but at y == 0 from stage.
 	struct xrt_pose local_floor_offset = {
@@ -1286,12 +1286,12 @@ u_space_overseer_legacy_setup(struct u_space_overseer *uso,
 	    {local_offset->position.x, 0.f, local_offset->position.z},
 	};
 
-	u_space_overseer_create_offset_space(uso, uso->base.semantic.root, &local_floor_offset,
+	b_space_overseer_create_offset_space(uso, uso->base.semantic.root, &local_floor_offset,
 	                                     &uso->base.semantic.local_floor);
 
 	// Setup view space if we have a head.
 	if (head != NULL) {
-		u_space_overseer_create_pose_space(uso, head, XRT_INPUT_GENERIC_HEAD_POSE, &uso->base.semantic.view);
+		b_space_overseer_create_pose_space(uso, head, XRT_INPUT_GENERIC_HEAD_POSE, &uso->base.semantic.view);
 
 		// Set the head to the notify device, for reference space usage.
 		uso->notify = head;
@@ -1299,7 +1299,7 @@ u_space_overseer_legacy_setup(struct u_space_overseer *uso,
 }
 
 void
-u_space_overseer_create_null_space(struct u_space_overseer *uso, struct xrt_space *parent, struct xrt_space **out_space)
+b_space_overseer_create_null_space(struct b_space_overseer *uso, struct xrt_space *parent, struct xrt_space **out_space)
 {
 	assert(out_space != NULL);
 	assert(*out_space == NULL);
@@ -1312,7 +1312,7 @@ u_space_overseer_create_null_space(struct u_space_overseer *uso, struct xrt_spac
 }
 
 void
-u_space_overseer_link_space_to_device(struct u_space_overseer *uso, struct xrt_space *xs, struct xrt_device *xdev)
+b_space_overseer_link_space_to_device(struct b_space_overseer *uso, struct xrt_space *xs, struct xrt_device *xdev)
 {
 	pthread_rwlock_wrlock(&uso->lock);
 

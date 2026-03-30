@@ -19,6 +19,7 @@ target_link_libraries(
 		aux_util
 		aux_util_sink
 		drv_includes
+		base
 	)
 target_include_directories(target_lists PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

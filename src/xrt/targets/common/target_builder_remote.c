@@ -15,7 +15,7 @@
 
 #include "util/u_misc.h"
 #include "util/u_config_json.h"
-#include "util/u_space_overseer.h"
+#include "b_space_overseer.h"
 
 #include "target_builder_interface.h"
 
@@ -40,9 +40,9 @@
  * local, view, device links). Matches the former setup in @c r_hub.c.
  */
 static void
-remote_builder_setup_space_overseer(struct u_space_overseer *uso, struct xrt_system_devices *xsysd)
+remote_builder_setup_space_overseer(struct b_space_overseer *bso, struct xrt_system_devices *xsysd)
 {
-	struct xrt_space_overseer *xso = (struct xrt_space_overseer *)uso; // Convenience
+	struct xrt_space_overseer *xso = (struct xrt_space_overseer *)bso; // Convenience
 	struct xrt_device *head = xsysd->static_roles.head;
 	struct xrt_space *root = xso->semantic.root; // Convenience
 
@@ -50,10 +50,10 @@ remote_builder_setup_space_overseer(struct u_space_overseer *uso, struct xrt_sys
 	assert(head->tracking_origin != NULL);
 
 	struct xrt_space *offset = NULL;
-	u_space_overseer_create_offset_space(uso, root, &head->tracking_origin->initial_offset, &offset);
+	b_space_overseer_create_offset_space(bso, root, &head->tracking_origin->initial_offset, &offset);
 
 	for (uint32_t i = 0; i < xsysd->xdev_count; i++) {
-		u_space_overseer_link_space_to_device(uso, offset, xsysd->xdevs[i]);
+		b_space_overseer_link_space_to_device(bso, offset, xsysd->xdevs[i]);
 	}
 
 	// Unreference now
@@ -64,15 +64,15 @@ remote_builder_setup_space_overseer(struct u_space_overseer *uso, struct xrt_sys
 
 	// Local 1.6 meters up.
 	struct xrt_pose local_offset = {XRT_QUAT_IDENTITY, {0.0f, 1.6f, 0.0f}};
-	u_space_overseer_create_offset_space(uso, root, &local_offset, &xso->semantic.local);
+	b_space_overseer_create_offset_space(bso, root, &local_offset, &xso->semantic.local);
 
 	// Local floor at the same place as local except at floor height.
 	struct xrt_pose local_floor_offset = local_offset;
 	local_floor_offset.position.y = 0.0f;
-	u_space_overseer_create_offset_space(uso, root, &local_floor_offset, &xso->semantic.local_floor);
+	b_space_overseer_create_offset_space(bso, root, &local_floor_offset, &xso->semantic.local_floor);
 
 	// Make view space be the head pose.
-	u_space_overseer_create_pose_space(uso, head, XRT_INPUT_GENERIC_HEAD_POSE, &xso->semantic.view);
+	b_space_overseer_create_pose_space(bso, head, XRT_INPUT_GENERIC_HEAD_POSE, &xso->semantic.view);
 }
 
 static bool
@@ -134,7 +134,7 @@ remote_open_system(struct xrt_builder *xb,
 		view_count = 2;
 	}
 
-	struct u_space_overseer *uso = u_space_overseer_create(broadcast);
+	struct b_space_overseer *uso = b_space_overseer_create(broadcast);
 	struct xrt_space_overseer *xso = (struct xrt_space_overseer *)uso;
 
 	xrt_result_t xret = r_create_devices(port, view_count, out_xsysd);

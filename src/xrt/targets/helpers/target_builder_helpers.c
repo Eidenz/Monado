@@ -14,9 +14,9 @@
 
 #include "util/u_debug.h"
 #include "util/u_system_helpers.h"
-#include "util/u_space_overseer.h"
 #include "util/u_builder_helpers.h"
 
+#include "b_space_overseer.h"
 #include "b_system_devices.h"
 
 #include "target_builder_helpers.h"
@@ -69,12 +69,12 @@ t_builder_create_space_overseer_legacy(struct xrt_session_event_sink *broadcast,
 	 * Space overseer.
 	 */
 
-	struct u_space_overseer *uso = u_space_overseer_create(broadcast);
+	struct b_space_overseer *uso = b_space_overseer_create(broadcast);
 
 	struct xrt_pose T_stage_local = XRT_POSE_IDENTITY;
 	T_stage_local.position.y = 1.6;
 
-	u_space_overseer_legacy_setup( //
+	b_space_overseer_legacy_setup( //
 	    uso,                       // uso
 	    xdevs,                     // xdevs
 	    xdev_count,                // xdev_count

@@ -91,8 +91,6 @@ add_library(
 	u_resampler.h
 	u_session.c
 	u_session.h
-	u_space_overseer.c
-	u_space_overseer.h
 	u_extension_list.cpp
 	u_extension_list.h
 	u_extension_list.hpp
