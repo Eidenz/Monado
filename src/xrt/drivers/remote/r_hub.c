@@ -1,4 +1,5 @@
 // Copyright 2020-2023, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -12,8 +13,6 @@
 #include "util/u_var.h"
 #include "util/u_misc.h"
 #include "util/u_debug.h"
-#include "util/u_space_overseer.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -407,11 +406,7 @@ r_hub_system_devices_destroy(struct xrt_system_devices *xsysd)
  */
 
 xrt_result_t
-r_create_devices(uint16_t port,
-                 uint32_t view_count,
-                 struct xrt_session_event_sink *broadcast,
-                 struct xrt_system_devices **out_xsysd,
-                 struct xrt_space_overseer **out_xso)
+r_create_devices(uint16_t port, uint32_t view_count, struct xrt_system_devices **out_xsysd)
 {
 	struct r_hub *r = U_TYPED_CALLOC(struct r_hub);
 	int ret;
@@ -483,41 +478,6 @@ r_create_devices(uint16_t port,
 
 
 	/*
-	 * Space overseer.
-	 */
-
-	struct u_space_overseer *uso = u_space_overseer_create(broadcast);
-	struct xrt_space_overseer *xso = (struct xrt_space_overseer *)uso;
-	assert(uso != NULL);
-
-	struct xrt_space *root = xso->semantic.root; // Convenience
-	struct xrt_space *offset = NULL;
-	u_space_overseer_create_offset_space(uso, root, &r->origin.initial_offset, &offset);
-
-	for (uint32_t i = 0; i < r->base.xdev_count; i++) {
-		u_space_overseer_link_space_to_device(uso, offset, r->base.xdevs[i]);
-	}
-
-	// Unreference now
-	xrt_space_reference(&offset, NULL);
-
-	// Set root as stage space.
-	xrt_space_reference(&xso->semantic.stage, root);
-
-	// Local 1.6 meters up.
-	struct xrt_pose local_offset = {XRT_QUAT_IDENTITY, {0.0f, 1.6f, 0.0f}};
-	u_space_overseer_create_offset_space(uso, root, &local_offset, &xso->semantic.local);
-
-	// Local floor at the same place as local except at floor height.
-	struct xrt_pose local_floor_offset = local_offset;
-	local_floor_offset.position.y = 0.0f;
-	u_space_overseer_create_offset_space(uso, root, &local_floor_offset, &xso->semantic.local_floor);
-
-	// Make view space be the head pose.
-	u_space_overseer_create_pose_space(uso, head, XRT_INPUT_GENERIC_HEAD_POSE, &xso->semantic.view);
-
-
-	/*
 	 * Setup variable tracker.
 	 */
 
@@ -536,7 +496,6 @@ r_create_devices(uint16_t port,
 	 */
 
 	*out_xsysd = &r->base;
-	*out_xso = xso;
 
 	return XRT_SUCCESS;
 }
