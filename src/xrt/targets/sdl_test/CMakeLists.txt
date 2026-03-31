@@ -28,6 +28,7 @@ target_link_libraries(
 		comp_multi
 		ipc_server
 		st_gui
+		base
 		drv_includes
 		drv_simulated
 		target_helpers

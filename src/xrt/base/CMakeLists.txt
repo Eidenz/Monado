@@ -14,8 +14,12 @@ target_sources(
 	base
 	PRIVATE
 		b_documentation.h
-		b_system_devices.h
-		b_system_devices.c
-		b_space_overseer.h
+		b_session.c
+		b_session.h
 		b_space_overseer.c
+		b_space_overseer.h
+		b_system.c
+		b_system.h
+		b_system_devices.c
+		b_system_devices.h
 	)

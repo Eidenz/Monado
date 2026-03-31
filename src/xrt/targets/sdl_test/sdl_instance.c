@@ -12,8 +12,9 @@
 #include "xrt/xrt_config_drivers.h"
 
 #include "util/u_misc.h"
-#include "util/u_system.h"
 #include "util/u_trace_marker.h"
+
+#include "b_system.h"
 
 #include "target_builder_helpers.h"
 
@@ -84,8 +85,8 @@ sdl_instance_create_system(struct xrt_instance *xinst,
 
 	struct sdl_program *sp = from_xinst(xinst);
 
-	u_system_fill_properties(sp->usys, sp->xsysd_base.static_roles.head->str);
-	*out_xsys = &sp->usys->base;
+	b_system_fill_properties(sp->bsys, sp->xsysd_base.static_roles.head->str);
+	*out_xsys = &sp->bsys->base;
 	*out_xsysd = &sp->xsysd_base;
 	*out_xso = sp->xso;
 
@@ -98,7 +99,7 @@ sdl_instance_create_system(struct xrt_instance *xinst,
 	sdl_compositor_create_system(sp, &xsysc);
 
 	// Tell the system about the system compositor.
-	u_system_set_system_compositor(sp->usys, xsysc);
+	b_system_set_system_compositor(sp->bsys, xsysc);
 
 	*out_xsysc = xsysc;
 
@@ -124,10 +125,10 @@ sdl_instance_destroy(struct xrt_instance *xinst)
 void
 sdl_system_init(struct sdl_program *sp)
 {
-	struct u_system *usys = u_system_create();
-	assert(usys != NULL); // Should never fail.
+	struct b_system *bsys = b_system_create();
+	assert(bsys != NULL); // Should never fail.
 
-	sp->usys = usys;
+	sp->bsys = bsys;
 }
 
 void
@@ -149,7 +150,7 @@ sdl_system_devices_init(struct sdl_program *sp)
 	sp->xsysd_base.static_roles.head = head;
 
 	t_builder_create_space_overseer_legacy( //
-	    &sp->usys->broadcast,               // broadcast
+	    &sp->bsys->broadcast,               // broadcast
 	    head,                               // head
 	    NULL,                               // eyes
 	    NULL,                               // left

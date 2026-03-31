@@ -255,6 +255,7 @@ if(XRT_MODULE_COMPOSITOR_MAIN OR XRT_MODULE_COMPOSITOR_NULL)
 			st_prober
 			target_lists
 			drv_includes
+			base
 		)
 	target_include_directories(target_instance PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -280,6 +281,7 @@ target_link_libraries(
 		st_prober
 		target_lists
 		drv_includes
+		base
 	)
 target_include_directories(target_instance_no_comp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

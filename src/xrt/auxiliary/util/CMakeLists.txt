@@ -89,13 +89,9 @@ add_library(
 	u_prober.h
 	u_resampler.c
 	u_resampler.h
-	u_session.c
-	u_session.h
 	u_extension_list.cpp
 	u_extension_list.h
 	u_extension_list.hpp
-	u_system.c
-	u_system.h
 	u_system_helpers.c
 	u_system_helpers.h
 	u_template_historybuf.hpp
