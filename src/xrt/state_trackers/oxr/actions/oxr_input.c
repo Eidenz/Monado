@@ -2030,7 +2030,7 @@ oxr_action_sync_data(struct oxr_logger *log,
 	for (size_t i = 0; i < sess->sys->xsysd->xdev_count; i++) {
 		if (sess->sys->xsysd->xdevs[i]) {
 			xrt_result_t xret = xrt_device_update_inputs(sess->sys->xsysd->xdevs[i]);
-			OXR_CHECK_XRET(log, sess, xret, oxr_action_sync_data);
+			OXR_CHECK_XRET(log, sess, xret, xrt_device_update_inputs);
 		}
 	}
 
