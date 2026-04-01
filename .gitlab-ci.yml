@@ -25,7 +25,10 @@ include:
       - "/templates/ubuntu.yml"
       - "/templates/arch.yml"
       - "/templates/alpine.yml"
-  # - local: .gitlab-ci/containers/ci-container-prep.yml
+  - project: 'freedesktop/ci-templates'
+    ref: 5cc6ded703fc990f9d055f0d948ffd4460a9ca40
+    file: '/templates/ci-fairy.yml'
+
 
   # This include is for compatibility with the fdo CI restrictions/checks
   # needed due to https://gitlab.freedesktop.org/freedesktop/freedesktop/-/issues/438
@@ -365,6 +368,23 @@ reuse:
     entrypoint: [""]
   script:
     - reuse lint
+
+check-signoff:
+  extends:
+    - .fdo.ci-fairy
+  stage: verify
+  script:
+    - ci-fairy check-commits --signed-off-by --junit-xml=results.xml
+  variables:
+    GIT_DEPTH: 100
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: always
+    - when: never
+  artifacts:
+    reports:
+      junit: results.xml
+
 
 
 debian:trixie:
