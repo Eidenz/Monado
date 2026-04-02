@@ -91,6 +91,27 @@ vk_surface_info_fill_in(struct vk_bundle *vk, struct vk_surface_info *info, VkSu
 	    &info->caps);                                    //
 	VK_CHK_WITH_GOTO(ret, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR", error);
 
+#ifdef VK_KHR_get_surface_capabilities2
+	if (vk->has_KHR_get_surface_capabilities2) {
+		const VkPhysicalDeviceSurfaceInfo2KHR surf_info = {
+		    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR,
+		    .pNext = NULL,
+		    .surface = surface,
+		};
+		VkSurfaceCapabilities2KHR surf_caps2 = {
+		    .sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR,
+		    .pNext = NULL,
+		};
+		ret = vk->vkGetPhysicalDeviceSurfaceCapabilities2KHR( //
+		    vk->physical_device,                              //
+		    &surf_info,                                       //
+		    &surf_caps2);                                     //
+		VK_CHK_WITH_GOTO(ret, "vkGetPhysicalDeviceSurfaceCapabilities2KHR", error);
+
+		info->caps = surf_caps2.surfaceCapabilities;
+	}
+#endif
+
 #ifdef VK_EXT_display_surface_counter
 	if (vk->has_EXT_display_control) {
 		info->caps2.sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_EXT;
