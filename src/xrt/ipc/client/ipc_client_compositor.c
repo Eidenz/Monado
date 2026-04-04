@@ -1,5 +1,5 @@
 // Copyright 2020, Collabora, Ltd.
-// Copyright 2025, NVIDIA CORPORATION.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -178,7 +178,7 @@ ipc_compositor_swapchain_destroy(struct xrt_swapchain *xsc)
 	xret = ipc_call_swapchain_destroy(icc->ipc_c, ics->id);
 
 	// Can't return anything here, just continue.
-	IPC_CHK_ONLY_PRINT(icc->ipc_c, xret, "ipc_call_compositor_semaphore_destroy");
+	IPC_CHK_ONLY_PRINT(icc->ipc_c, xret, "ipc_call_swapchain_destroy");
 
 	free(xsc);
 }
