@@ -696,19 +696,14 @@ HandTracking::~HandTracking()
 	u_frame_times_widget_teardown(&this->ft_widget);
 }
 
-void
-HandTracking::cCallbackProcess(struct t_hand_tracking_sync *ht_sync,
-                               struct xrt_frame *left_frame,
-                               struct xrt_frame *right_frame,
-                               struct xrt_hand_joint_set *out_left_hand,
-                               struct xrt_hand_joint_set *out_right_hand,
-                               int64_t *out_timestamp_ns)
+static void
+callback_process_unsafe(HandTracking *hgt,
+                        struct xrt_frame *left_frame,
+                        struct xrt_frame *right_frame,
+                        struct xrt_hand_joint_set *out_left_hand,
+                        struct xrt_hand_joint_set *out_right_hand,
+                        int64_t *out_timestamp_ns)
 {
-	XRT_TRACE_MARKER();
-
-	HandTracking *hgt = (struct HandTracking *)ht_sync;
-
-	hgt->current_frame_timestamp = left_frame->timestamp;
 
 	struct xrt_hand_joint_set *out_xrt_hands[2] = {out_left_hand, out_right_hand};
 
@@ -743,10 +738,6 @@ HandTracking::cCallbackProcess(struct t_hand_tracking_sync *ht_sync,
 
 	hgt->views[0].run_model_on_this = cv::Mat(view_size, CV_8UC1, left_frame->data, left_frame->stride);
 	hgt->views[1].run_model_on_this = cv::Mat(view_size, CV_8UC1, right_frame->data, right_frame->stride);
-
-
-	*out_timestamp_ns = hgt->current_frame_timestamp; // No filtering, fine to do this now. Also just a reminder
-	                                                  // that this took you 2 HOURS TO DEBUG THAT ONE TIME.
 
 	hgt->debug_scribble =
 	    u_sink_debug_is_active(&hgt->debug_sink_ann) && u_sink_debug_is_active(&hgt->debug_sink_model);
@@ -1069,11 +1060,43 @@ HandTracking::cCallbackProcess(struct t_hand_tracking_sync *ht_sync,
 }
 
 void
+HandTracking::cCallbackProcess(struct t_hand_tracking_sync *ht_sync,
+                               struct xrt_frame *left_frame,
+                               struct xrt_frame *right_frame,
+                               struct xrt_hand_joint_set *out_left_hand,
+                               struct xrt_hand_joint_set *out_right_hand,
+                               int64_t *out_timestamp_ns)
+{
+	XRT_TRACE_MARKER();
+
+	HandTracking *hgt = &HandTracking::fromC(ht_sync);
+
+	hgt->current_frame_timestamp = left_frame->timestamp;
+
+	// No filtering, fine to do this now. Also just a reminder that this took you 2 HOURS TO DEBUG THAT ONE TIME.
+	*out_timestamp_ns = hgt->current_frame_timestamp;
+
+	try {
+		callback_process_unsafe(hgt, left_frame, right_frame, out_left_hand, out_right_hand, out_timestamp_ns);
+	} catch (const std::exception &e) {
+		HG_ERROR(hgt, "Exception in hand tracking process callback: %s", e.what());
+
+		// Mark the hands as not active since an exception occurred.
+		out_left_hand->is_active = false;
+		out_right_hand->is_active = false;
+	}
+}
+
+void
 HandTracking::cCallbackDestroy(t_hand_tracking_sync *ht_sync)
 {
 	HandTracking *ht_ptr = &HandTracking::fromC(ht_sync);
 
-	delete ht_ptr;
+	try {
+		delete ht_ptr;
+	} catch (const std::exception &e) {
+		HG_ERROR(ht_ptr, "Exception in hand tracking destroy callback: %s", e.what());
+	}
 }
 
 } // namespace xrt::tracking::hand::mercury

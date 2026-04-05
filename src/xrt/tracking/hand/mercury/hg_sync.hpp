@@ -365,13 +365,18 @@ void
 init_hand_detection(HandTracking *hgt, onnx_state *wrap);
 
 void
-run_hand_detection(void *ptr);
-
-void
 init_keypoint_estimation(HandTracking *hgt, onnx_state *wrap);
 
+// These are passed into C callbacks, so they have to be extern "C".
+extern "C" {
+//! Runs hand detection, expects `ptr` to be a `hand_detection_run_info *`
+void
+run_hand_detection(void *ptr);
+
+//! Runs keypoint estimation, excpets `ptr` to be a `keypoint_estimation_run_info *`
 void
 run_keypoint_estimation(void *ptr);
+};
 
 void
 release_onnx_state(onnx_state *wrap);

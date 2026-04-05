@@ -306,12 +306,9 @@ init_hand_detection(HandTracking *hgt, onnx_state *wrap)
 }
 
 
-void
-run_hand_detection(void *ptr)
+static void
+run_hand_detection_unsafe(hand_detection_run_info *info)
 {
-	XRT_TRACE_MARKER();
-
-	hand_detection_run_info *info = (hand_detection_run_info *)ptr;
 	ht_view *view = info->view;
 	HandTracking *hgt = view->hgt;
 	onnx_state *state = &view->detection;
@@ -406,6 +403,24 @@ run_hand_detection(void *ptr)
 
 	for (size_t i = 0; i < ARRAY_SIZE(output_tensors); i++) {
 		wrap.api->ReleaseValue(output_tensors[i]);
+	}
+}
+
+void
+run_hand_detection(void *ptr)
+{
+	XRT_TRACE_MARKER();
+
+	hand_detection_run_info *info = (hand_detection_run_info *)ptr;
+	try {
+		run_hand_detection_unsafe(info);
+	} catch (const std::exception &e) {
+		HG_ERROR(info->view->hgt, "Exception while running hand detection: %s", e.what());
+
+		// Report nothing found if hand detection hits an exception
+		for (auto &output : info->outputs) {
+			output.found = false;
+		}
 	}
 }
 
@@ -594,12 +609,9 @@ set_predicted_zero(float *data)
 	}
 }
 
-void
-run_keypoint_estimation(void *ptr)
+static void
+run_keypoint_estimation_unsafe(keypoint_estimation_run_info &info)
 {
-	XRT_TRACE_MARKER();
-	keypoint_estimation_run_info info = *(keypoint_estimation_run_info *)ptr;
-
 	onnx_state *state = &info.view->keypoint[info.hand_idx];
 	OnnxWrapper &wrap = *state->wrap;
 
@@ -931,6 +943,22 @@ run_keypoint_estimation(void *ptr)
 
 	for (size_t i = 0; i < ARRAY_SIZE(output_tensors); i++) {
 		wrap.api->ReleaseValue(output_tensors[i]);
+	}
+}
+
+void
+run_keypoint_estimation(void *ptr)
+{
+	XRT_TRACE_MARKER();
+	keypoint_estimation_run_info info = *(keypoint_estimation_run_info *)ptr;
+
+	try {
+		run_keypoint_estimation_unsafe(info);
+	} catch (const std::exception &e) {
+		HG_ERROR(info.view->hgt, "Exception while running keypoint estimation: %s", e.what());
+
+		// Report not active if keypoint estimation hits an exception
+		info.view->hgt->keypoint_outputs[info.hand_idx].views[info.view->view].active = false;
 	}
 }
 
