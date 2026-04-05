@@ -558,6 +558,11 @@ vk_present_mode_string(VkPresentModeKHR code)
 		ENUM_TO_STR(VK_PRESENT_MODE_FIFO_RELAXED_KHR);
 		ENUM_TO_STR(VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR);
 		ENUM_TO_STR(VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR);
+#if defined(VK_KHR_present_mode_fifo_latest_ready)
+		ENUM_TO_STR(VK_PRESENT_MODE_FIFO_LATEST_READY_KHR);
+#elif defined(VK_EXT_present_mode_fifo_latest_ready)
+		ENUM_TO_STR(VK_PRESENT_MODE_FIFO_LATEST_READY_EXT);
+#endif
 	default: return "UNKNOWN MODE";
 	}
 }
