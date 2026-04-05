@@ -1120,14 +1120,20 @@ t_hand_tracking_sync_mercury_create(struct t_stereo_camera_calibration *calib,
 	hgt->views[0].camera_info = extra_camera_info.views[0];
 	hgt->views[1].camera_info = extra_camera_info.views[1];
 
-	init_hand_detection(hgt, &hgt->views[0].detection);
-	init_hand_detection(hgt, &hgt->views[1].detection);
+	try {
+		init_hand_detection(hgt, &hgt->views[0].detection);
+		init_hand_detection(hgt, &hgt->views[1].detection);
 
-	init_keypoint_estimation(hgt, &hgt->views[0].keypoint[0]);
-	init_keypoint_estimation(hgt, &hgt->views[0].keypoint[1]);
+		init_keypoint_estimation(hgt, &hgt->views[0].keypoint[0]);
+		init_keypoint_estimation(hgt, &hgt->views[0].keypoint[1]);
 
-	init_keypoint_estimation(hgt, &hgt->views[1].keypoint[0]);
-	init_keypoint_estimation(hgt, &hgt->views[1].keypoint[1]);
+		init_keypoint_estimation(hgt, &hgt->views[1].keypoint[0]);
+		init_keypoint_estimation(hgt, &hgt->views[1].keypoint[1]);
+	} catch (const std::exception &e) {
+		HG_ERROR(hgt, "Failed to initialize ONNX runtime: %s", e.what());
+		delete hgt;
+		return NULL;
+	}
 	hgt->keypoint_estimation_run_func = xrt::tracking::hand::mercury::run_keypoint_estimation;
 
 	hgt->views[0].view = 0;
