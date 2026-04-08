@@ -293,22 +293,25 @@ compositor_init_sys_info(struct sdl_compositor *c, struct sdl_program *sp, struc
 	}
 
 	// clang-format off
-	sys_info->view_configs[0].view_type = XRT_VIEW_TYPE_STEREO;
-	sys_info->view_configs[0].view_count = 2;
+	c->view_configs[0].view_type = XRT_VIEW_TYPE_STEREO;
+	c->view_configs[0].view_count = 2;
 
-	sys_info->view_configs[0].views[0].recommended.width_pixels  = w;
-	sys_info->view_configs[0].views[0].recommended.height_pixels = h;
-	sys_info->view_configs[0].views[0].recommended.sample_count  = 1;
-	sys_info->view_configs[0].views[0].max.width_pixels          = max;
-	sys_info->view_configs[0].views[0].max.height_pixels         = max;
-	sys_info->view_configs[0].views[0].max.sample_count          = 1;
+	c->view_configs[0].views[0].recommended.width_pixels  = w;
+	c->view_configs[0].views[0].recommended.height_pixels = h;
+	c->view_configs[0].views[0].recommended.sample_count  = 1;
+	c->view_configs[0].views[0].max.width_pixels          = max;
+	c->view_configs[0].views[0].max.height_pixels         = max;
+	c->view_configs[0].views[0].max.sample_count          = 1;
 
-	sys_info->view_configs[0].views[1].recommended.width_pixels  = min; // Second view is minimum
-	sys_info->view_configs[0].views[1].recommended.height_pixels = min; // Second view is minimum
-	sys_info->view_configs[0].views[1].recommended.sample_count  = 1;
-	sys_info->view_configs[0].views[1].max.width_pixels          = max;
-	sys_info->view_configs[0].views[1].max.height_pixels         = max;
-	sys_info->view_configs[0].views[1].max.sample_count          = 1;
+	c->view_configs[0].views[1].recommended.width_pixels  = min; // Second view is minimum
+	c->view_configs[0].views[1].recommended.height_pixels = min; // Second view is minimum
+	c->view_configs[0].views[1].recommended.sample_count  = 1;
+	c->view_configs[0].views[1].max.width_pixels          = max;
+	c->view_configs[0].views[1].max.height_pixels         = max;
+	c->view_configs[0].views[1].max.sample_count          = 1;
+
+	sys_info->view_type_count = 1;
+	sys_info->view_types[0] = c->view_configs[0].view_type;
 	// clang-format on
 
 	// Copy the list directly.
@@ -526,6 +529,23 @@ sdl_compositor_destroy(struct xrt_compositor *xc)
 	// Don't free as we are sub allocated.
 }
 
+static xrt_result_t
+sdl_compositor_get_view_config(struct xrt_compositor_native *xcn,
+                               enum xrt_view_type view_type,
+                               struct xrt_view_config *out_view_config)
+{
+	struct sdl_compositor *c = container_of(xcn, struct sdl_compositor, base.base);
+
+	for (uint32_t i = 0; i < c->sys_info.view_type_count; i++) {
+		if (c->view_configs[i].view_type == view_type) {
+			*out_view_config = c->view_configs[i];
+			return XRT_SUCCESS;
+		}
+	}
+
+	return XRT_ERROR_UNSUPPORTED_VIEW_TYPE;
+}
+
 
 /*
  *
@@ -591,5 +611,6 @@ sdl_compositor_create_system(struct sdl_program *sp, struct xrt_system_composito
 	XRT_MAYBE_UNUSED xrt_result_t xret = u_pa_factory_create(&upaf);
 	assert(xret == XRT_SUCCESS && upaf != NULL);
 
-	return comp_multi_create_system_compositor(&sp->c.base.base, upaf, &sp->c.sys_info, false, out_xsysc);
+	return comp_multi_create_system_compositor(&sp->c.base.base, upaf, sdl_compositor_get_view_config,
+	                                           &sp->c.sys_info, false, out_xsysc);
 }

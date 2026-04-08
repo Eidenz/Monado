@@ -1,4 +1,5 @@
 // Copyright 2026, Beyley Cardellio
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -10,19 +11,21 @@
 #include "xrt/xrt_config_drivers.h"
 #include "xrt/xrt_prober.h"
 #include "xrt/xrt_frameserver.h"
+#include "xrt/xrt_system.h"
 
 #include "tracking/t_constellation.h"
 
 #include "constellation/t_rift_blobwatch.h"
 
-#include "util/u_builders.h"
 #include "util/u_debug.h"
 #include "util/u_misc.h"
 #include "util/u_logging.h"
-#include "util/u_system_helpers.h"
 #include "util/u_trace_marker.h"
 #include "util/u_var.h"
 #include "util/u_sink.h"
+#include "util/u_builder_search.h"
+
+#include "target_builder_helpers.h"
 
 #include "rift/rift_interface.h"
 
@@ -47,7 +50,7 @@
 
 struct rift_builder
 {
-	struct u_builder base;
+	struct t_builder base;
 
 	enum u_logging_level log_level;
 
@@ -158,7 +161,7 @@ rift_open_system_impl(struct xrt_builder *xb,
                       struct xrt_tracking_origin *origin,
                       struct xrt_system_devices *xsysd,
                       struct xrt_frame_context *xfctx,
-                      struct u_builder_roles_helper *ubrh)
+                      struct t_builder_roles_helper *tbrh)
 {
 	struct rift_builder *rb = rift_builder(xb);
 
@@ -226,20 +229,21 @@ rift_open_system_impl(struct xrt_builder *xb,
 		}
 
 		// Just clamp instead of overflowing the buffer
-		if (created_devices + xsysd->xdev_count > XRT_SYSTEM_MAX_DEVICES) {
-			created_devices = XRT_SYSTEM_MAX_DEVICES - xsysd->xdev_count;
+		if (created_devices + (int)xsysd->static_xdev_count > XRT_SYSTEM_MAX_DEVICES) {
+			created_devices = XRT_SYSTEM_MAX_DEVICES - (int)xsysd->static_xdev_count;
 		}
 
-		memcpy(xsysd->xdevs + xsysd->xdev_count, xdevs, sizeof(struct xrt_device *) * created_devices);
-		xsysd->xdev_count += created_devices;
+		memcpy(xsysd->static_xdevs + xsysd->static_xdev_count, xdevs,
+		       sizeof(struct xrt_device *) * created_devices);
+		xsysd->static_xdev_count += (size_t)created_devices;
 
 		for (int i = 0; i < created_devices; i++) {
 			struct xrt_device *xdev = xdevs[i];
 			switch (xdev->device_type) {
-			case XRT_DEVICE_TYPE_HMD: ubrh->head = xdev; break;
-			case XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER: ubrh->left = xdev; break;
-			case XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER: ubrh->right = xdev; break;
-			case XRT_DEVICE_TYPE_GAMEPAD: ubrh->gamepad = xdev; break;
+			case XRT_DEVICE_TYPE_HMD: tbrh->head = xdev; break;
+			case XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER: tbrh->left = xdev; break;
+			case XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER: tbrh->right = xdev; break;
+			case XRT_DEVICE_TYPE_GAMEPAD: tbrh->gamepad = xdev; break;
 			default: break;
 			}
 		}
@@ -267,15 +271,21 @@ rift_open_system_impl(struct xrt_builder *xb,
 			RIFT_WARN(rb, "Rift sensor context start failed with code %d", ret);
 		}
 
-		ssize_t num_sensors = rift_sensor_context_get_sensors(rb->sensor_context, &rb->sensors);
-		if (num_sensors < 0) {
-			RIFT_WARN(rb, "Rift sensor context get sensors failed with code %d", (int)num_sensors);
+		ssize_t signed_num_sensors = rift_sensor_context_get_sensors(rb->sensor_context, &rb->sensors);
+		if (signed_num_sensors >= UINT32_MAX) {
+			RIFT_WARN(rb, "Rift sensor context got too many sensors: %zd", signed_num_sensors);
+			signed_num_sensors = 0;
+		}
+		if (signed_num_sensors < 0) {
+			RIFT_WARN(rb, "Rift sensor context get sensors failed with code: %zd", signed_num_sensors);
+			signed_num_sensors = 0;
 		}
 
+		uint32_t num_sensors = (uint32_t)signed_num_sensors;
 		rb->blobwatches = U_TYPED_ARRAY_CALLOC(struct t_blobwatch *, num_sensors);
 		rb->blobwatch_debug_sinks = U_TYPED_ARRAY_CALLOC(struct u_sink_debug, num_sensors);
 
-		for (ssize_t i = 0; i < num_sensors; i++) {
+		for (uint32_t i = 0; i < num_sensors; i++) {
 			struct rift_sensor *sensor = rb->sensors[i];
 
 			enum rift_variant sensor_variant = rift_sensor_get_variant(sensor);
@@ -303,26 +313,26 @@ rift_open_system_impl(struct xrt_builder *xb,
 			};
 			ret = t_rift_blobwatch_create(&params, xfctx, blob_sink, &frame_sink, blobwatch);
 			if (ret != 0) {
-				RIFT_WARN(rb, "Failed to create Rift blobwatch for sensor %zd with code %d", i, ret);
+				RIFT_WARN(rb, "Failed to create Rift blobwatch for sensor %u with code %d", i, ret);
 				continue;
 			}
 
 			u_sink_create_format_converter(xfctx, XRT_FORMAT_L8, frame_sink, &frame_sink);
 
 			if (!u_sink_simple_queue_create(xfctx, frame_sink, &frame_sink)) {
-				RIFT_WARN(rb, "Failed to create Rift blobwatch queue for sensor %zd", i);
+				RIFT_WARN(rb, "Failed to create Rift blobwatch queue for sensor %u", i);
 				continue;
 			}
 
 			struct xrt_fs *fs = rift_sensor_get_frame_server(sensor);
 
 			if (!xrt_fs_stream_start(fs, frame_sink, XRT_FS_CAPTURE_TYPE_TRACKING, 0)) {
-				RIFT_WARN(rb, "Failed to start Rift sensor frame server stream for sensor %zd", i);
+				RIFT_WARN(rb, "Failed to start Rift sensor frame server stream for sensor %u", i);
 				continue;
 			}
 
 			u_var_add_sink_debug(rb, debug_sink, "Sensor Blobwatch");
-			RIFT_DEBUG(rb, "Rift sensor %zd initialized and streaming at index %zd", i, rb->num_sensors);
+			RIFT_DEBUG(rb, "Rift sensor %u initialized and streaming at index %zd", i, rb->num_sensors);
 
 			rb->num_sensors++;
 
@@ -397,14 +407,14 @@ rift_builder_create(void)
 
 	// xrt_builder fields.
 	rb->base.base.estimate_system = rift_estimate_system;
-	rb->base.base.open_system = u_builder_open_system_static_roles;
+	rb->base.base.open_system = t_builder_open_system_static_roles;
 	rb->base.base.destroy = rift_destroy;
 	rb->base.base.identifier = "rift";
 	rb->base.base.name = "Oculus Rift";
 	rb->base.base.driver_identifiers = driver_list;
 	rb->base.base.driver_identifier_count = ARRAY_SIZE(driver_list);
 
-	// u_builder fields.
+	// t_builder fields.
 	rb->base.open_system_static_roles = rift_open_system_impl;
 
 	u_var_add_root(rb, "Rift Builder", false);

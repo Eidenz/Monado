@@ -23,6 +23,7 @@
 #include "math/m_clock_tracking.h"
 #include "math/m_api.h"
 #include "math/m_vec2.h"
+#include "math/m_vec3.h"
 #include "math/m_mathinclude.h" // IWYU pragma: keep
 
 #include "util/u_debug.h"
@@ -324,6 +325,90 @@ rift_radio_thread(void *ptr)
 	return NULL;
 }
 
+#define PARSE_MICROMETER_TRIPLET(out, values)                                                                          \
+	do {                                                                                                           \
+		out.x = MICROMETERS_TO_METERS(values[0]);                                                              \
+		out.y = MICROMETERS_TO_METERS(values[1]);                                                              \
+		out.z = MICROMETERS_TO_METERS(values[2]);                                                              \
+	} while (0)
+
+static int
+rift_read_led_model(struct rift_hmd *hmd)
+{
+	int result;
+
+	struct rift_position_calibration_report position_report;
+
+	result = rift_get_position_calibration_report(hmd, &position_report);
+	if (result < 0) {
+		HMD_ERROR(hmd, "Failed to read position calibration report, reason %d", result);
+		return result;
+	}
+
+	// minus one to get rid of the IMU, which is also in here
+	hmd->led_model.leds = U_TYPED_ARRAY_CALLOC(struct t_constellation_tracker_led, position_report.position_count);
+
+	for (uint32_t i = 0; i < position_report.position_count; i++) {
+		result = rift_get_position_calibration_report(hmd, &position_report);
+		if (result < 0) {
+			HMD_ERROR(hmd, "Failed to read position calibration report, reason %d", result);
+			goto read_led_model_err;
+		}
+
+		if (position_report.position_type == RIFT_POSITION_CALIBRATION_TYPE_INERTIAL_SENSOR) {
+			PARSE_MICROMETER_TRIPLET(hmd->T_device_imu.position, position_report.position);
+			hmd->T_device_imu.position.x = -hmd->T_device_imu.position.x;
+			hmd->T_device_imu.position.y = hmd->T_device_imu.position.y;
+			hmd->T_device_imu.position.z = -hmd->T_device_imu.position.z;
+
+			hmd->T_device_imu.orientation = (struct xrt_quat)XRT_QUAT_IDENTITY;
+
+			// NOTE: we ignore the IMU orientation since it's always zeroed out..
+
+			// Invert the pose for device relative to IMU
+			math_pose_invert(&hmd->T_device_imu, &hmd->T_imu_device);
+		} else {
+			struct xrt_vec3 pos;
+			PARSE_MICROMETER_TRIPLET(pos, position_report.position);
+
+			struct xrt_vec3 normal;
+			PARSE_MICROMETER_TRIPLET(normal, position_report.normal);
+			math_vec3_normalize(&normal); // normalize the direction
+
+			pos.x = -pos.x;
+			pos.y = pos.y;
+			pos.z = -pos.z;
+			normal.x = -normal.x;
+			normal.y = normal.y;
+			normal.z = -normal.z;
+
+			hmd->led_model.leds[hmd->led_model.led_count++] = (struct t_constellation_tracker_led){
+			    .position = pos,
+			    .normal = normal,
+			    .radius_m = 0.0035f,                   // 3.5mm
+			    .visibility_angle = DEG_TO_RAD(90.0f), // TODO: tune this value properly
+			    .id = hmd->led_model.led_count - 1,
+			};
+		}
+	}
+
+	// Make the LEDs relative to the IMU
+	for (size_t i = 0; i < hmd->led_model.led_count; i++) {
+		struct xrt_vec3 led_pos = hmd->led_model.leds[i].position;
+		hmd->led_model.leds[i].position = m_vec3_add(hmd->T_imu_device.position, led_pos);
+	}
+
+	return 0;
+
+read_led_model_err:
+	free(hmd->led_model.leds);
+	hmd->led_model.leds = NULL;
+
+	return result;
+}
+
+#undef PARSE_MICROMETER_TRIPLET
+
 /*
  *
  * Driver functions
@@ -368,6 +453,13 @@ rift_hmd_destroy(struct xrt_device *xdev)
 				u_device_free(hmd->devices[i]);
 			}
 		}
+	}
+
+	if (hmd->led_model.leds != NULL) {
+		free(hmd->led_model.leds);
+
+		hmd->led_model.leds = NULL;
+		hmd->led_model.led_count = 0;
 	}
 
 	u_device_free(&hmd->base);
@@ -633,6 +725,14 @@ rift_devices_create(struct os_hid_device *hmd_dev,
 		if (result < 0) {
 			HMD_ERROR(hmd, "Failed to enable tracking.");
 		}
+	}
+
+	result = rift_read_led_model(hmd);
+	if (result < 0) {
+		HMD_ERROR(hmd, "Failed to read LED model, reason %d", result);
+		goto error;
+	} else {
+		HMD_DEBUG(hmd, "Read LED model from Rift.");
 	}
 
 	// fill in extra display info about the headset

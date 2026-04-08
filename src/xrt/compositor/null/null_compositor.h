@@ -84,6 +84,9 @@ struct null_compositor
 	//! The device we are displaying to.
 	struct xrt_device *xdev;
 
+	//! The supported view configurations
+	struct xrt_view_config view_configs[XRT_MAX_COMPOSITOR_VIEW_CONFIGS_COUNT];
+
 	//! Pacing helper to drive us forward.
 	struct u_pacing_compositor *upc;
 

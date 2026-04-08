@@ -164,10 +164,15 @@ oxr_xrCreateSwapchain(XrSession session, const XrSwapchainCreateInfo *createInfo
 		return oxr_error(&log, XR_ERROR_VALIDATION_FAILURE, "(createInfo->sampleCount == 0) must not be zero");
 	}
 
+	assert(xsysc_info->view_type_count > 0);
+
+	struct xrt_view_config view_config;
+	if (xrt_syscomp_get_view_config(sess->sys->xsysc, xsysc_info->view_types[0], &view_config) != XRT_SUCCESS) {
+		return oxr_error(&log, XR_ERROR_RUNTIME_FAILURE, "Unexpected error getting view configuration.");
+	}
+
 	// TODO Find the max of the views[0].max.sample_count limits.
-	assert(xsysc_info->view_config_count > 0);
-	assert(xsysc_info->view_configs[0].view_count > 0);
-	uint32_t max_sample_count = xsysc_info->view_configs[0].views[0].max.sample_count;
+	uint32_t max_sample_count = view_config.views[0].max.sample_count;
 
 	if (createInfo->sampleCount > max_sample_count) {
 		return oxr_error(&log, XR_ERROR_VALIDATION_FAILURE,

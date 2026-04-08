@@ -51,17 +51,20 @@ ipc_server_objects_get_xdev_id_or_add(volatile struct ipc_client_state *ics, str
 	assert(out_id != NULL);
 	assert(xdev != NULL);
 
-	// Check if device already exists and return its ID.
+	// Check if device is already tracked and return its ID.
+	for (uint32_t index = 0; index < XRT_SYSTEM_MAX_DEVICES; index++) {
+		if (ics->objects.xdevs[index] == xdev) {
+			*out_id = index;
+			return XRT_SUCCESS;
+		}
+	}
+
+	// If not, find a free slot for it, filled below.
 	uint32_t index = 0;
 	for (; index < XRT_SYSTEM_MAX_DEVICES; index++) {
 		// Found a free slot.
 		if (ics->objects.xdevs[index] == NULL) {
 			break;
-		}
-		// Already tracked.
-		if (ics->objects.xdevs[index] == xdev) {
-			*out_id = index;
-			return XRT_SUCCESS;
 		}
 	}
 
@@ -117,20 +120,23 @@ ipc_server_objects_get_xtrack_id_or_add(volatile struct ipc_client_state *ics,
 {
 	assert(out_id != NULL);
 
-	// Find the next available slot in xtracks array and assign an ID, or if we find the xtrack return it.
+	// Check if tracking origin is already tracked and return its ID.
 	for (uint32_t index = 0; index < XRT_SYSTEM_MAX_DEVICES; index++) {
-		if (ics->objects.xtracks[index] == NULL) {
-			ics->objects.xtracks[index] = xtrack;
-			*out_id = index;
-			return XRT_SUCCESS;
-		}
 		if (ics->objects.xtracks[index] == xtrack) {
 			*out_id = index;
 			return XRT_SUCCESS;
 		}
 	}
 
-	// No available slot or xtrack found
+	// If not, find a free slot for it, filled below.
+	for (uint32_t index = 0; index < XRT_SYSTEM_MAX_DEVICES; index++) {
+		if (ics->objects.xtracks[index] == NULL) {
+			ics->objects.xtracks[index] = xtrack;
+			*out_id = index;
+			return XRT_SUCCESS;
+		}
+	}
+
 	IPC_ERROR(ics->server, "Failed to find available slot for tracking origin: '%s'", xtrack->name);
 
 	return XRT_ERROR_IPC_FAILURE;

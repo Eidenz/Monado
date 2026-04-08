@@ -922,7 +922,7 @@ math_compute_fovs(double w_total,
  * orientation.
  *
  * When rotating the view orientation, parts of the FOV are cut off on the side
- * the view roates away from and parts of previously unseen content is pulled
+ * the view rotates away from and parts of previously unseen content is pulled
  * in from the side the view rotates towards. Therefore, when parallezing
  * views, the application should render with an adjusted FOV that covers the
  * area that will be in the FOV of the view *after* the compositor reprojects

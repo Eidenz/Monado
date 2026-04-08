@@ -1,4 +1,5 @@
 // Copyright 2022-2023, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -9,16 +10,15 @@
 
 #include "xrt/xrt_config_drivers.h"
 #include "xrt/xrt_prober.h"
+#include "xrt/xrt_system.h"
 
 #include "util/u_misc.h"
 #include "util/u_debug.h"
 #include "util/u_logging.h"
-#include "util/u_builders.h"
 #include "util/u_config_json.h"
 #include "util/u_pretty_print.h"
-#include "util/u_space_overseer.h"
-#include "util/u_system_helpers.h"
 
+#include "target_builder_helpers.h"
 #include "target_builder_interface.h"
 
 #include "wmr/wmr_common.h"
@@ -183,7 +183,7 @@ wmr_open_system_impl(struct xrt_builder *xb,
                      struct xrt_tracking_origin *origin,
                      struct xrt_system_devices *xsysd,
                      struct xrt_frame_context *xfctx,
-                     struct u_builder_roles_helper *ubrh)
+                     struct t_builder_roles_helper *tbrh)
 {
 	enum u_logging_level log_level = debug_get_log_option_wmr_log();
 	struct wmr_bt_controllers_search_results ctrls = {0};
@@ -274,18 +274,18 @@ wmr_open_system_impl(struct xrt_builder *xb,
 	assert(xret_unlock == XRT_SUCCESS);
 	(void)xret_unlock;
 
-	xsysd->xdevs[xsysd->xdev_count++] = head;
+	xsysd->static_xdevs[xsysd->static_xdev_count++] = head;
 	if (left != NULL) {
-		xsysd->xdevs[xsysd->xdev_count++] = left;
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = left;
 	}
 	if (right != NULL) {
-		xsysd->xdevs[xsysd->xdev_count++] = right;
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = right;
 	}
 	if (ht_left != NULL) {
-		xsysd->xdevs[xsysd->xdev_count++] = ht_left;
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = ht_left;
 	}
 	if (ht_right != NULL) {
-		xsysd->xdevs[xsysd->xdev_count++] = ht_right;
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = ht_right;
 	}
 
 	// Use hand tracking if no controllers.
@@ -298,11 +298,11 @@ wmr_open_system_impl(struct xrt_builder *xb,
 
 
 	// Assign to role(s).
-	ubrh->head = head;
-	ubrh->left = left;
-	ubrh->right = right;
-	ubrh->hand_tracking.unobstructed.left = ht_left;
-	ubrh->hand_tracking.unobstructed.right = ht_right;
+	tbrh->head = head;
+	tbrh->left = left;
+	tbrh->right = right;
+	tbrh->hand_tracking.unobstructed.left = ht_left;
+	tbrh->hand_tracking.unobstructed.right = ht_right;
 
 	return XRT_SUCCESS;
 
@@ -333,18 +333,18 @@ wmr_destroy(struct xrt_builder *xb)
 struct xrt_builder *
 t_builder_wmr_create(void)
 {
-	struct u_builder *ub = U_TYPED_CALLOC(struct u_builder);
+	struct t_builder *ub = U_TYPED_CALLOC(struct t_builder);
 
 	// xrt_builder fields.
 	ub->base.estimate_system = wmr_estimate_system;
-	ub->base.open_system = u_builder_open_system_static_roles;
+	ub->base.open_system = t_builder_open_system_static_roles;
 	ub->base.destroy = wmr_destroy;
 	ub->base.identifier = "wmr";
 	ub->base.name = "Windows Mixed Reality";
 	ub->base.driver_identifiers = driver_list;
 	ub->base.driver_identifier_count = ARRAY_SIZE(driver_list);
 
-	// u_builder fields.
+	// t_builder fields.
 	ub->open_system_static_roles = wmr_open_system_impl;
 
 	return &ub->base;

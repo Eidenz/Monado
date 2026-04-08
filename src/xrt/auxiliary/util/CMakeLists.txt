@@ -21,8 +21,10 @@ add_library(
 	u_autoexpgain.h
 	u_bitwise.c
 	u_bitwise.h
-	u_builders.c
-	u_builders.h
+	u_builder_helpers.c
+	u_builder_helpers.h
+	u_builder_search.c
+	u_builder_search.h
 	u_cobs.c
 	u_cobs.h
 	u_debug.c
@@ -87,15 +89,9 @@ add_library(
 	u_prober.h
 	u_resampler.c
 	u_resampler.h
-	u_session.c
-	u_session.h
-	u_space_overseer.c
-	u_space_overseer.h
 	u_extension_list.cpp
 	u_extension_list.h
 	u_extension_list.hpp
-	u_system.c
-	u_system.h
 	u_system_helpers.c
 	u_system_helpers.h
 	u_template_historybuf.hpp

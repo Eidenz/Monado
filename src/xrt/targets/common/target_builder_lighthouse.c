@@ -1,4 +1,5 @@
 // Copyright 2022-2023, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -15,13 +16,13 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_prober.h"
 
-#include "util/u_builders.h"
 #include "util/u_config_json.h"
 #include "util/u_debug.h"
 #include "util/u_device.h"
 #include "util/u_sink.h"
 #include "util/u_system_helpers.h"
 
+#include "target_builder_helpers.h"
 #include "target_builder_interface.h"
 
 #include "vive/vive_common.h"
@@ -108,7 +109,7 @@ enum lighthouse_driver
 
 struct lighthouse_system
 {
-	struct u_builder base;
+	struct t_builder base;
 
 	struct xrt_frame_context *xfctx;
 	enum lighthouse_driver driver; //!< Which lighthouse implementation we are using
@@ -516,7 +517,7 @@ lighthouse_open_system_impl(struct xrt_builder *xb,
                             struct xrt_tracking_origin *origin,
                             struct xrt_system_devices *xsysd,
                             struct xrt_frame_context *xfctx,
-                            struct u_builder_roles_helper *ubrh)
+                            struct t_builder_roles_helper *tbrh)
 {
 	struct lighthouse_system *lhs = (struct lighthouse_system *)xb;
 	xrt_result_t result = XRT_SUCCESS;
@@ -555,7 +556,8 @@ lighthouse_open_system_impl(struct xrt_builder *xb,
 	}
 	case DRIVER_SURVIVE: {
 #ifdef XRT_BUILD_DRIVER_SURVIVE
-		xsysd->xdev_count += survive_get_devices(xp, &xsysd->xdevs[xsysd->xdev_count], &lhs->hmd_config);
+		xsysd->static_xdev_count +=
+		    survive_get_devices(xp, &xsysd->static_xdevs[xsysd->static_xdev_count], &lhs->hmd_config);
 #endif
 		break;
 	}
@@ -583,28 +585,28 @@ lighthouse_open_system_impl(struct xrt_builder *xb,
 			case VIVE_PRO2_MAINBOARD_PID:
 			case VIVE_PRO_LHR_PID: {
 				struct vive_source *vs = vive_source_create(xfctx);
-				int num_devices = vive_found(          //
-				    xp,                                //
-				    xpdevs,                            //
-				    xpdev_count,                       //
-				    i,                                 //
-				    NULL,                              //
-				    lhs->vive_tstatus,                 //
-				    vs,                                //
-				    &lhs->hmd_config,                  //
-				    &xsysd->xdevs[xsysd->xdev_count]); //
-				xsysd->xdev_count += num_devices;
+				int num_devices = vive_found(                        //
+				    xp,                                              //
+				    xpdevs,                                          //
+				    xpdev_count,                                     //
+				    i,                                               //
+				    NULL,                                            //
+				    lhs->vive_tstatus,                               //
+				    vs,                                              //
+				    &lhs->hmd_config,                                //
+				    &xsysd->static_xdevs[xsysd->static_xdev_count]); //
+				xsysd->static_xdev_count += num_devices;
 			} break;
 			case VIVE_WATCHMAN_DONGLE:
 			case VIVE_WATCHMAN_DONGLE_GEN2: {
-				int num_devices = vive_controller_found( //
-				    xp,                                  //
-				    xpdevs,                              //
-				    xpdev_count,                         //
-				    i,                                   //
-				    NULL,                                //
-				    &xsysd->xdevs[xsysd->xdev_count]);   //
-				xsysd->xdev_count += num_devices;
+				int num_devices = vive_controller_found(             //
+				    xp,                                              //
+				    xpdevs,                                          //
+				    xpdev_count,                                     //
+				    i,                                               //
+				    NULL,                                            //
+				    &xsysd->static_xdevs[xsysd->static_xdev_count]); //
+				xsysd->static_xdev_count += num_devices;
 			} break;
 			}
 		}
@@ -626,8 +628,8 @@ lighthouse_open_system_impl(struct xrt_builder *xb,
 	int right_idx = -1;
 	int gamepad_idx = -1;
 
-	u_device_assign_xdev_roles(xsysd->xdevs, xsysd->xdev_count, &head_idx, &eyes_idx, &face_idx, &left_idx,
-	                           &right_idx, &gamepad_idx);
+	u_device_assign_xdev_roles(xsysd->static_xdevs, xsysd->static_xdev_count, &head_idx, &eyes_idx, &face_idx,
+	                           &left_idx, &right_idx, &gamepad_idx);
 
 	if (head_idx < 0) {
 		LH_ERROR("Unable to find HMD");
@@ -640,23 +642,23 @@ lighthouse_open_system_impl(struct xrt_builder *xb,
 	struct xrt_device *left = NULL, *right = NULL;
 	struct xrt_device *unobstructed_left_ht = NULL, *unobstructed_right_ht = NULL;
 	struct xrt_device *conforming_left_ht = NULL, *conforming_right_ht = NULL;
-	struct xrt_device *face = (face_idx >= 0) ? xsysd->xdevs[face_idx] : NULL;
-	struct xrt_device *eyes = (eyes_idx >= 0) ? xsysd->xdevs[eyes_idx] : NULL;
+	struct xrt_device *face = (face_idx >= 0) ? xsysd->static_xdevs[face_idx] : NULL;
+	struct xrt_device *eyes = (eyes_idx >= 0) ? xsysd->static_xdevs[eyes_idx] : NULL;
 
 	// Always have a head.
-	head = xsysd->xdevs[head_idx];
+	head = xsysd->static_xdevs[head_idx];
 
 	// It's okay if we didn't find controllers
 	if (left_idx >= 0) {
 		lhs->vive_tstatus.controllers_found = true;
-		left = xsysd->xdevs[left_idx];
+		left = xsysd->static_xdevs[left_idx];
 		unobstructed_left_ht = u_system_devices_get_ht_device_unobstructed_left(xsysd);
 		conforming_left_ht = u_system_devices_get_ht_device_conforming_left(xsysd);
 	}
 
 	if (right_idx >= 0) {
 		lhs->vive_tstatus.controllers_found = true;
-		right = xsysd->xdevs[right_idx];
+		right = xsysd->static_xdevs[right_idx];
 		unobstructed_right_ht = u_system_devices_get_ht_device_unobstructed_right(xsysd);
 		conforming_right_ht = u_system_devices_get_ht_device_conforming_right(xsysd);
 	}
@@ -714,13 +716,13 @@ lighthouse_open_system_impl(struct xrt_builder *xb,
 
 		if (lhs->vive_tstatus.hand_enabled) {
 			if (hand_devices[0] != NULL) {
-				xsysd->xdevs[xsysd->xdev_count++] = hand_devices[0];
+				xsysd->static_xdevs[xsysd->static_xdev_count++] = hand_devices[0];
 				left = hand_devices[0];
 				unobstructed_left_ht = hand_devices[0];
 			}
 
 			if (hand_devices[1] != NULL) {
-				xsysd->xdevs[xsysd->xdev_count++] = hand_devices[1];
+				xsysd->static_xdevs[xsysd->static_xdev_count++] = hand_devices[1];
 				right = hand_devices[1];
 				unobstructed_right_ht = hand_devices[1];
 			}
@@ -746,15 +748,15 @@ end_valve_index:
 	}
 
 	// Assign to role(s).
-	ubrh->head = head;
-	ubrh->face = face;
-	ubrh->eyes = eyes;
-	ubrh->left = left;
-	ubrh->right = right;
-	ubrh->hand_tracking.unobstructed.left = unobstructed_left_ht;
-	ubrh->hand_tracking.unobstructed.right = unobstructed_right_ht;
-	ubrh->hand_tracking.conforming.left = conforming_left_ht;
-	ubrh->hand_tracking.conforming.right = conforming_right_ht;
+	tbrh->head = head;
+	tbrh->face = face;
+	tbrh->eyes = eyes;
+	tbrh->left = left;
+	tbrh->right = right;
+	tbrh->hand_tracking.unobstructed.left = unobstructed_left_ht;
+	tbrh->hand_tracking.unobstructed.right = unobstructed_right_ht;
+	tbrh->hand_tracking.conforming.left = conforming_left_ht;
+	tbrh->hand_tracking.conforming.right = conforming_right_ht;
 
 	// Clean up after us.
 	lhs->xfctx = NULL;
@@ -790,14 +792,14 @@ t_builder_lighthouse_create(void)
 
 	// xrt_builder fields.
 	lhs->base.base.estimate_system = lighthouse_estimate_system;
-	lhs->base.base.open_system = u_builder_open_system_static_roles;
+	lhs->base.base.open_system = t_builder_open_system_static_roles;
 	lhs->base.base.destroy = lighthouse_destroy;
 	lhs->base.base.identifier = "lighthouse";
 	lhs->base.base.name = "Lighthouse-tracked FLOSS (Vive, Index, Tundra trackers, etc.) devices builder";
 	lhs->base.base.driver_identifiers = driver_list;
 	lhs->base.base.driver_identifier_count = ARRAY_SIZE(driver_list);
 
-	// u_builder fields.
+	// t_builder fields.
 	lhs->base.open_system_static_roles = lighthouse_open_system_impl;
 
 	return &lhs->base.base;

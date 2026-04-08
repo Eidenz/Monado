@@ -1,4 +1,5 @@
 // Copyright 2022-2023, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -12,9 +13,9 @@
 
 #include "util/u_misc.h"
 #include "util/u_device.h"
-#include "util/u_builders.h"
 #include "util/u_system_helpers.h"
 
+#include "target_builder_helpers.h"
 #include "target_builder_interface.h"
 
 #include <assert.h>
@@ -117,7 +118,7 @@ legacy_open_system_impl(struct xrt_builder *xb,
                         struct xrt_tracking_origin *origin,
                         struct xrt_system_devices *xsysd,
                         struct xrt_frame_context *xfctx,
-                        struct u_builder_roles_helper *ubrh)
+                        struct t_builder_roles_helper *tbrh)
 {
 	xrt_result_t xret;
 	int ret;
@@ -132,18 +133,18 @@ legacy_open_system_impl(struct xrt_builder *xb,
 		return xret;
 	}
 
-	ret = xrt_prober_select(xp, xsysd->xdevs, ARRAY_SIZE(xsysd->xdevs));
+	ret = xrt_prober_select(xp, xsysd->static_xdevs, ARRAY_SIZE(xsysd->static_xdevs));
 	if (ret < 0) {
 		return XRT_ERROR_DEVICE_CREATION_FAILED;
 	}
 
 	// Count the xdevs.
-	for (uint32_t i = 0; i < ARRAY_SIZE(xsysd->xdevs); i++) {
-		if (xsysd->xdevs[i] == NULL) {
+	for (uint32_t i = 0; i < ARRAY_SIZE(xsysd->static_xdevs); i++) {
+		if (xsysd->static_xdevs[i] == NULL) {
 			break;
 		}
 
-		xsysd->xdev_count++;
+		xsysd->static_xdev_count++;
 	}
 
 
@@ -152,8 +153,8 @@ legacy_open_system_impl(struct xrt_builder *xb,
 	 */
 
 	int head_idx, eyes_idx, face_idx, left_idx, right_idx, gamepad_idx;
-	u_device_assign_xdev_roles(xsysd->xdevs, xsysd->xdev_count, &head_idx, &eyes_idx, &face_idx, &left_idx,
-	                           &right_idx, &gamepad_idx);
+	u_device_assign_xdev_roles(xsysd->static_xdevs, xsysd->static_xdev_count, &head_idx, &eyes_idx, &face_idx,
+	                           &left_idx, &right_idx, &gamepad_idx);
 
 	struct xrt_device *head = NULL;
 	struct xrt_device *eyes = NULL, *face = NULL;
@@ -162,22 +163,22 @@ legacy_open_system_impl(struct xrt_builder *xb,
 	struct xrt_device *conforming_left_ht = NULL, *conforming_right_ht = NULL;
 
 	if (head_idx >= 0) {
-		head = xsysd->xdevs[head_idx];
+		head = xsysd->static_xdevs[head_idx];
 	}
 	if (eyes_idx >= 0) {
-		eyes = xsysd->xdevs[eyes_idx];
+		eyes = xsysd->static_xdevs[eyes_idx];
 	}
 	if (face_idx >= 0) {
-		face = xsysd->xdevs[face_idx];
+		face = xsysd->static_xdevs[face_idx];
 	}
 	if (left_idx >= 0) {
-		left = xsysd->xdevs[left_idx];
+		left = xsysd->static_xdevs[left_idx];
 	}
 	if (right_idx >= 0) {
-		right = xsysd->xdevs[right_idx];
+		right = xsysd->static_xdevs[right_idx];
 	}
 	if (gamepad_idx >= 0) {
-		gamepad = xsysd->xdevs[gamepad_idx];
+		gamepad = xsysd->static_xdevs[gamepad_idx];
 	}
 
 	// Find hand tracking devices.
@@ -188,16 +189,16 @@ legacy_open_system_impl(struct xrt_builder *xb,
 	conforming_right_ht = u_system_devices_get_ht_device_conforming_right(xsysd);
 
 	// Assign to role(s).
-	ubrh->head = head;
-	ubrh->eyes = eyes;
-	ubrh->face = face;
-	ubrh->left = left;
-	ubrh->right = right;
-	ubrh->gamepad = gamepad;
-	ubrh->hand_tracking.unobstructed.left = unobstructed_left_ht;
-	ubrh->hand_tracking.unobstructed.right = unobstructed_right_ht;
-	ubrh->hand_tracking.conforming.left = conforming_left_ht;
-	ubrh->hand_tracking.conforming.right = conforming_right_ht;
+	tbrh->head = head;
+	tbrh->eyes = eyes;
+	tbrh->face = face;
+	tbrh->left = left;
+	tbrh->right = right;
+	tbrh->gamepad = gamepad;
+	tbrh->hand_tracking.unobstructed.left = unobstructed_left_ht;
+	tbrh->hand_tracking.unobstructed.right = unobstructed_right_ht;
+	tbrh->hand_tracking.conforming.left = conforming_left_ht;
+	tbrh->hand_tracking.conforming.right = conforming_right_ht;
 
 	return XRT_SUCCESS;
 }
@@ -218,18 +219,18 @@ legacy_destroy(struct xrt_builder *xb)
 struct xrt_builder *
 t_builder_legacy_create(void)
 {
-	struct u_builder *ub = U_TYPED_CALLOC(struct u_builder);
+	struct t_builder *ub = U_TYPED_CALLOC(struct t_builder);
 
 	// xrt_builder fields.
 	ub->base.estimate_system = legacy_estimate_system;
-	ub->base.open_system = u_builder_open_system_static_roles;
+	ub->base.open_system = t_builder_open_system_static_roles;
 	ub->base.destroy = legacy_destroy;
 	ub->base.identifier = "legacy";
 	ub->base.name = "Legacy probing system";
 	ub->base.driver_identifiers = driver_list;
 	ub->base.driver_identifier_count = ARRAY_SIZE(driver_list) - 1;
 
-	// u_builder fields.
+	// t_builder fields.
 	ub->open_system_static_roles = legacy_open_system_impl;
 
 	return &ub->base;

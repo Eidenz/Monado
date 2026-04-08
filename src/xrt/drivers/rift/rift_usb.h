@@ -13,6 +13,9 @@
 int
 rift_get_lens_distortion(struct rift_hmd *hmd, struct rift_lens_distortion_report *lens_distortion);
 
+int
+rift_get_position_calibration_report(struct rift_hmd *hmd, struct rift_position_calibration_report *position_report);
+
 void
 rift_parse_distortion_report(struct rift_lens_distortion_report *report, struct rift_lens_distortion *out);
 

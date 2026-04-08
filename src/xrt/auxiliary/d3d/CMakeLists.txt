@@ -1,4 +1,4 @@
-# Copyright 2019-2022, Collabora, Ltd.
+# Copyright 2019-2024, Collabora, Ltd.
 # Copyright 2025-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: BSL-1.0
 
@@ -38,4 +38,9 @@ if(XRT_HAVE_D3D12)
 			d3d_d3d12_helpers.hpp
 		)
 	target_link_libraries(aux_d3d PUBLIC ${D3D12_LIBRARY})
+endif()
+
+if(XRT_HAVE_WINRT)
+	target_sources(aux_d3d PRIVATE d3d_winrt_helpers.cpp d3d_winrt_helpers.hpp)
+	target_include_directories(aux_d3d PUBLIC ${CPPWINRT_INCLUDE_DIR})
 endif()

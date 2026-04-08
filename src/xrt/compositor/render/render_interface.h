@@ -1183,6 +1183,23 @@ struct render_compute_blit_push_data
 };
 
 /*!
+ * Chroma key parameters for std140 layout, using HSV min/max range.
+ *
+ * @relates render_compute
+ */
+struct render_chroma_key_info
+{
+	float hsv_min_h;
+	float hsv_min_s;
+	float hsv_min_v;
+	float hsv_max_h;
+	float hsv_max_s;
+	float hsv_max_v;
+	float curve;
+	float despill;
+};
+
+/*!
  * UBO data that is sent to the compute layer shaders.
  *
  * @relates render_compute
@@ -1267,6 +1284,9 @@ struct render_compute_layer_ubo_data
 
 		//! Timewarp matrices
 		struct xrt_matrix_4x4 transforms_timewarp;
+
+		//! Chroma key parameters (per layer)
+		struct render_chroma_key_info chroma_key;
 
 		/*!
 		 * For quad layers

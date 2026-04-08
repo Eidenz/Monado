@@ -75,5 +75,14 @@
 		"out": [
 			{"name": "info", "type": "struct xrt_system_compositor_info"}
 		]
+	},
+
+	"system_compositor_get_view_config": {
+		"in": [
+			{"name": "view_type", "type": "enum xrt_view_type"}
+		],
+		"out": [
+			{"name": "view_config", "type": "struct xrt_view_config"}
+		]
 	}
 }

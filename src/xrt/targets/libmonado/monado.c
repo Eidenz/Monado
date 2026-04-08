@@ -755,3 +755,18 @@ mnd_root_set_device_brightness(mnd_root_t *root, uint32_t device_index, float br
 	default: PE("Internal error, shouldn't get here"); return MND_ERROR_OPERATION_FAILED;
 	}
 }
+
+mnd_result_t
+mnd_root_set_chroma_key_params(
+    mnd_root_t *root, struct mnd_colour_hsv hsv_min, struct mnd_colour_hsv hsv_max, float curve, float despill)
+{
+	struct xrt_colour_hsv_f32 min = {hsv_min.h, hsv_min.s, hsv_min.v};
+	struct xrt_colour_hsv_f32 max = {hsv_max.h, hsv_max.s, hsv_max.v};
+	xrt_result_t xret = ipc_call_compositor_set_chroma_key_params(&root->ipc_c, &min, &max, curve, despill);
+	switch (xret) {
+	case XRT_SUCCESS: return MND_SUCCESS;
+	case XRT_ERROR_UNSUPPORTED_SPACE_TYPE: return MND_ERROR_INVALID_OPERATION;
+	case XRT_ERROR_IPC_FAILURE: PE("Connection error!"); return MND_ERROR_OPERATION_FAILED;
+	default: PE("Internal error, shouldn't get here"); return MND_ERROR_OPERATION_FAILED;
+	}
+}

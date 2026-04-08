@@ -100,6 +100,7 @@ add_library(
 	client/ipc_client_space_overseer.c
 	client/ipc_client_system.c
 	client/ipc_client_system_devices.c
+	client/ipc_client_system_devices.h
 	client/ipc_client_tracking_origin.c
 	client/ipc_client_tracking_origin.h
 	client/ipc_client_xdev.c
@@ -117,7 +118,7 @@ if(WIN32)
 
 	target_link_libraries(ipc_client PRIVATE winmm)
 endif()
-target_link_libraries(ipc_client PRIVATE aux_util ipc_shared)
+target_link_libraries(ipc_client PRIVATE aux_util ipc_shared base)
 
 if(ANDROID)
 	# Need android_instance_base on the client side too.
@@ -133,6 +134,7 @@ add_library(
 	${CMAKE_CURRENT_BINARY_DIR}/ipc_server_generated.h
 	server/ipc_server.h
 	server/ipc_server_handler.c
+	server/ipc_server_handler_swapchain.c
 	server/ipc_server_per_client_thread.c
 	server/ipc_server_process.c
 	server/ipc_server_objects.c

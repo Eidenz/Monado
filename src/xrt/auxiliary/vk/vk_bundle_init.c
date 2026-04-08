@@ -535,7 +535,7 @@ select_physical_device(struct vk_bundle *vk, int forced_index)
 	VkPhysicalDeviceProperties pdp;
 	vk->vkGetPhysicalDeviceProperties(vk->physical_device, &pdp);
 
-	char title[20];
+	char title[64];
 	(void)snprintf(title, sizeof(title), "Selected GPU: %u\n", gpu_index);
 	vk_print_device_info(vk, U_LOGGING_DEBUG, &pdp, gpu_index, title);
 

@@ -20,6 +20,7 @@
 #include "math/m_clock_tracking.h"
 
 #include "tracking/t_imu.h"
+#include "tracking/t_constellation.h"
 
 #include "os/os_hid.h"
 #include "os/os_threading.h"
@@ -236,6 +237,70 @@ struct rift_lens_distortion_report
 };
 
 SIZE_ASSERT(struct rift_lens_distortion_report, 9 + sizeof(struct rift_catmull_rom_distortion_report_data));
+
+enum rift_position_calibration_version
+{
+	// no data stored
+	RIFT_POSITION_CALIBRATION_VERSION_NONE = 0,
+	// hard-coded default positions
+	RIFT_POSITION_CALIBRATION_VERSION_DEFAULT = 1,
+	// factory calibrated
+	RIFT_POSITION_CALIBRATION_VERSION_FACTORY = 2,
+	// user calibrated
+	RIFT_POSITION_CALIBRATION_VERSION_USER = 3,
+};
+
+enum rift_position_calibration_type
+{
+	RIFT_POSITION_CALIBRATION_TYPE_LED = 0,
+	RIFT_POSITION_CALIBRATION_TYPE_INERTIAL_SENSOR = 1,
+};
+
+struct rift_position_calibration_report
+{
+	uint16_t command_id;
+	// the version/type of calibration, see rift_position_calibration_version
+	uint8_t version;
+	// the x/y/z position of the object, this is a signed integer in micrometers, position is relative to the center
+	// of the emitter plane of the display at nominal focus.
+	int32_t position[3];
+	// the x/y/z axis normal of the object, this is a signed integer in micrometers, normal is relative to the
+	// position
+	int16_t normal[3];
+	// rotation around the normal, in units of 10^-4 radians
+	uint16_t rotation;
+	// the current position in the array of LEDs, increments on reads, gets set to the value on writes
+	uint16_t position_index;
+	// read-only value of the number of LEDs
+	uint16_t position_count;
+	// the type of the object being described, see rift_position_calibration_type
+	uint16_t position_type;
+};
+
+SIZE_ASSERT(struct rift_position_calibration_report, 29);
+
+enum rift_custom_pattern_state
+{
+	RIFT_CUSTOM_PATTERN_STAT_OFF = 0,
+	RIFT_CUSTOM_PATTERN_STAT_LOW = 1,
+	RIFT_CUSTOM_PATTERN_STAT_HIGH = 3,
+};
+
+struct rift_custom_pattern_report
+{
+	uint16_t command_id;
+	// the length of the sequence that each LED goes through
+	uint8_t sequence_length;
+	// the sequence the specific LED goes through, 2 bits per state, 0 (off), 1 (low), and 3 (high), ordered from
+	// LSB to MSB
+	uint32_t sequence;
+	// the current LED being described, increments on reads, gets set to the value on writes
+	uint16_t led_index;
+	// the number of tracking LEDs present on the device
+	uint16_t led_count;
+};
+
+SIZE_ASSERT(struct rift_custom_pattern_report, 11);
 
 struct rift_dk2_keepalive_mux_report
 {
@@ -872,6 +937,10 @@ struct rift_hmd
 	int device_count;
 	int added_devices;
 	struct xrt_device *devices[4]; // left touch, right touch, tracked object, remote
+
+	struct t_constellation_tracker_led_model led_model;
+	struct xrt_pose T_imu_device;
+	struct xrt_pose T_device_imu;
 
 	//! Generic state for the radio state machine
 	struct

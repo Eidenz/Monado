@@ -26,6 +26,9 @@ DEBUG_GET_ONCE_FLOAT_OPTION(min_app_time_ms, "U_PACING_APP_MIN_TIME_MS", 1.0f)
 DEBUG_GET_ONCE_FLOAT_OPTION(min_margin_ms, "U_PACING_APP_MIN_MARGIN_MS", 2.0f)
 DEBUG_GET_ONCE_BOOL_OPTION(use_min_frame_period, "U_PACING_APP_USE_MIN_FRAME_PERIOD", false)
 DEBUG_GET_ONCE_BOOL_OPTION(immediate_wait_frame_return, "U_PACING_APP_IMMEDIATE_WAIT_FRAME_RETURN", false)
+DEBUG_GET_ONCE_BOOL_OPTION(immediate_wait_frame_return_below_refresh,
+                           "U_PACING_APP_IMMEDIATE_WAIT_FRAME_RETURN_BELOW_REFRESH",
+                           false)
 DEBUG_GET_ONCE_BOOL_OPTION(align_predicted_display_time_to_app_period,
                            "U_PACING_APP_ALIGN_PREDICTED_DISPLAY_TIME_TO_APP_PERIOD",
                            false)
@@ -56,6 +59,13 @@ DEBUG_GET_ONCE_BOOL_OPTION(align_predicted_display_time_to_app_period,
  *       causing asserts, change the code so we don't need it at all.
  */
 #define FRAME_COUNT (128)
+
+/*!
+ * How much the total app time has to be above the display refresh period to cause an
+ * immediate return from wait_frame if the immediate_wait_frame_return_below_refresh
+ * option is enabled.
+ */
+#define IMMEDIATE_WAIT_FRAME_RETURN_MARGIN_NS U_TIME_HALF_MS_IN_NS
 
 enum u_pa_state
 {
@@ -340,6 +350,24 @@ predict_display_time(const struct pacing_app *pa, int64_t now_ns, int64_t displa
 	return val;
 }
 
+static bool
+should_return_immediately(int64_t frame_time_ns, int64_t display_period_ns)
+{
+	if (debug_get_bool_option_immediate_wait_frame_return()) {
+		return true;
+	}
+
+	if (debug_get_bool_option_immediate_wait_frame_return_below_refresh()) {
+		int64_t with_margin_ns = frame_time_ns + IMMEDIATE_WAIT_FRAME_RETURN_MARGIN_NS;
+
+		if (with_margin_ns > display_period_ns) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 
 /*
  *
@@ -480,7 +508,7 @@ pa_predict(struct u_pacing_app *upa,
 	 * The former uses substantially more power but is sometimes useful in debugging
 	 *.or as a workaround.
 	 */
-	if (debug_get_bool_option_immediate_wait_frame_return()) {
+	if (should_return_immediately(frame_time_ns, display_period_ns)) {
 		wake_up_time_ns = now_ns;
 	} else {
 		wake_up_time_ns = predict_ns - total_app_and_compositor_time_ns(pa);

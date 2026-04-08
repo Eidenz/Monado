@@ -53,7 +53,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Generates a `compile_commands.json` to help IDE intergration
+# Generates a `compile_commands.json` to help IDE integration
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 ###
@@ -286,6 +286,8 @@ option(XRT_MODULE_OPENXR_STATE_TRACKER "Build OpenXR State Tracker" ON)
 # Feature configuration (sorted)
 option_with_deps(XRT_FEATURE_AHARDWARE_BUFFER "Enable AHardwareBuffer for XrSwapchain images on Android (API-level 26+) platforms" DEPENDS ANDROID)
 option_with_deps(XRT_FEATURE_COLOR_LOG "Enable logging in color on supported platforms" DEPENDS XRT_HAVE_LINUX)
+option_with_deps(XRT_FEATURE_DEBUG_GUI "Enable debug window to be used" DEPENDS XRT_HAVE_SDL2)
+option(XRT_FEATURE_NO_COMPOSITOR_FOR_HEADLESS_SESSIONS "Does headless not create a compositor" OFF)
 option_with_deps(XRT_FEATURE_OPENXR "Build OpenXR runtime target" DEPENDS XRT_MODULE_OPENXR_STATE_TRACKER "XRT_MODULE_COMPOSITOR_MAIN OR XRT_MODULE_COMPOSITOR_NULL")
 set(XRT_FEATURE_OPENXR_DEBUG_UTILS OFF) # Has never been enabled
 option_with_deps(XRT_FEATURE_RENDERDOC "Enable RenderDoc API" DEPENDS "RT_LIBRARY OR WIN32 OR ANDROID")
@@ -296,7 +298,6 @@ option(XRT_FEATURE_SSE2 "Build using SSE2 instructions, if building for 32-bit x
 option_with_deps(XRT_FEATURE_STEAMVR_PLUGIN "Build SteamVR plugin" DEPENDS "NOT ANDROID")
 option_with_deps(XRT_FEATURE_TRACING "Enable debug tracing on supported platforms" DEFAULT OFF DEPENDS "XRT_HAVE_PERCETTO OR XRT_HAVE_TRACY")
 option_with_deps(XRT_FEATURE_WINDOW_PEEK "Enable a window that displays the content of the HMD on screen" DEPENDS XRT_HAVE_SDL2)
-option_with_deps(XRT_FEATURE_DEBUG_GUI "Enable debug window to be used" DEPENDS XRT_HAVE_SDL2)
 
 if (XRT_FEATURE_SERVICE)
 	# Disable the client debug gui by default for out-of-proc -
@@ -367,7 +368,7 @@ option_with_deps(XRT_BUILD_DRIVER_ULV2 "Enable Ultraleap v2 driver" DEPENDS Leap
 option_with_deps(XRT_BUILD_DRIVER_ULV5 "Enable Ultraleap v5 driver" DEPENDS LeapSDK_FOUND)
 option_with_deps(XRT_BUILD_DRIVER_VF "Build video frame driver (for video file support, uses gstreamer)" DEPENDS XRT_HAVE_GST)
 option_with_deps(XRT_BUILD_DRIVER_VIVE "Enable driver for HTC Vive, Vive Pro, Valve Index, and their controllers" DEPENDS ZLIB_FOUND XRT_HAVE_LINUX XRT_MODULE_AUX_VIVE)
-option_with_deps(XRT_BUILD_DRIVER_WMR "Enable Windows Mixed Reality driver" DEPENDS LINUX)
+option_with_deps(XRT_BUILD_DRIVER_WMR "Enable Windows Mixed Reality driver" DEPENDS XRT_HAVE_LINUX)
 option_with_deps(XRT_BUILD_DRIVER_XREAL_AIR "Enable Xreal Air HMD driver" DEPENDS XRT_HAVE_HIDAPI)
 option_with_deps(XRT_BUILD_DRIVER_SIMULAVR "Enable simula driver" DEPENDS XRT_HAVE_REALSENSE)
 option_with_deps(XRT_BUILD_DRIVER_SOLARXR "Enable SolarXR driver" DEPENDS XRT_HAVE_LINUX XRT_MODULE_IPC)

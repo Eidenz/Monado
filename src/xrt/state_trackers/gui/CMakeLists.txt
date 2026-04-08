@@ -1,5 +1,5 @@
 # Copyright 2019-2024, Collabora, Ltd.
-# Copyright 2024-2025, NVIDIA CORPORATION.
+# Copyright 2024-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: BSL-1.0
 
 # c-imgui doesn't do well with IPO - lots of warnings.
@@ -59,6 +59,7 @@ target_link_libraries(
 		aux_ogl
 		st_gui_base
 		drv_includes
+		base
 		xrt-external-imgui
 	)
 target_include_directories(st_gui INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/..)

@@ -1,4 +1,5 @@
 // Copyright 2019-2024, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -150,7 +151,7 @@ oxr_xdev_list_create(struct oxr_logger *log,
                      struct oxr_xdev_list **out_xdl)
 {
 	struct xrt_system_devices *xsysd = sess->sys->xsysd;
-	uint32_t count = xsysd->xdev_count;
+	uint32_t count = xsysd->static_xdev_count;
 
 	struct oxr_xdev_list *xdl = NULL;
 	OXR_ALLOCATE_HANDLE_OR_RETURN(log, xdl, OXR_XR_DEBUG_XDEVLIST, oxr_xdev_list_destroy, &sess->handle);
@@ -171,7 +172,7 @@ oxr_xdev_list_create(struct oxr_logger *log,
 	uint64_t id_gen = 42;
 
 	for (uint32_t i = 0; i < count; i++) {
-		struct xrt_device *xdev = xsysd->xdevs[i];
+		struct xrt_device *xdev = xsysd->static_xdevs[i];
 		enum xrt_input_name name = find_suitable_pose_name(xdev);
 
 		xdl->ids[i] = id_gen++;

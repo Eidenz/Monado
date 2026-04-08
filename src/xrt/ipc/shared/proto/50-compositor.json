@@ -115,5 +115,14 @@
 		"in": [
 			{"name": "id", "type": "uint32_t"}
 		]
+	},
+
+	"compositor_set_chroma_key_params": {
+		"in": [
+			{"name": "hsv_min", "type": "struct xrt_colour_hsv_f32"},
+			{"name": "hsv_max", "type": "struct xrt_colour_hsv_f32"},
+			{"name": "curve", "type": "float"},
+			{"name": "despill", "type": "float"}
+		]
 	}
 }

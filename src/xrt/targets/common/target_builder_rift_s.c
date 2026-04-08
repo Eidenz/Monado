@@ -1,5 +1,6 @@
 // Copyright 2019-2023, Collabora, Ltd.
 // Copyright 2022, Jan Schmidt
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -16,13 +17,15 @@
 
 #include "xrt/xrt_config_drivers.h"
 #include "xrt/xrt_prober.h"
+#include "xrt/xrt_system.h"
 
-#include "util/u_builders.h"
 #include "util/u_misc.h"
 #include "util/u_debug.h"
 #include "util/u_logging.h"
-#include "util/u_system_helpers.h"
 #include "util/u_trace_marker.h"
+#include "util/u_builder_search.h"
+
+#include "target_builder_helpers.h"
 
 #ifdef XRT_BUILD_DRIVER_HANDTRACKING
 #include "ht_ctrl_emu/ht_ctrl_emu_interface.h"
@@ -99,7 +102,7 @@ rift_s_open_system_impl(struct xrt_builder *xb,
                         struct xrt_tracking_origin *origin,
                         struct xrt_system_devices *xsysd,
                         struct xrt_frame_context *xfctx,
-                        struct u_builder_roles_helper *ubrh)
+                        struct t_builder_roles_helper *tbrh)
 {
 	struct xrt_prober_device **xpdevs = NULL;
 	size_t xpdev_count = 0;
@@ -166,13 +169,13 @@ rift_s_open_system_impl(struct xrt_builder *xb,
 
 	// Create and add to list.
 	struct xrt_device *hmd_xdev = rift_s_system_get_hmd(sys);
-	xsysd->xdevs[xsysd->xdev_count++] = hmd_xdev;
+	xsysd->static_xdevs[xsysd->static_xdev_count++] = hmd_xdev;
 
 	struct xrt_device *left_xdev = rift_s_system_get_controller(sys, 0);
-	xsysd->xdevs[xsysd->xdev_count++] = left_xdev;
+	xsysd->static_xdevs[xsysd->static_xdev_count++] = left_xdev;
 
 	struct xrt_device *right_xdev = rift_s_system_get_controller(sys, 1);
-	xsysd->xdevs[xsysd->xdev_count++] = right_xdev;
+	xsysd->static_xdevs[xsysd->static_xdev_count++] = right_xdev;
 
 
 	struct xrt_device *left_ht = NULL;
@@ -190,8 +193,8 @@ rift_s_open_system_impl(struct xrt_builder *xb,
 		left_ht = two_hands[0];
 		right_ht = two_hands[1];
 
-		xsysd->xdevs[xsysd->xdev_count++] = two_hands[0];
-		xsysd->xdevs[xsysd->xdev_count++] = two_hands[1];
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = two_hands[0];
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = two_hands[1];
 
 		if (debug_get_bool_option_rift_s_hand_tracking_as_controller()) {
 			left_xdev = two_hands[0];
@@ -201,11 +204,11 @@ rift_s_open_system_impl(struct xrt_builder *xb,
 #endif
 
 	// Assign to role(s).
-	ubrh->head = hmd_xdev;
-	ubrh->left = left_xdev;
-	ubrh->right = right_xdev;
-	ubrh->hand_tracking.unobstructed.left = left_ht;
-	ubrh->hand_tracking.unobstructed.right = right_ht;
+	tbrh->head = hmd_xdev;
+	tbrh->left = left_xdev;
+	tbrh->right = right_xdev;
+	tbrh->hand_tracking.unobstructed.left = left_ht;
+	tbrh->hand_tracking.unobstructed.right = right_ht;
 
 	return XRT_SUCCESS;
 
@@ -237,18 +240,18 @@ rift_s_destroy(struct xrt_builder *xb)
 struct xrt_builder *
 rift_s_builder_create(void)
 {
-	struct u_builder *ub = U_TYPED_CALLOC(struct u_builder);
+	struct t_builder *ub = U_TYPED_CALLOC(struct t_builder);
 
 	// xrt_builder fields.
 	ub->base.estimate_system = rift_s_estimate_system;
-	ub->base.open_system = u_builder_open_system_static_roles;
+	ub->base.open_system = t_builder_open_system_static_roles;
 	ub->base.destroy = rift_s_destroy;
 	ub->base.identifier = "rift_s";
 	ub->base.name = "Oculus Rift S";
 	ub->base.driver_identifiers = driver_list;
 	ub->base.driver_identifier_count = ARRAY_SIZE(driver_list);
 
-	// u_builder fields.
+	// t_builder fields.
 	ub->open_system_static_roles = rift_s_open_system_impl;
 
 	return &ub->base;

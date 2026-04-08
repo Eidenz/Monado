@@ -26,7 +26,7 @@ extern "C" {
 //! Major version of the API.
 #define MND_API_VERSION_MAJOR 1
 //! Minor version of the API.
-#define MND_API_VERSION_MINOR 6
+#define MND_API_VERSION_MINOR 7
 //! Patch version of the API.
 #define MND_API_VERSION_PATCH 0
 
@@ -113,6 +113,28 @@ typedef struct mnd_pose
 		float x, y, z;
 	} position;
 } mnd_pose_t;
+
+
+/*!
+ * A 3 element colour with floating point channels.
+ */
+struct mnd_colour
+{
+	float r;
+	float g;
+	float b;
+};
+
+/*!
+ * A 3 element HSV colour with floating point channels.
+ * All values are in [0, 1] range, with hue wrapping at 1.
+ */
+struct mnd_colour_hsv
+{
+	float h;
+	float s;
+	float v;
+};
 
 /*!
  * Types of reference space.
@@ -565,6 +587,24 @@ mnd_root_get_device_brightness(mnd_root_t *root, uint32_t device_index, float *o
  */
 mnd_result_t
 mnd_root_set_device_brightness(mnd_root_t *root, uint32_t device_index, float brightness, bool relative);
+
+/*!
+ * Set the chroma key parameters to be applied to the base application (if there is any).
+ *
+ * HSV values are in [0, 1] range. Hue wrapping is supported (min > max spans across 0).
+ * Set curve to 0 to disable chroma keying.
+ *
+ * @param root    The libmonado state.
+ * @param hsv_min Minimum HSV bounds (hue, saturation, value).
+ * @param hsv_max Maximum HSV bounds (hue, saturation, value).
+ * @param curve   Power curve for alpha falloff (1.0 = linear, <1 = softer, >1 = harder, 0 = disabled).
+ * @param despill Despill strength (0.0 = none, 1.0 = full desaturation near key color).
+ *
+ * @return MND_SUCCESS on success
+ */
+mnd_result_t
+mnd_root_set_chroma_key_params(
+    mnd_root_t *root, struct mnd_colour_hsv hsv_min, struct mnd_colour_hsv hsv_max, float curve, float despill);
 
 #ifdef __cplusplus
 }

@@ -1,4 +1,5 @@
 // Copyright 2020,2024 Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -29,8 +30,8 @@ extern "C" {
 #include "os/os_time.h"
 #include "util/u_debug.h"
 #include "util/u_device.h"
-#include "util/u_builders.h"
 #include "util/u_hand_tracking.h"
+#include "util/u_builder_helpers.h"
 
 #include "xrt/xrt_space.h"
 #include "xrt/xrt_system.h"
@@ -1590,11 +1591,11 @@ CServerDriver_Monado::Init(vr::IVRDriverContext *pDriverContext)
 
 	struct xrt_device *left_xdev = nullptr;
 	if (system_roles.left >= 0 && system_roles.left < XRT_SYSTEM_MAX_DEVICES) {
-		left_xdev = m_xsysd->xdevs[system_roles.left];
+		left_xdev = m_xsysd->static_xdevs[system_roles.left];
 	}
 	struct xrt_device *right_xdev = nullptr;
 	if (system_roles.right >= 0 && system_roles.right < XRT_SYSTEM_MAX_DEVICES) {
-		right_xdev = m_xsysd->xdevs[system_roles.right];
+		right_xdev = m_xsysd->static_xdevs[system_roles.right];
 	}
 
 	// use steamvr room setup instead

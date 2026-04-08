@@ -1,4 +1,5 @@
 // Copyright 2022-2023, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -19,16 +20,17 @@
 #include "xrt/xrt_config_drivers.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_prober.h"
+#include "xrt/xrt_system.h"
 
-#include "util/u_builders.h"
 #include "util/u_config_json.h"
 #include "util/u_debug.h"
 #include "util/u_device.h"
 #include "util/u_sink.h"
-#include "util/u_system_helpers.h"
 #include "util/u_file.h"
 #include "util/u_pretty_print.h"
+#include "util/u_builder_search.h"
 
+#include "target_builder_helpers.h"
 #include "target_builder_interface.h"
 
 #include "north_star/ns_interface.h"
@@ -102,7 +104,7 @@ struct ns_t265
 
 struct ns_builder
 {
-	struct u_builder base;
+	struct t_builder base;
 
 	const char *config_path;
 	cJSON *config_json;
@@ -452,7 +454,7 @@ ns_open_system_impl(struct xrt_builder *xb,
                     struct xrt_tracking_origin *origin,
                     struct xrt_system_devices *xsysd,
                     struct xrt_frame_context *xfctx,
-                    struct u_builder_roles_helper *ubrh)
+                    struct t_builder_roles_helper *tbrh)
 {
 	struct ns_builder *nsb = (struct ns_builder *)xb;
 	xrt_result_t result = XRT_SUCCESS;
@@ -553,11 +555,11 @@ ns_open_system_impl(struct xrt_builder *xb,
 	// Add the device now.
 	struct xrt_device *left = NULL, *right = NULL;
 	struct xrt_device *left_ht = NULL, *right_ht = NULL;
-	xsysd->xdevs[xsysd->xdev_count++] = head_wrap;
+	xsysd->static_xdevs[xsysd->static_xdev_count++] = head_wrap;
 
 	// Add slam device after HMD:
 	if (slam_device != NULL)
-		xsysd->xdevs[xsysd->xdev_count++] = slam_device;
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = slam_device;
 
 	if (hand_device != NULL) {
 		// note: hand_parented_to_head_tracker is always false when slam_device is NULL
@@ -569,8 +571,8 @@ ns_open_system_impl(struct xrt_builder *xb,
 		struct xrt_device *two_hands[2];
 		cemu_devices_create(head_wrap, hand_wrap, two_hands);
 
-		xsysd->xdevs[xsysd->xdev_count++] = two_hands[0];
-		xsysd->xdevs[xsysd->xdev_count++] = two_hands[1];
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = two_hands[0];
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = two_hands[1];
 
 		left_ht = two_hands[0];
 		right_ht = two_hands[1];
@@ -585,11 +587,11 @@ ns_open_system_impl(struct xrt_builder *xb,
 	}
 
 	// Assign to role(s).
-	ubrh->head = head_wrap;
-	ubrh->left = left;
-	ubrh->right = right;
-	ubrh->hand_tracking.unobstructed.left = left_ht;
-	ubrh->hand_tracking.unobstructed.right = right_ht;
+	tbrh->head = head_wrap;
+	tbrh->left = left;
+	tbrh->right = right;
+	tbrh->hand_tracking.unobstructed.left = left_ht;
+	tbrh->hand_tracking.unobstructed.right = right_ht;
 
 end:
 	if (nsb->config_json != NULL) {
@@ -620,14 +622,14 @@ t_builder_north_star_create(void)
 
 	// xrt_builder fields.
 	sb->base.base.estimate_system = ns_estimate_system;
-	sb->base.base.open_system = u_builder_open_system_static_roles;
+	sb->base.base.open_system = t_builder_open_system_static_roles;
 	sb->base.base.destroy = ns_destroy;
 	sb->base.base.identifier = "north_star";
 	sb->base.base.name = "North Star headset";
 	sb->base.base.driver_identifiers = driver_list;
 	sb->base.base.driver_identifier_count = ARRAY_SIZE(driver_list);
 
-	// u_builder fields.
+	// t_builder fields.
 	sb->base.open_system_static_roles = ns_open_system_impl;
 
 	return &sb->base.base;

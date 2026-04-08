@@ -1,4 +1,5 @@
 // Copyright 2020-2023, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -11,9 +12,11 @@
 #include "xrt/xrt_config_drivers.h"
 
 #include "util/u_misc.h"
-#include "util/u_system.h"
-#include "util/u_builders.h"
 #include "util/u_trace_marker.h"
+
+#include "b_system.h"
+
+#include "target_builder_helpers.h"
 
 #include "sdl_internal.h"
 
@@ -45,8 +48,8 @@ sdl_system_devices_destroy(struct xrt_system_devices *xsysd)
 {
 	struct sdl_program *sp = from_xsysd(xsysd);
 
-	for (size_t i = 0; i < xsysd->xdev_count; i++) {
-		xrt_device_destroy(&xsysd->xdevs[i]);
+	for (size_t i = 0; i < xsysd->static_xdev_count; i++) {
+		xrt_device_destroy(&xsysd->static_xdevs[i]);
 	}
 
 	(void)sp; // We are apart of sdl_program, do not free.
@@ -82,8 +85,8 @@ sdl_instance_create_system(struct xrt_instance *xinst,
 
 	struct sdl_program *sp = from_xinst(xinst);
 
-	u_system_fill_properties(sp->usys, sp->xsysd_base.static_roles.head->str);
-	*out_xsys = &sp->usys->base;
+	b_system_fill_properties(sp->bsys, sp->xsysd_base.static_roles.head->str);
+	*out_xsys = &sp->bsys->base;
 	*out_xsysd = &sp->xsysd_base;
 	*out_xso = sp->xso;
 
@@ -96,7 +99,7 @@ sdl_instance_create_system(struct xrt_instance *xinst,
 	sdl_compositor_create_system(sp, &xsysc);
 
 	// Tell the system about the system compositor.
-	u_system_set_system_compositor(sp->usys, xsysc);
+	b_system_set_system_compositor(sp->bsys, xsysc);
 
 	*out_xsysc = xsysc;
 
@@ -122,10 +125,10 @@ sdl_instance_destroy(struct xrt_instance *xinst)
 void
 sdl_system_init(struct sdl_program *sp)
 {
-	struct u_system *usys = u_system_create();
-	assert(usys != NULL); // Should never fail.
+	struct b_system *bsys = b_system_create();
+	assert(bsys != NULL); // Should never fail.
 
-	sp->usys = usys;
+	sp->bsys = bsys;
 }
 
 void
@@ -142,19 +145,19 @@ sdl_system_devices_init(struct sdl_program *sp)
 #endif
 
 	// Setup the device base as the only device.
-	sp->xsysd_base.xdevs[0] = head;
-	sp->xsysd_base.xdev_count = 1;
+	sp->xsysd_base.static_xdevs[0] = head;
+	sp->xsysd_base.static_xdev_count = 1;
 	sp->xsysd_base.static_roles.head = head;
 
-	u_builder_create_space_overseer_legacy( //
-	    &sp->usys->broadcast,               // broadcast
+	t_builder_create_space_overseer_legacy( //
+	    &sp->bsys->broadcast,               // broadcast
 	    head,                               // head
 	    NULL,                               // eyes
 	    NULL,                               // left
 	    NULL,                               // right
 	    NULL,                               // gamepad
-	    sp->xsysd_base.xdevs,               // xdevs
-	    sp->xsysd_base.xdev_count,          // xdev_count
+	    sp->xsysd_base.static_xdevs,        // xdevs
+	    sp->xsysd_base.static_xdev_count,   // xdev_count
 	    false,                              // root_is_unbounded
 	    true,                               // per_app_local_spaces
 	    &sp->xso);                          // out_xso

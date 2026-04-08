@@ -129,6 +129,22 @@ rift_get_lens_distortion(struct rift_hmd *hmd, struct rift_lens_distortion_repor
 }
 
 int
+rift_get_position_calibration_report(struct rift_hmd *hmd, struct rift_position_calibration_report *position_report)
+{
+	uint8_t buf[REPORT_MAX_SIZE] = {0};
+
+	int result = rift_get_report(hmd, false, FEATURE_REPORT_POS_CALIBRATION, buf, sizeof(buf));
+	if (result < 0) {
+		return result;
+	}
+
+	// FIXME: handle endianness
+	memcpy(position_report, buf + 1, sizeof(*position_report));
+
+	return 0;
+}
+
+int
 rift_set_config(struct rift_hmd *hmd, struct rift_config_report *config)
 {
 	return rift_send_report(hmd, false, FEATURE_REPORT_CONFIG, config, sizeof(*config));

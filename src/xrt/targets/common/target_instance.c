@@ -1,5 +1,5 @@
 // Copyright 2020-2024, Collabora, Ltd.
-// Copyright 2025, NVIDIA CORPORATION.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -13,13 +13,13 @@
 #include "xrt/xrt_config_build.h"
 #include "xrt/xrt_config_os.h"
 
-
 #include "os/os_time.h"
 
 #include "util/u_debug.h"
-#include "util/u_system.h"
 #include "util/u_trace_marker.h"
 #include "util/u_system_helpers.h"
+
+#include "b_system.h"
 
 #ifdef XRT_MODULE_COMPOSITOR_MAIN
 #include "main/comp_main_interface.h"
@@ -81,18 +81,18 @@ t_instance_create_system(struct xrt_instance *xinst,
 	assert(*out_xso == NULL);
 	assert(out_xsysc == NULL || *out_xsysc == NULL);
 
-	struct u_system *usys = NULL;
+	struct b_system *bsys = NULL;
 	struct xrt_system_compositor *xsysc = NULL;
 	struct xrt_space_overseer *xso = NULL;
 	struct xrt_system_devices *xsysd = NULL;
 	xrt_result_t xret = XRT_SUCCESS;
 
-	usys = u_system_create();
-	assert(usys != NULL); // Should never fail.
+	bsys = b_system_create();
+	assert(bsys != NULL); // Should never fail.
 
 	xret = u_system_devices_create_from_prober( //
 	    xinst,                                  // xinst
-	    &usys->broadcast,                       // broadcast
+	    &bsys->broadcast,                       // broadcast
 	    &xsysd,                                 // out_xsysd
 	    &xso);                                  // out_xso
 	if (xret != XRT_SUCCESS) {
@@ -105,7 +105,7 @@ t_instance_create_system(struct xrt_instance *xinst,
 	}
 
 	struct xrt_device *head = xsysd->static_roles.head;
-	u_system_fill_properties(usys, head->str);
+	b_system_fill_properties(bsys, head->str);
 
 	bool use_null = debug_get_bool_option_use_null();
 
@@ -136,13 +136,13 @@ t_instance_create_system(struct xrt_instance *xinst,
 	}
 
 out:
-	*out_xsys = &usys->base;
+	*out_xsys = &bsys->base;
 	*out_xsysd = xsysd;
 	*out_xso = xso;
 
 	if (xsysc != NULL) {
 		// Tell the system about the system compositor.
-		u_system_set_system_compositor(usys, xsysc);
+		b_system_set_system_compositor(bsys, xsysc);
 
 		assert(out_xsysc != NULL);
 		*out_xsysc = xsysc;
@@ -154,7 +154,7 @@ out:
 err_destroy:
 	xrt_space_overseer_destroy(&xso);
 	xrt_system_devices_destroy(&xsysd);
-	u_system_destroy(&usys);
+	b_system_destroy(&bsys);
 
 	return xret;
 }

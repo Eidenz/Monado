@@ -306,17 +306,18 @@ compositor_init_sys_info(struct null_compositor *c, struct xrt_device *xdev)
 	(void)sys_info->client_d3d_deviceLUID_valid;
 	// clang-format off
 	for (uint32_t i = 0; i < view_count; ++i) {
-		sys_info->view_configs[0].views[i].recommended.width_pixels  = RECOMMENDED_VIEW_WIDTH;
-		sys_info->view_configs[0].views[i].recommended.height_pixels = RECOMMENDED_VIEW_HEIGHT;
-		sys_info->view_configs[0].views[i].recommended.sample_count  = 1;
-		sys_info->view_configs[0].views[i].max.width_pixels  = MAX_VIEW_WIDTH;
-		sys_info->view_configs[0].views[i].max.height_pixels = MAX_VIEW_HEIGHT;
-		sys_info->view_configs[0].views[i].max.sample_count  = 1;
+		c->view_configs[0].views[i].recommended.width_pixels  = RECOMMENDED_VIEW_WIDTH;
+		c->view_configs[0].views[i].recommended.height_pixels = RECOMMENDED_VIEW_HEIGHT;
+		c->view_configs[0].views[i].recommended.sample_count  = 1;
+		c->view_configs[0].views[i].max.width_pixels  = MAX_VIEW_WIDTH;
+		c->view_configs[0].views[i].max.height_pixels = MAX_VIEW_HEIGHT;
+		c->view_configs[0].views[i].max.sample_count  = 1;
 	}
 	// clang-format on
-	sys_info->view_configs[0].view_type = view_type;
-	sys_info->view_configs[0].view_count = view_count;
-	sys_info->view_config_count = 1; // Only one view config type supported.
+	c->view_configs[0].view_type = view_type;
+	c->view_configs[0].view_count = view_count;
+	sys_info->view_types[0] = c->view_configs[0].view_type;
+	sys_info->view_type_count = 1; // Only one view config type supported.
 
 	// Copy the list directly.
 	assert(xdev->hmd->blend_mode_count <= XRT_MAX_DEVICE_BLEND_MODES);
@@ -565,6 +566,23 @@ null_compositor_request_display_refresh_rate(struct xrt_compositor *xc, float di
 	return XRT_SUCCESS;
 }
 
+static xrt_result_t
+null_compositor_get_view_config(struct xrt_compositor_native *xcn,
+                                enum xrt_view_type view_type,
+                                struct xrt_view_config *out_view_config)
+{
+	struct null_compositor *c = container_of(xcn, struct null_compositor, base.base);
+
+	for (uint32_t i = 0; i < c->sys_info.view_type_count; i++) {
+		if (c->view_configs[i].view_type == view_type) {
+			*out_view_config = c->view_configs[i];
+			return XRT_SUCCESS;
+		}
+	}
+
+	return XRT_ERROR_UNSUPPORTED_VIEW_TYPE;
+}
+
 /*
  *
  * 'Exported' functions.
@@ -632,5 +650,6 @@ null_compositor_create_system(struct xrt_device *xdev, struct xrt_system_composi
 	XRT_MAYBE_UNUSED xrt_result_t xret = u_pa_factory_create(&upaf);
 	assert(xret == XRT_SUCCESS && upaf != NULL);
 
-	return comp_multi_create_system_compositor(&c->base.base, upaf, &c->sys_info, false, out_xsysc);
+	return comp_multi_create_system_compositor(&c->base.base, upaf, null_compositor_get_view_config, &c->sys_info,
+	                                           false, out_xsysc);
 }

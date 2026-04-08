@@ -1,4 +1,5 @@
 // Copyright 2023-2025, Tobias Frisch
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -17,13 +18,15 @@
 
 #include "xrt/xrt_config_drivers.h"
 #include "xrt/xrt_prober.h"
+#include "xrt/xrt_system.h"
 
-#include "util/u_builders.h"
 #include "util/u_misc.h"
 #include "util/u_debug.h"
 #include "util/u_logging.h"
-#include "util/u_system_helpers.h"
 #include "util/u_trace_marker.h"
+#include "util/u_builder_search.h"
+
+#include "target_builder_helpers.h"
 
 #include "xreal_air/xreal_air_hmd.h"
 #include "xreal_air/xreal_air_interface.h"
@@ -131,7 +134,7 @@ xreal_air_open_system_impl(struct xrt_builder *xb,
                            struct xrt_tracking_origin *origin,
                            struct xrt_system_devices *xsysd,
                            struct xrt_frame_context *xfctx,
-                           struct u_builder_roles_helper *ubrh)
+                           struct t_builder_roles_helper *tbrh)
 {
 	struct xrt_prober_device **xpdevs = NULL;
 	size_t xpdev_count = 0;
@@ -203,10 +206,10 @@ xreal_air_open_system_impl(struct xrt_builder *xb,
 	}
 
 	// Add to device list.
-	xsysd->xdevs[xsysd->xdev_count++] = xreal_air_device;
+	xsysd->static_xdevs[xsysd->static_xdev_count++] = xreal_air_device;
 
 	// Assign to role(s).
-	ubrh->head = xreal_air_device;
+	tbrh->head = xreal_air_device;
 
 	return XRT_SUCCESS;
 
@@ -242,18 +245,18 @@ xreal_air_destroy(struct xrt_builder *xb)
 struct xrt_builder *
 xreal_air_builder_create(void)
 {
-	struct u_builder *ub = U_TYPED_CALLOC(struct u_builder);
+	struct t_builder *ub = U_TYPED_CALLOC(struct t_builder);
 
 	// xrt_builder fields.
 	ub->base.estimate_system = xreal_air_estimate_system;
-	ub->base.open_system = u_builder_open_system_static_roles;
+	ub->base.open_system = t_builder_open_system_static_roles;
 	ub->base.destroy = xreal_air_destroy;
 	ub->base.identifier = "xreal_air";
 	ub->base.name = "Xreal Air";
 	ub->base.driver_identifiers = driver_list;
 	ub->base.driver_identifier_count = ARRAY_SIZE(driver_list);
 
-	// u_builder fields.
+	// t_builder fields.
 	ub->open_system_static_roles = xreal_air_open_system_impl;
 
 	return &ub->base;

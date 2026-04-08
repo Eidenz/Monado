@@ -92,10 +92,10 @@ STATIC_WRAP(hand_tracking_conforming_right)
 	{                                                                                                              \
 		const int32_t xdev_idx = roles->roles.ROLE;                                                            \
 		struct xrt_system_devices *xsysd = roles->sys->xsysd;                                                  \
-		if (xdev_idx < 0 || xdev_idx >= (int32_t)xsysd->xdev_count) {                                          \
+		if (xdev_idx < 0 || xdev_idx >= (int32_t)xsysd->static_xdev_count) {                                   \
 			return NULL;                                                                                   \
 		}                                                                                                      \
-		return xsysd->xdevs[xdev_idx];                                                                         \
+		return xsysd->static_xdevs[xdev_idx];                                                                  \
 	}
 MAKE_GET_DYN_ROLES_FN(left)
 MAKE_GET_DYN_ROLES_FN(right)

@@ -275,16 +275,26 @@ oxr_system_fill_in(
 	if (sys->xsysc != NULL) {
 		const struct xrt_system_compositor_info *info = &sys->xsysc->info;
 
-		for (uint32_t i = 0; i < info->view_config_count; i++) {
-			const struct xrt_view_config *view_config = &info->view_configs[i];
+		for (uint32_t i = 0; i < info->view_type_count; i++) {
+			const enum xrt_view_type view_type = info->view_types[i];
+
+			struct xrt_view_config view_config;
+			if (xrt_syscomp_get_view_config(sys->xsysc, view_type, &view_config) != XRT_SUCCESS) {
+				oxr_warn(log, "Getting view configuration failed for an expected reason.");
+				continue;
+			}
 
 			assert(sys->view_config_count < XRT_MAX_COMPOSITOR_VIEW_CONFIGS_COUNT);
 			fill_in_view_config_properties(                 //
 			    log,                                        //
 			    &sys->view_configs[sys->view_config_count], //
 			    info,                                       //
-			    view_config);                               //
+			    &view_config);                              //
 			sys->view_config_count++;
+		}
+
+		if (sys->view_config_count == 0) {
+			return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "Unexpected condition having no view configs");
 		}
 	} else {
 		// Headless path, view configs contain no views but still need blend modes and view types.

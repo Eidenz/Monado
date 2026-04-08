@@ -21,6 +21,7 @@
 #include "ipc_server_generated.h"
 #include "xrt/xrt_defines.h"
 #include "xrt/xrt_device.h"
+#include "xrt/xrt_compositor.h"
 #include "xrt/xrt_results.h"
 
 #ifdef XRT_GRAPHICS_SYNC_HANDLE_IS_FD
@@ -46,41 +47,6 @@
 		IPC_CHK_AND_RET((ICS)->server, xret, "ipc_server_objects_get_xdev_and_validate");                      \
 	} while (0)
 
-
-static xrt_result_t
-validate_swapchain_state(volatile struct ipc_client_state *ics, uint32_t *out_index)
-{
-	// Our handle is just the index for now.
-	uint32_t index = 0;
-	for (; index < IPC_MAX_CLIENT_SWAPCHAINS; index++) {
-		if (!ics->swapchain_data[index].active) {
-			break;
-		}
-	}
-
-	if (index >= IPC_MAX_CLIENT_SWAPCHAINS) {
-		IPC_ERROR(ics->server, "Too many swapchains!");
-		return XRT_ERROR_IPC_FAILURE;
-	}
-
-	*out_index = index;
-
-	return XRT_SUCCESS;
-}
-
-static void
-set_swapchain_info(volatile struct ipc_client_state *ics,
-                   uint32_t index,
-                   const struct xrt_swapchain_create_info *info,
-                   struct xrt_swapchain *xsc)
-{
-	ics->xscs[index] = xsc;
-	ics->swapchain_data[index].active = true;
-	ics->swapchain_data[index].width = info->width;
-	ics->swapchain_data[index].height = info->height;
-	ics->swapchain_data[index].format = info->format;
-	ics->swapchain_data[index].image_count = xsc->image_count;
-}
 
 static xrt_result_t
 validate_reference_space_type(volatile struct ipc_client_state *ics, enum xrt_reference_space_type type)
@@ -498,6 +464,16 @@ ipc_handle_system_compositor_get_info(volatile struct ipc_client_state *ics,
 }
 
 xrt_result_t
+ipc_handle_system_compositor_get_view_config(volatile struct ipc_client_state *ics,
+                                             enum xrt_view_type view_type,
+                                             struct xrt_view_config *out_view_config)
+{
+	IPC_TRACE_MARKER();
+
+	return xrt_syscomp_get_view_config(ics->server->xsysc, view_type, out_view_config);
+}
+
+xrt_result_t
 ipc_handle_session_create(volatile struct ipc_client_state *ics,
                           const struct xrt_session_info *xsi,
                           bool create_native_compositor)
@@ -506,16 +482,32 @@ ipc_handle_session_create(volatile struct ipc_client_state *ics,
 
 	struct xrt_session *xs = NULL;
 	struct xrt_compositor_native *xcn = NULL;
+	struct xrt_compositor_native **xcn_ptr = NULL;
 
 	if (ics->xs != NULL) {
 		return XRT_ERROR_IPC_SESSION_ALREADY_CREATED;
 	}
 
+#ifndef XRT_FEATURE_NO_COMPOSITOR_FOR_HEADLESS_SESSIONS
+	/*
+	 * Currently if we don't create a compositor the session will not
+	 * receive focused/visibility events since the IPC layer can not change
+	 * tell the multi compositor about it.
+	 *
+	 * The default for XRT_FEATURE_NO_COMPOSITOR_FOR_HEADLESS_SESSIONS is
+	 * off, meaning that the ifndef is true and as such this code is being
+	 * run by default.
+	 */
 	if (!create_native_compositor) {
 		IPC_INFO(ics->server, "App asked for headless session, creating native compositor anyways");
+		create_native_compositor = true;
 	}
+#endif
 
-	xrt_result_t xret = xrt_system_create_session(ics->server->xsys, xsi, &xs, &xcn);
+	// This is false in headless sessions, don't create a native compositor.
+	xcn_ptr = create_native_compositor ? &xcn : NULL;
+
+	xrt_result_t xret = xrt_system_create_session(ics->server->xsys, xsi, &xs, xcn_ptr);
 	if (xret != XRT_SUCCESS) {
 		return xret;
 	}
@@ -523,12 +515,25 @@ ipc_handle_session_create(volatile struct ipc_client_state *ics,
 	ics->client_state.session_overlay = xsi->is_overlay;
 	ics->client_state.z_order = xsi->z_order;
 
-	ics->xs = xs;
-	ics->xc = &xcn->base;
+	// Either we didn't ask for a native compositor or we got one.
+	assert(xcn_ptr == NULL || xcn != NULL);
 
-	xrt_syscomp_set_state(ics->server->xsysc, ics->xc, ics->client_state.session_visible,
-	                      ics->client_state.session_focused, os_monotonic_get_ns());
-	xrt_syscomp_set_z_order(ics->server->xsysc, ics->xc, ics->client_state.z_order);
+	ics->xs = xs;
+	ics->xc = xcn != NULL ? &xcn->base : NULL;
+
+	if (ics->xc != NULL) {
+		xrt_syscomp_set_state(                 //
+		    ics->server->xsysc,                //
+		    ics->xc,                           //
+		    ics->client_state.session_visible, //
+		    ics->client_state.session_focused, //
+		    os_monotonic_get_ns());            //
+
+		xrt_syscomp_set_z_order(        //
+		    ics->server->xsysc,         //
+		    ics->xc,                    //
+		    ics->client_state.z_order); //
+	}
 
 	return XRT_SUCCESS;
 }
@@ -1732,200 +1737,6 @@ ipc_handle_system_set_client_io_blocks(volatile struct ipc_client_state *_ics,
 	return ipc_server_set_client_io_blocks(s, client_id, blocks);
 }
 
-xrt_result_t
-ipc_handle_swapchain_get_properties(volatile struct ipc_client_state *ics,
-                                    const struct xrt_swapchain_create_info *info,
-                                    struct xrt_swapchain_create_properties *xsccp)
-{
-	IPC_TRACE_MARKER();
-
-	if (ics->xc == NULL) {
-		return XRT_ERROR_IPC_SESSION_NOT_CREATED;
-	}
-
-	return xrt_comp_get_swapchain_create_properties(ics->xc, info, xsccp);
-}
-
-xrt_result_t
-ipc_handle_swapchain_create(volatile struct ipc_client_state *ics,
-                            const struct xrt_swapchain_create_info *info,
-                            uint32_t *out_id,
-                            uint32_t *out_image_count,
-                            uint64_t *out_size,
-                            bool *out_use_dedicated_allocation,
-                            uint32_t max_handle_capacity,
-                            xrt_graphics_buffer_handle_t *out_handles,
-                            uint32_t *out_handle_count)
-{
-	IPC_TRACE_MARKER();
-
-	xrt_result_t xret = XRT_SUCCESS;
-	uint32_t index = 0;
-
-	xret = validate_swapchain_state(ics, &index);
-	if (xret != XRT_SUCCESS) {
-		return xret;
-	}
-
-	// Create the swapchain
-	struct xrt_swapchain *xsc = NULL; // Has to be NULL.
-	xret = xrt_comp_create_swapchain(ics->xc, info, &xsc);
-	if (xret != XRT_SUCCESS) {
-		if (xret == XRT_ERROR_SWAPCHAIN_FLAG_VALID_BUT_UNSUPPORTED) {
-			IPC_WARN(ics->server,
-			         "xrt_comp_create_swapchain: Attempted to create valid, but unsupported swapchain");
-		} else {
-			IPC_ERROR(ics->server, "Error xrt_comp_create_swapchain failed!");
-		}
-		return xret;
-	}
-
-	// It's now safe to increment the number of swapchains.
-	ics->swapchain_count++;
-
-	IPC_TRACE(ics->server, "Created swapchain %d.", index);
-
-	set_swapchain_info(ics, index, info, xsc);
-
-	// return our result to the caller.
-	struct xrt_swapchain_native *xscn = (struct xrt_swapchain_native *)xsc;
-
-	// Limit checking
-	assert(xsc->image_count <= XRT_MAX_SWAPCHAIN_IMAGES);
-	assert(xsc->image_count <= max_handle_capacity);
-
-	for (size_t i = 1; i < xsc->image_count; i++) {
-		assert(xscn->images[0].size == xscn->images[i].size);
-		assert(xscn->images[0].use_dedicated_allocation == xscn->images[i].use_dedicated_allocation);
-	}
-
-	// Assuming all images allocated in the same swapchain have the same allocation requirements.
-	*out_size = xscn->images[0].size;
-	*out_use_dedicated_allocation = xscn->images[0].use_dedicated_allocation;
-	*out_id = index;
-	*out_image_count = xsc->image_count;
-
-	// Setup the fds.
-	*out_handle_count = xsc->image_count;
-	for (size_t i = 0; i < xsc->image_count; i++) {
-		out_handles[i] = xscn->images[i].handle;
-	}
-
-	return XRT_SUCCESS;
-}
-
-xrt_result_t
-ipc_handle_swapchain_import(volatile struct ipc_client_state *ics,
-                            const struct xrt_swapchain_create_info *info,
-                            const struct ipc_arg_swapchain_from_native *args,
-                            uint32_t *out_id,
-                            const xrt_graphics_buffer_handle_t *handles,
-                            uint32_t handle_count)
-{
-	IPC_TRACE_MARKER();
-
-	xrt_result_t xret = XRT_SUCCESS;
-	uint32_t index = 0;
-
-	xret = validate_swapchain_state(ics, &index);
-	if (xret != XRT_SUCCESS) {
-		return xret;
-	}
-
-	struct xrt_image_native xins[XRT_MAX_SWAPCHAIN_IMAGES] = XRT_STRUCT_INIT;
-	for (uint32_t i = 0; i < handle_count; i++) {
-		xins[i].handle = handles[i];
-		xins[i].size = args->sizes[i];
-#if defined(XRT_GRAPHICS_BUFFER_HANDLE_IS_WIN32_HANDLE)
-		// DXGI handles need to be dealt with differently, they are identified
-		// by having their lower bit set to 1 during transfer
-		if ((size_t)xins[i].handle & 1) {
-			xins[i].handle = (HANDLE)((size_t)xins[i].handle - 1);
-			xins[i].is_dxgi_handle = true;
-		}
-#endif
-	}
-
-	// create the swapchain
-	struct xrt_swapchain *xsc = NULL;
-	xret = xrt_comp_import_swapchain(ics->xc, info, xins, handle_count, &xsc);
-	if (xret != XRT_SUCCESS) {
-		return xret;
-	}
-
-	// It's now safe to increment the number of swapchains.
-	ics->swapchain_count++;
-
-	IPC_TRACE(ics->server, "Created swapchain %d.", index);
-
-	set_swapchain_info(ics, index, info, xsc);
-	*out_id = index;
-
-	return XRT_SUCCESS;
-}
-
-xrt_result_t
-ipc_handle_swapchain_wait_image(volatile struct ipc_client_state *ics, uint32_t id, int64_t timeout_ns, uint32_t index)
-{
-	if (ics->xc == NULL) {
-		return XRT_ERROR_IPC_SESSION_NOT_CREATED;
-	}
-
-	//! @todo Look up the index.
-	uint32_t sc_index = id;
-	struct xrt_swapchain *xsc = ics->xscs[sc_index];
-
-	return xrt_swapchain_wait_image(xsc, timeout_ns, index);
-}
-
-xrt_result_t
-ipc_handle_swapchain_acquire_image(volatile struct ipc_client_state *ics, uint32_t id, uint32_t *out_index)
-{
-	if (ics->xc == NULL) {
-		return XRT_ERROR_IPC_SESSION_NOT_CREATED;
-	}
-
-	//! @todo Look up the index.
-	uint32_t sc_index = id;
-	struct xrt_swapchain *xsc = ics->xscs[sc_index];
-
-	xrt_swapchain_acquire_image(xsc, out_index);
-
-	return XRT_SUCCESS;
-}
-
-xrt_result_t
-ipc_handle_swapchain_release_image(volatile struct ipc_client_state *ics, uint32_t id, uint32_t index)
-{
-	if (ics->xc == NULL) {
-		return XRT_ERROR_IPC_SESSION_NOT_CREATED;
-	}
-
-	//! @todo Look up the index.
-	uint32_t sc_index = id;
-	struct xrt_swapchain *xsc = ics->xscs[sc_index];
-
-	xrt_swapchain_release_image(xsc, index);
-
-	return XRT_SUCCESS;
-}
-
-xrt_result_t
-ipc_handle_swapchain_destroy(volatile struct ipc_client_state *ics, uint32_t id)
-{
-	if (ics->xc == NULL) {
-		return XRT_ERROR_IPC_SESSION_NOT_CREATED;
-	}
-
-	ics->swapchain_count--;
-
-	// Drop our reference, does NULL checking. Cast away volatile.
-	xrt_swapchain_reference((struct xrt_swapchain **)&ics->xscs[id], NULL);
-	ics->swapchain_data[id].active = false;
-
-	return XRT_SUCCESS;
-}
-
 
 /*
  *
@@ -3068,6 +2879,17 @@ ipc_handle_device_set_brightness(volatile struct ipc_client_state *ics, uint32_t
 	}
 
 	return xrt_device_set_brightness(xdev, brightness, relative);
+}
+
+xrt_result_t
+ipc_handle_compositor_set_chroma_key_params(volatile struct ipc_client_state *ics,
+                                            const struct xrt_colour_hsv_f32 *hsv_min,
+                                            const struct xrt_colour_hsv_f32 *hsv_max,
+                                            float curve,
+                                            float despill)
+{
+	struct xrt_system_compositor *sysc = ics->server->xsysc;
+	return (sysc->xmcc->set_base_chroma_key_params)(sysc, *hsv_min, *hsv_max, curve, despill);
 }
 
 xrt_result_t

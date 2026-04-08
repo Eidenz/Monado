@@ -1,4 +1,5 @@
 // Copyright 2025, Beyley Cardellio
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -9,13 +10,15 @@
 
 #include "xrt/xrt_config_drivers.h"
 #include "xrt/xrt_prober.h"
+#include "xrt/xrt_system.h"
 
-#include "util/u_builders.h"
 #include "util/u_debug.h"
 #include "util/u_misc.h"
 #include "util/u_logging.h"
-#include "util/u_system_helpers.h"
 #include "util/u_trace_marker.h"
+#include "util/u_builder_search.h"
+
+#include "target_builder_helpers.h"
 
 #include "psvr2/psvr2_interface.h"
 
@@ -31,7 +34,7 @@
 
 struct psvr2_builder
 {
-	struct u_builder base;
+	struct t_builder base;
 
 	enum u_logging_level log_level;
 };
@@ -121,7 +124,7 @@ psvr2_open_system_impl(struct xrt_builder *xb,
                        struct xrt_tracking_origin *origin,
                        struct xrt_system_devices *xsysd,
                        struct xrt_frame_context *xfctx,
-                       struct u_builder_roles_helper *ubrh)
+                       struct t_builder_roles_helper *tbrh)
 {
 	struct xrt_prober_device **xpdevs = NULL;
 	size_t xpdev_count = 0;
@@ -144,12 +147,12 @@ psvr2_open_system_impl(struct xrt_builder *xb,
 			goto unlock_and_fail;
 		}
 
-		xsysd->xdevs[xsysd->xdev_count++] = head_xdev;
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = head_xdev;
 	}
 
-	ubrh->head = head_xdev;
-	ubrh->eyes = head_xdev;
-	ubrh->face = head_xdev;
+	tbrh->head = head_xdev;
+	tbrh->eyes = head_xdev;
+	tbrh->face = head_xdev;
 
 #ifdef XRT_BUILD_DRIVER_PSSENSE
 	struct xrt_device *left_xdev = NULL;
@@ -160,7 +163,7 @@ psvr2_open_system_impl(struct xrt_builder *xb,
 		if (left_xdev == NULL) {
 			PSVR2_ERROR(psvr2_builder(xb), "PS Sense left controller device creation failed");
 		} else {
-			xsysd->xdevs[xsysd->xdev_count++] = left_xdev;
+			xsysd->static_xdevs[xsysd->static_xdev_count++] = left_xdev;
 		}
 	}
 
@@ -172,12 +175,12 @@ psvr2_open_system_impl(struct xrt_builder *xb,
 		if (right_xdev == NULL) {
 			PSVR2_ERROR(psvr2_builder(xb), "PS Sense right controller device creation failed");
 		} else {
-			xsysd->xdevs[xsysd->xdev_count++] = right_xdev;
+			xsysd->static_xdevs[xsysd->static_xdev_count++] = right_xdev;
 		}
 	}
 
-	ubrh->left = left_xdev;
-	ubrh->right = right_xdev;
+	tbrh->left = left_xdev;
+	tbrh->right = right_xdev;
 #endif
 
 	xret = xrt_prober_unlock_list(xp, &xpdevs);
@@ -221,14 +224,14 @@ t_builder_psvr2_create(void)
 
 	// xrt_builder fields.
 	pb->base.base.estimate_system = psvr2_estimate_system;
-	pb->base.base.open_system = u_builder_open_system_static_roles;
+	pb->base.base.open_system = t_builder_open_system_static_roles;
 	pb->base.base.destroy = psvr2_destroy;
 	pb->base.base.identifier = "psvr2";
 	pb->base.base.name = "PlayStation VR 2";
 	pb->base.base.driver_identifiers = driver_list;
 	pb->base.base.driver_identifier_count = ARRAY_SIZE(driver_list);
 
-	// u_builder fields.
+	// t_builder fields.
 	pb->base.open_system_static_roles = psvr2_open_system_impl;
 
 	return &pb->base.base;

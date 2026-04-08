@@ -78,6 +78,7 @@ oxr_pp_space_indented(struct oxr_sink_logger *slog, const struct oxr_space *spc,
 	case OXR_SPACE_TYPE_REFERENCE_STAGE: oxr_slog(slog, "stage"); break;
 	case OXR_SPACE_TYPE_REFERENCE_UNBOUNDED_MSFT: oxr_slog(slog, "unbounded"); break;
 	case OXR_SPACE_TYPE_REFERENCE_COMBINED_EYE_VARJO: oxr_slog(slog, "combined_eye"); break;
+	case OXR_SPACE_TYPE_REFERENCE_UNBOUNDED_ANDROID: oxr_slog(slog, "unbounded"); break;
 	default: oxr_slog(slog, "unknown_space"); break;
 	}
 

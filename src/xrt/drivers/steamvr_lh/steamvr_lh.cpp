@@ -1,4 +1,5 @@
 // Copyright 2023, Shawn Wallace
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -27,10 +28,10 @@
 #include "util/u_device.h"
 #include "util/u_misc.h"
 #include "util/u_device.h"
-#include "util/u_system_helpers.h"
 #include "vive/vive_bindings.h"
 #include "util/u_device.h"
 #include "xrt/xrt_config_arch.h"
+#include "xrt/xrt_system.h"
 
 #include "math/m_api.h"
 
@@ -898,21 +899,21 @@ get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 
 	// First pass: only consider activated (non-pre-registered) devices.
 	struct xrt_device *filtered[XRT_SYSTEM_MAX_DEVICES] = {};
-	for (size_t i = 0; i < xsysd->xdev_count; i++) {
-		if (xsysd->xdevs[i] == NULL) {
+	for (size_t i = 0; i < xsysd->static_xdev_count; i++) {
+		if (xsysd->static_xdevs[i] == NULL) {
 			continue;
 		}
-		auto *dev = static_cast<Device *>(xsysd->xdevs[i]);
-		filtered[i] = dev->pre_registered ? nullptr : xsysd->xdevs[i];
+		auto *dev = static_cast<Device *>(xsysd->static_xdevs[i]);
+		filtered[i] = dev->pre_registered ? nullptr : xsysd->static_xdevs[i];
 	}
 
-	u_device_assign_xdev_roles(filtered, xsysd->xdev_count, &head, &eyes, &face, &left, &right, &gamepad);
+	u_device_assign_xdev_roles(filtered, xsysd->static_xdev_count, &head, &eyes, &face, &left, &right, &gamepad);
 
 	// Second pass: if left/right still unassigned, fall back to pre-registered devices
 	// so apps see controllers from boot even before they power on.
 	if (left == XRT_DEVICE_ROLE_UNASSIGNED || right == XRT_DEVICE_ROLE_UNASSIGNED) {
 		int head2, eyes2, face2, left2, right2, gamepad2;
-		u_device_assign_xdev_roles(xsysd->xdevs, xsysd->xdev_count, &head2, &eyes2, &face2, &left2, &right2,
+		u_device_assign_xdev_roles(xsysd->static_xdevs, xsysd->static_xdev_count, &head2, &eyes2, &face2, &left2, &right2,
 		                           &gamepad2);
 		if (left == XRT_DEVICE_ROLE_UNASSIGNED) {
 			left = left2;
@@ -934,12 +935,12 @@ get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 		out_roles->gamepad = gamepad;
 
 		if (left != XRT_DEVICE_ROLE_UNASSIGNED) {
-			auto *left_dev = static_cast<ControllerDevice *>(xsysd->xdevs[left]);
+			auto *left_dev = static_cast<ControllerDevice *>(xsysd->static_xdevs[left]);
 			left_dev->set_active_hand(XRT_HAND_LEFT);
 		}
 
 		if (right != XRT_DEVICE_ROLE_UNASSIGNED) {
-			auto *right_dev = static_cast<ControllerDevice *>(xsysd->xdevs[right]);
+			auto *right_dev = static_cast<ControllerDevice *>(xsysd->static_xdevs[right]);
 			right_dev->set_active_hand(XRT_HAND_RIGHT);
 		}
 	}
@@ -950,8 +951,8 @@ get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 void
 destroy(struct xrt_system_devices *xsysd)
 {
-	for (uint32_t i = 0; i < ARRAY_SIZE(xsysd->xdevs); i++) {
-		xrt_device_destroy(&xsysd->xdevs[i]);
+	for (uint32_t i = 0; i < ARRAY_SIZE(xsysd->static_xdevs); i++) {
+		xrt_device_destroy(&xsysd->static_xdevs[i]);
 	}
 
 	svrs->ctx.reset();
@@ -1255,14 +1256,14 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices **out
 		}
 
 		// Always have a head at index 0 and iterate dev count.
-		xsysd->xdevs[xsysd->xdev_count] = svrs->ctx->hmd;
-		xsysd->static_roles.head = xsysd->xdevs[xsysd->xdev_count++];
+		xsysd->static_xdevs[xsysd->static_xdev_count] = svrs->ctx->hmd;
+		xsysd->static_roles.head = xsysd->static_xdevs[xsysd->static_xdev_count++];
 	}
 
 	// Include the controllers
 	for (size_t i = 0; i < MAX_CONTROLLERS; i++) {
 		if (svrs->ctx->controller[i]) {
-			xsysd->xdevs[xsysd->xdev_count++] = svrs->ctx->controller[i];
+			xsysd->static_xdevs[xsysd->static_xdev_count++] = svrs->ctx->controller[i];
 		}
 	}
 

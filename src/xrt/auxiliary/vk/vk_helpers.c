@@ -558,6 +558,11 @@ vk_present_mode_string(VkPresentModeKHR code)
 		ENUM_TO_STR(VK_PRESENT_MODE_FIFO_RELAXED_KHR);
 		ENUM_TO_STR(VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR);
 		ENUM_TO_STR(VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR);
+#if defined(VK_KHR_present_mode_fifo_latest_ready)
+		ENUM_TO_STR(VK_PRESENT_MODE_FIFO_LATEST_READY_KHR);
+#elif defined(VK_EXT_present_mode_fifo_latest_ready)
+		ENUM_TO_STR(VK_PRESENT_MODE_FIFO_LATEST_READY_EXT);
+#endif
 	default: return "UNKNOWN MODE";
 	}
 }
@@ -1228,7 +1233,8 @@ vk_create_image_from_native(struct vk_bundle *vk,
 		 * For AHardwareBuffer handles, the alloc size must be the size returned by
 		 * vkGetAndroidHardwareBufferPropertiesANDROID for the Android hardware buffer
 		 */
-	} else if ((handle_type & (VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT |
+	} else if ((handle_type & (VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT |
+	                           VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT |
 	                           VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT |
 	                           VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT)) != 0) {
 

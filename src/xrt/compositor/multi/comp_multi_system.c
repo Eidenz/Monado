@@ -11,6 +11,7 @@
  */
 
 #include "xrt/xrt_config_os.h"
+#include "xrt/xrt_defines.h"
 #include "xrt/xrt_session.h"
 
 #include "os/os_time.h"
@@ -304,6 +305,41 @@ transfer_layers_locked(struct multi_system_compositor *msc, int64_t display_time
 
 	// Sort the stack array
 	qsort(array, count, sizeof(struct multi_compositor *), overlay_sort_func);
+
+	// Find base compositor using multiple criteria
+	struct multi_compositor *base_comp = NULL;
+	for (size_t k = 0; k < count; k++) {
+		struct multi_compositor *mc = array[k];
+		if (mc->state.is_base_session && // Explicit flag
+		    mc->state.visible &&         // Must be visible
+		    mc->state.session_active &&  // Must be active
+		    mc->delivered.active) {      // Must have valid data
+			base_comp = mc;
+			break;
+		}
+	}
+
+	bool chroma_key_enabled = msc->chroma_key.curve > 0.f;
+
+	if (chroma_key_enabled && base_comp != NULL) {
+		base_comp->delivered.data.env_blend_mode = XRT_BLEND_MODE_ALPHA_BLEND;
+
+		for (uint32_t i = 0; i < base_comp->delivered.layer_count; i++) {
+			struct multi_layer_entry *layer = &base_comp->delivered.layers[i];
+
+			if (layer->data.type == XRT_LAYER_PROJECTION) {
+				layer->data.proj.chroma_key.hsv_min = msc->chroma_key.hsv_min;
+				layer->data.proj.chroma_key.hsv_max = msc->chroma_key.hsv_max;
+				layer->data.proj.chroma_key.curve = msc->chroma_key.curve;
+				layer->data.proj.chroma_key.despill = msc->chroma_key.despill;
+			} else if (layer->data.type == XRT_LAYER_PROJECTION_DEPTH) {
+				layer->data.depth.chroma_key.hsv_min = msc->chroma_key.hsv_min;
+				layer->data.depth.chroma_key.hsv_max = msc->chroma_key.hsv_max;
+				layer->data.depth.chroma_key.curve = msc->chroma_key.curve;
+				layer->data.depth.chroma_key.despill = msc->chroma_key.despill;
+			}
+		}
+	}
 
 	// find first (ordered by bottom to top) active client to retrieve xrt_layer_frame_data
 	const enum xrt_blend_mode blend_mode = find_active_blend_mode(array, count);
@@ -625,6 +661,26 @@ system_compositor_set_z_order(struct xrt_system_compositor *xsc, struct xrt_comp
 
 	//! @todo Locking?
 	mc->state.z_order = z_order;
+	os_mutex_unlock(&msc->list_and_timing_lock);
+
+	return XRT_SUCCESS;
+}
+
+static xrt_result_t
+system_compositor_set_base_chroma_key_params(struct xrt_system_compositor *xsc,
+                                             struct xrt_colour_hsv_f32 hsv_min,
+                                             struct xrt_colour_hsv_f32 hsv_max,
+                                             float curve,
+                                             float despill)
+{
+	struct multi_system_compositor *msc = multi_system_compositor(xsc);
+
+	os_mutex_lock(&msc->list_and_timing_lock);
+	msc->chroma_key.hsv_min = hsv_min;
+	msc->chroma_key.hsv_max = hsv_max;
+	msc->chroma_key.curve = curve;
+	msc->chroma_key.despill = despill;
+	os_mutex_unlock(&msc->list_and_timing_lock);
 
 	return XRT_SUCCESS;
 }
@@ -635,6 +691,8 @@ system_compositor_set_main_app_visibility(struct xrt_system_compositor *xsc, str
 	struct multi_system_compositor *msc = multi_system_compositor(xsc);
 	struct multi_compositor *mc = multi_compositor(xc);
 	(void)msc;
+
+	mc->state.is_base_session = visible;
 
 	union xrt_session_event xse = XRT_STRUCT_INIT;
 	xse.type = XRT_SESSION_EVENT_OVERLAY_CHANGE;
@@ -708,6 +766,16 @@ system_compositor_create_native_compositor(struct xrt_system_compositor *xsc,
 	return multi_compositor_create(msc, xsi, xses, out_xcn);
 }
 
+static xrt_result_t
+system_compositor_get_view_config(struct xrt_system_compositor *xsc,
+                                  enum xrt_view_type view_type,
+                                  struct xrt_view_config *out_view_config)
+{
+	struct multi_system_compositor *msc = multi_system_compositor(xsc);
+
+	return msc->get_view_config_callback(msc->xcn, view_type, out_view_config);
+}
+
 static void
 system_compositor_destroy(struct xrt_system_compositor *xsc)
 {
@@ -754,15 +822,18 @@ multi_system_compositor_update_session_status(struct multi_system_compositor *ms
 xrt_result_t
 comp_multi_create_system_compositor(struct xrt_compositor_native *xcn,
                                     struct u_pacing_app_factory *upaf,
+                                    comp_multi_view_config_callback_func_t get_view_config_callback,
                                     const struct xrt_system_compositor_info *xsci,
                                     bool do_warm_start,
                                     struct xrt_system_compositor **out_xsysc)
 {
 	struct multi_system_compositor *msc = U_TYPED_CALLOC(struct multi_system_compositor);
 	msc->base.create_native_compositor = system_compositor_create_native_compositor;
+	msc->base.get_view_config = system_compositor_get_view_config;
 	msc->base.destroy = system_compositor_destroy;
 	msc->xmcc.set_state = system_compositor_set_state;
 	msc->xmcc.set_z_order = system_compositor_set_z_order;
+	msc->xmcc.set_base_chroma_key_params = system_compositor_set_base_chroma_key_params;
 	msc->xmcc.set_main_app_visibility = system_compositor_set_main_app_visibility;
 	msc->xmcc.notify_loss_pending = system_compositor_notify_loss_pending;
 	msc->xmcc.notify_lost = system_compositor_notify_lost;
@@ -773,6 +844,7 @@ comp_multi_create_system_compositor(struct xrt_compositor_native *xcn,
 	msc->xcn = xcn;
 	msc->sessions.active_count = 0;
 	msc->sessions.state = do_warm_start ? MULTI_SYSTEM_STATE_INIT_WARM_START : MULTI_SYSTEM_STATE_STOPPED;
+	msc->get_view_config_callback = get_view_config_callback;
 
 	os_mutex_init(&msc->list_and_timing_lock);
 

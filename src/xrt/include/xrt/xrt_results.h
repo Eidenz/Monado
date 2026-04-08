@@ -262,4 +262,9 @@ typedef enum xrt_result
 	 * C++ code threw an exception that wasn't caught.
 	 */
 	XRT_ERROR_UNCAUGHT_EXCEPTION = -43,
+
+	/*!
+	 * The specified @ref xrt_view_type was unsupported by the callee.
+	 */
+	XRT_ERROR_UNSUPPORTED_VIEW_TYPE = -44,
 } xrt_result_t;

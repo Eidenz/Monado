@@ -1,5 +1,6 @@
 // Copyright 2023, Duncan Spaulding.
 // Copyright 2022-2023, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -8,9 +9,7 @@
  * @author Jakob Bornecrantz <jakob@collabora.com>
  * @ingroup xrt_iface
  */
-#include "util/u_builders.h"
 #include "xrt/xrt_config_drivers.h"
-
 
 #include <assert.h>
 #include <stdbool.h>
@@ -32,7 +31,7 @@
 #include "xrt/xrt_results.h"
 
 #include "xrt/xrt_space.h"
-#include "util/u_space_overseer.h"
+#include "b_space_overseer.h"
 
 #ifndef XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE
 #error "This builder requires the SteamVR Lighthouse driver"
@@ -170,14 +169,14 @@ steamvr_open_system(struct xrt_builder *xb,
 	 * Space overseer.
 	 */
 
-	struct u_space_overseer *uso = u_space_overseer_create(broadcast);
+	struct b_space_overseer *uso = b_space_overseer_create(broadcast);
 
 	struct xrt_pose T_stage_local = XRT_POSE_IDENTITY;
 
-	u_space_overseer_legacy_setup( //
+	b_space_overseer_legacy_setup( //
 	    uso,                       // uso
-	    xsysd->xdevs,              // xdevs
-	    xsysd->xdev_count,         // xdev_count
+	    xsysd->static_xdevs,       // xdevs
+	    xsysd->static_xdev_count,  // xdev_count
 	    svrb->head,                // head
 	    &T_stage_local,            // local_offset
 	    false,                     // root_is_unbounded
