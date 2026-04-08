@@ -398,9 +398,9 @@ Context::run_frame()
 					// Swap controller pointers
 					std::swap(controller[i], controller[pa.slot]);
 
-					// Also swap in xsysd->xdevs (offset by 1 for HMD at index 0)
+					// Also swap in xsysd->static_xdevs (offset by 1 for HMD at index 0)
 					if (xsysd) {
-						std::swap(xsysd->xdevs[i + 1], xsysd->xdevs[pa.slot + 1]);
+						std::swap(xsysd->static_xdevs[i + 1], xsysd->static_xdevs[pa.slot + 1]);
 					}
 
 					activate_slot = i;
