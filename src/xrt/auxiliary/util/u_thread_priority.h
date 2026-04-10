@@ -1,9 +1,10 @@
-// Copyright 2023, Collabora, Ltd.
+// Copyright 2023-2026, Collabora, Ltd.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
- * @brief  Various helpers for doing Linux specific things.
+ * @brief Set thread priorities in a cross-platform manner
  * @author Jakob Bornecrantz <jakob@collabora.com>
+ * @author Korcan Hussein <korcan.hussein@collabora.com>
  *
  * @ingroup aux_util
  */
@@ -11,14 +12,12 @@
 #pragma once
 
 #include "xrt/xrt_compiler.h"
-#include "xrt/xrt_windows.h"
 #include "util/u_logging.h"
 
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
 
 /*!
  * Try to set realtime priority on this thread. Passing in log_level to control
@@ -33,7 +32,7 @@ extern "C" {
  * @ingroup aux_util
  */
 bool
-u_linux_try_to_set_realtime_priority_on_thread(enum u_logging_level log_level, const char *name);
+u_try_to_set_realtime_priority_on_thread(enum u_logging_level log_level, const char *name);
 
 
 #ifdef __cplusplus
