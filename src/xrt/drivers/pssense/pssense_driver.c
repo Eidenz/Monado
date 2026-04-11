@@ -172,7 +172,7 @@ struct pssense_device
 		uint64_t vibration_end_timestamp_ns;
 		uint64_t vibration_resend_timestamp_ns;
 		bool send_trigger_feedback;
-		uint8_t trigger_feedback_mode;
+		enum pssense_adaptive_trigger_mode trigger_feedback_mode;
 	} output;
 
 	struct m_imu_3dof fusion;
@@ -186,6 +186,12 @@ struct pssense_device
 };
 
 const uint32_t CRC_POLYNOMIAL = 0xedb88320;
+
+/*
+ *
+ * Internal functions
+ *
+ */
 
 static uint32_t
 crc32_le(uint32_t crc, uint8_t const *p, size_t len)
@@ -376,38 +382,40 @@ pssense_send_output_report_locked(struct pssense_device *pssense)
 {
 	uint64_t timestamp_ns = os_monotonic_get_ns();
 
-	struct pssense_output_report report = {0};
-	report.report_id = OUTPUT_REPORT_ID;
-	report.bt_seq_no = pssense->output.next_seq_no << 4;
-	report.tag = OUTPUT_REPORT_TAG;
+	struct pssense_ps5_output_report report = {
+	    .report_id = OUTPUT_REPORT_ID,
+	    // low bits are always zero, to indicate we are using the PS5 packet format
+	    .seq_no_mode = (pssense->output.next_seq_no << 4) | (0x0),
+	    .tag = OUTPUT_REPORT_TAG,
+	};
 
 	if (timestamp_ns >= pssense->output.vibration_end_timestamp_ns) {
 		pssense->output.vibration_amplitude = 0;
 	}
 
 	if (pssense->output.send_vibration) {
-		report.feedback_flags = pssense->output.vibration_mode | VIBRATE_ENABLE_BITS;
-		report.vibration_amplitude = pssense->output.vibration_amplitude;
+		report.settings.flag1 |= OUTPUT_SETTINGS_ENABLE_VIBRATION_BITS | pssense->output.vibration_mode;
+		report.settings.vibration_amplitude = pssense->output.vibration_amplitude;
 		pssense->output.send_vibration = pssense->output.vibration_amplitude > 0;
 	}
 
 	if (pssense->output.send_trigger_feedback) {
-		report.feedback_flags |= TRIGGER_FEEDBACK_ENABLE_BITS;
-		report.trigger_feedback_mode = pssense->output.trigger_feedback_mode;
+		report.settings.flag1 |= PSSENSE_OUTPUT_SETTINGS_FLAG1_ADAPTIVE_TRIGGER_ENABLE;
+		report.settings.trigger_settings.mode = pssense->output.trigger_feedback_mode;
 		pssense->output.send_trigger_feedback = false;
 	}
 
 	pssense->output.next_seq_no = (pssense->output.next_seq_no + 1) % 16;
 
 	uint32_t crc = crc32_le(0, &OUTPUT_REPORT_CRC32_SEED, 1);
-	crc = crc32_le(crc, (uint8_t *)&report, sizeof(struct pssense_output_report) - 4);
+	crc = crc32_le(crc, (uint8_t *)&report, sizeof(struct pssense_ps5_output_report) - 4);
 	report.crc = __cpu_to_le32(crc);
 
 	PSSENSE_DEBUG(pssense, "Setting vibration amplitude: %u, mode: %02X, trigger feedback mode: %02X",
 	              pssense->output.vibration_amplitude, pssense->output.vibration_mode,
 	              pssense->output.trigger_feedback_mode);
-	int ret = os_hid_write(pssense->hid, (uint8_t *)&report, sizeof(struct pssense_output_report));
-	if (ret == sizeof(struct pssense_output_report)) {
+	int ret = os_hid_write(pssense->hid, (uint8_t *)&report, sizeof(struct pssense_ps5_output_report));
+	if (ret == sizeof(struct pssense_ps5_output_report)) {
 		// Controller will vibrate for 5 sec unless we resend the output report. Resend every 2 sec to be safe.
 		pssense->output.vibration_resend_timestamp_ns = timestamp_ns + 2000000000;
 		if (pssense->output.vibration_resend_timestamp_ns > pssense->output.vibration_end_timestamp_ns) {
@@ -454,6 +462,97 @@ pssense_run_thread(void *ptr)
 
 	return NULL;
 }
+
+static void
+pssense_get_fusion_pose(struct pssense_device *pssense,
+                        enum xrt_input_name name,
+                        int64_t at_timestamp_ns,
+                        struct xrt_space_relation *out_relation)
+{
+	out_relation->pose = pssense->pose;
+	out_relation->linear_velocity.x = 0.0f;
+	out_relation->linear_velocity.y = 0.0f;
+	out_relation->linear_velocity.z = 0.0f;
+
+	/*!
+	 * @todo This is hack, fusion reports angvel relative to the device but
+	 * it needs to be in relation to the base space. Rotating it with the
+	 * device orientation is enough to get it into the right space, angular
+	 * velocity is a derivative so needs a special rotation.
+	 */
+	math_quat_rotate_derivative(&pssense->pose.orientation, &pssense->fusion.last.gyro,
+	                            &out_relation->angular_velocity);
+
+	out_relation->relation_flags = (enum xrt_space_relation_flags)(
+	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
+	    XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT | XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT);
+}
+
+/*!
+ * Retrieving the calibration data report will switch the Sense controller from compat mode into full mode.
+ */
+bool
+pssense_get_calibration_data(struct pssense_device *pssense)
+{
+	int ret;
+	uint8_t buffer[sizeof(struct pssense_feature_report)];
+	uint8_t data[CALIBRATION_DATA_LENGTH] = {0};
+	bool invalid_crc;
+	do {
+		invalid_crc = false;
+		for (int i = 0; i < 2; i++) {
+			ret = os_hid_get_feature(pssense->hid, CALIBRATION_DATA_FEATURE_REPORT_ID, buffer,
+			                         sizeof(buffer));
+			if (ret < 0) {
+				PSSENSE_ERROR(pssense, "Failed to retrieve calibration report: %d", ret);
+				return false;
+			}
+			if (ret != sizeof(buffer)) {
+				PSSENSE_ERROR(pssense, "Invalid byte count transferred, expected %zu got %d",
+				              sizeof(buffer), ret);
+				return false;
+			}
+			struct pssense_feature_report *report = (struct pssense_feature_report *)buffer;
+			if (report->part_id == CALIBRATION_DATA_PART_ID_1) {
+				memcpy(data, report->data, sizeof(report->data));
+			} else if (report->part_id == CALIBRATION_DATA_PART_ID_2) {
+				memcpy(data + sizeof(report->data), report->data, sizeof(report->data));
+			} else {
+				PSSENSE_ERROR(pssense, "Unknown calibration data part ID %u", report->part_id);
+				return false;
+			}
+
+			uint32_t crc = crc32_le(0, &FEATURE_REPORT_CRC32_SEED, 1);
+			crc = crc32_le(crc, (uint8_t *)&buffer, sizeof(buffer) - 4);
+			uint32_t expected_crc = __le32_to_cpu(report->crc);
+			if (crc != expected_crc) {
+				PSSENSE_WARN(pssense, "Invalid feature report CRC. Expected 0x%08X, actual 0x%08X",
+				             expected_crc, crc);
+				invalid_crc = true;
+			}
+		}
+	} while (invalid_crc);
+
+	// TODO: Parse calibration data into prefiler
+
+	return true;
+}
+
+static uint64_t
+saturating_add_uint64(uint64_t a, uint64_t b)
+{
+	if (UINT64_MAX - a < b) {
+		return UINT64_MAX;
+	} else {
+		return a + b;
+	}
+}
+
+/*
+ *
+ * Driver implementations
+ *
+ */
 
 static void
 pssense_device_destroy(struct xrt_device *xdev)
@@ -528,32 +627,41 @@ pssense_set_output(struct xrt_device *xdev, enum xrt_output_name name, const str
 	uint8_t vibration_mode;
 	bool send_trigger_feedback = false;
 	uint8_t trigger_feedback_mode;
-	if (name == XRT_OUTPUT_NAME_PSSENSE_VIBRATION) {
+
+	switch (name) {
+	case XRT_OUTPUT_NAME_PSSENSE_VIBRATION: {
 		send_vibration = true;
 		vibration_amplitude = (uint8_t)(value->vibration.amplitude * 255.0f);
-		vibration_mode = VIBRATE_MODE_CLASSIC_RUMBLE;
+		vibration_mode = OUTPUT_SETTINGS_VIBRATE_MODE_CLASSIC_RUMBLE;
 		if (value->vibration.frequency != XRT_FREQUENCY_UNSPECIFIED) {
 			if (value->vibration.frequency <= 70) {
-				vibration_mode = VIBRATE_MODE_LOW_60HZ;
+				vibration_mode = OUTPUT_SETTINGS_VIBRATE_MODE_LOW_60HZ;
 			} else if (value->vibration.frequency >= 110) {
-				vibration_mode = VIBRATE_MODE_HIGH_120HZ;
+				vibration_mode = OUTPUT_SETTINGS_VIBRATE_MODE_HIGH_120HZ;
 			}
 		}
-	} else if (name == XRT_OUTPUT_NAME_PSSENSE_TRIGGER_FEEDBACK) {
+
+		break;
+	}
+	case XRT_OUTPUT_NAME_PSSENSE_TRIGGER_FEEDBACK: {
 		for (uint64_t i = 0; i < value->force_feedback.force_feedback_location_count; i++) {
 			if (value->force_feedback.force_feedback[i].location ==
 			    XRT_FORCE_FEEDBACK_LOCATION_LEFT_INDEX) {
 				send_trigger_feedback = true;
 				if (value->force_feedback.force_feedback[i].value > 0) {
-					trigger_feedback_mode = TRIGGER_FEEDBACK_MODE_CONSTANT;
+					trigger_feedback_mode = TRIGGER_FEEDBACK_MODE_SIMPLE_FEEDBACK;
 				} else {
-					trigger_feedback_mode = TRIGGER_FEEDBACK_MODE_NONE;
+					trigger_feedback_mode = TRIGGER_FEEDBACK_MODE_OFF;
 				}
 			}
 		}
-	} else {
+
+		break;
+	}
+	default: {
 		U_LOG_XDEV_UNSUPPORTED_OUTPUT(&pssense->base, pssense->log_level, name);
 		return XRT_ERROR_OUTPUT_UNSUPPORTED;
+	}
 	}
 
 	os_mutex_lock(&pssense->lock);
@@ -562,7 +670,8 @@ pssense_set_output(struct xrt_device *xdev, enum xrt_output_name name, const str
 		pssense->output.send_vibration = true;
 		pssense->output.vibration_amplitude = vibration_amplitude;
 		pssense->output.vibration_mode = vibration_mode;
-		pssense->output.vibration_end_timestamp_ns = os_monotonic_get_ns() + value->vibration.duration_ns;
+		pssense->output.vibration_end_timestamp_ns =
+		    saturating_add_uint64(os_monotonic_get_ns(), value->vibration.duration_ns);
 	}
 	if (send_trigger_feedback && trigger_feedback_mode != pssense->output.trigger_feedback_mode) {
 		pssense->output.send_trigger_feedback = true;
@@ -574,31 +683,6 @@ pssense_set_output(struct xrt_device *xdev, enum xrt_output_name name, const str
 	os_mutex_unlock(&pssense->lock);
 
 	return XRT_SUCCESS;
-}
-
-static void
-pssense_get_fusion_pose(struct pssense_device *pssense,
-                        enum xrt_input_name name,
-                        int64_t at_timestamp_ns,
-                        struct xrt_space_relation *out_relation)
-{
-	out_relation->pose = pssense->pose;
-	out_relation->linear_velocity.x = 0.0f;
-	out_relation->linear_velocity.y = 0.0f;
-	out_relation->linear_velocity.z = 0.0f;
-
-	/*!
-	 * @todo This is hack, fusion reports angvel relative to the device but
-	 * it needs to be in relation to the base space. Rotating it with the
-	 * device orientation is enough to get it into the right space, angular
-	 * velocity is a derivative so needs a special rotation.
-	 */
-	math_quat_rotate_derivative(&pssense->pose.orientation, &pssense->fusion.last.gyro,
-	                            &out_relation->angular_velocity);
-
-	out_relation->relation_flags = (enum xrt_space_relation_flags)(
-	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
-	    XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT | XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT);
 }
 
 static xrt_result_t
@@ -649,55 +733,11 @@ pssense_get_battery_status(struct xrt_device *xdev, bool *out_present, bool *out
 	return XRT_SUCCESS;
 }
 
-/**
- * Retrieving the calibration data report will switch the Sense controller from compat mode into full mode.
+/*
+ *
+ * Exported functions
+ *
  */
-bool
-pssense_get_calibration_data(struct pssense_device *pssense)
-{
-	int ret;
-	uint8_t buffer[sizeof(struct pssense_feature_report)];
-	uint8_t data[CALIBRATION_DATA_LENGTH] = {0};
-	bool invalid_crc;
-	do {
-		invalid_crc = false;
-		for (int i = 0; i < 2; i++) {
-			ret = os_hid_get_feature(pssense->hid, CALIBRATION_DATA_FEATURE_REPORT_ID, buffer,
-			                         sizeof(buffer));
-			if (ret < 0) {
-				PSSENSE_ERROR(pssense, "Failed to retrieve calibration report: %d", ret);
-				return false;
-			}
-			if (ret != sizeof(buffer)) {
-				PSSENSE_ERROR(pssense, "Invalid byte count transferred, expected %zu got %d",
-				              sizeof(buffer), ret);
-				return false;
-			}
-			struct pssense_feature_report *report = (struct pssense_feature_report *)buffer;
-			if (report->part_id == CALIBRATION_DATA_PART_ID_1) {
-				memcpy(data, report->data, sizeof(report->data));
-			} else if (report->part_id == CALIBRATION_DATA_PART_ID_2) {
-				memcpy(data + sizeof(report->data), report->data, sizeof(report->data));
-			} else {
-				PSSENSE_ERROR(pssense, "Unknown calibration data part ID %u", report->part_id);
-				return false;
-			}
-
-			uint32_t crc = crc32_le(0, &FEATURE_REPORT_CRC32_SEED, 1);
-			crc = crc32_le(crc, (uint8_t *)&buffer, sizeof(buffer) - 4);
-			uint32_t expected_crc = __le32_to_cpu(report->crc);
-			if (crc != expected_crc) {
-				PSSENSE_WARN(pssense, "Invalid feature report CRC. Expected 0x%08X, actual 0x%08X",
-				             expected_crc, crc);
-				invalid_crc = true;
-			}
-		}
-	} while (invalid_crc);
-
-	// TODO: Parse calibration data into prefiler
-
-	return true;
-}
 
 #define SET_INPUT(NAME) (pssense->base.inputs[PSSENSE_INDEX_##NAME].name = XRT_INPUT_PSSENSE_##NAME)
 
