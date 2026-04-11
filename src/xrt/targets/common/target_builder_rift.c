@@ -33,6 +33,10 @@
 #include "rift_sensor/rift_sensor_interface.h"
 #endif
 
+#ifdef XRT_BUILD_DRIVER_PSSENSE
+#include "pssense/pssense_interface.h"
+#endif
+
 
 // Require a pixel of this brightness to be included in a blob at all, to help filter out general noise.
 #define RIFT_SENSOR_BLOB_REQUIRED_THRESHOLD 0x40
@@ -95,6 +99,9 @@ DEBUG_GET_ONCE_BOOL_OPTION(rift_prober_enable, "RIFT_PROBER_ENABLE", DEFAULT_ENA
 
 static const char *driver_list[] = {
     "rift",
+#ifdef XRT_BUILD_DRIVER_PSSENSE
+    "pssense",
+#endif
 };
 
 
@@ -144,6 +151,20 @@ rift_estimate_system(struct xrt_builder *xb,
 	if (dev != NULL && rift_is_oculus(xp, dev)) {
 		estimate->certain.head = true;
 	}
+
+#ifdef XRT_BUILD_DRIVER_PSSENSE
+	struct xrt_prober_device *dev_controller_left =
+	    u_builder_find_prober_device(xpdevs, xpdev_count, PSSENSE_VID, PSSENSE_PID_LEFT, XRT_BUS_TYPE_BLUETOOTH);
+	if (dev_controller_left != NULL) {
+		estimate->certain.left = true;
+	}
+
+	struct xrt_prober_device *dev_controller_right =
+	    u_builder_find_prober_device(xpdevs, xpdev_count, PSSENSE_VID, PSSENSE_PID_RIGHT, XRT_BUS_TYPE_BLUETOOTH);
+	if (dev_controller_right != NULL) {
+		estimate->certain.right = true;
+	}
+#endif
 
 	RIFT_DEBUG(rb, "Rift builder estimate: head %d, left %d, right %d, extra %d", estimate->certain.head,
 	           estimate->maybe.left, estimate->maybe.right, estimate->maybe.extra_device_count);
@@ -248,6 +269,35 @@ rift_open_system_impl(struct xrt_builder *xb,
 			}
 		}
 	}
+
+#ifdef XRT_BUILD_DRIVER_PSSENSE
+	struct xrt_device *left_xdev = NULL;
+	struct xrt_prober_device *left_xpdev =
+	    u_builder_find_prober_device(xpdevs, xpdev_count, PSSENSE_VID, PSSENSE_PID_LEFT, XRT_BUS_TYPE_BLUETOOTH);
+	if (left_xpdev != NULL) {
+		left_xdev = pssense_create(xp, left_xpdev);
+		if (left_xdev == NULL) {
+			RIFT_ERROR(rb, "PS Sense left controller device creation failed");
+		} else {
+			xsysd->static_xdevs[xsysd->static_xdev_count++] = left_xdev;
+		}
+	}
+
+	struct xrt_device *right_xdev = NULL;
+	struct xrt_prober_device *right_xpdev =
+	    u_builder_find_prober_device(xpdevs, xpdev_count, PSSENSE_VID, PSSENSE_PID_RIGHT, XRT_BUS_TYPE_BLUETOOTH);
+	if (right_xpdev != NULL) {
+		right_xdev = pssense_create(xp, right_xpdev);
+		if (right_xdev == NULL) {
+			RIFT_ERROR(rb, "PS Sense right controller device creation failed");
+		} else {
+			xsysd->static_xdevs[xsysd->static_xdev_count++] = right_xdev;
+		}
+	}
+
+	tbrh->left = left_xdev;
+	tbrh->right = right_xdev;
+#endif
 
 	xret = xrt_prober_unlock_list(xp, &xpdevs);
 	if (xret != XRT_SUCCESS) {
