@@ -211,9 +211,9 @@ contactglove_ping_handle_glove_timeout(struct contactglove_dongle *dongle,
 }
 
 static int
-contactglove_request_module_state(struct contactglove_dongle *dongle,
-                                  struct contactglove_device *glove,
-                                  enum contactglove_module_kind module_kind)
+contactglove_request_module_state_locked(struct contactglove_dongle *dongle,
+                                         struct contactglove_device *glove,
+                                         enum contactglove_module_kind module_kind)
 {
 	uint8_t payload[] = {(uint8_t)glove->role, (uint8_t)module_kind};
 	int ret = contactglove_dongle_send_packet_locked(
@@ -228,11 +228,11 @@ contactglove_request_module_state(struct contactglove_dongle *dongle,
 }
 
 static int
-contactglove_set_module_state(struct contactglove_dongle *dongle,
-                              struct contactglove_device *glove,
-                              enum contactglove_module_kind module,
-                              const uint8_t *data,
-                              size_t length)
+contactglove_set_module_state_locked(struct contactglove_dongle *dongle,
+                                     struct contactglove_device *glove,
+                                     enum contactglove_module_kind module,
+                                     const uint8_t *data,
+                                     size_t length)
 {
 	struct contactglove_to_host_packet_module_state_header header = {
 	    .device_role = glove->role,
@@ -251,8 +251,10 @@ contactglove_set_module_state(struct contactglove_dongle *dongle,
 		DONGLE_ERROR(dongle, "Failed to set module state, got %d", ret);
 	}
 
+	glove->module_state_valid[module] = false;
+
 	// Request an update after we send the update
-	ret = contactglove_request_module_state(dongle, glove, module);
+	ret = contactglove_request_module_state_locked(dongle, glove, module);
 	if (ret < 0) {
 		return ret;
 	}
@@ -261,23 +263,23 @@ contactglove_set_module_state(struct contactglove_dongle *dongle,
 }
 
 static int
-contactglove_request_update_module_state(struct contactglove_dongle *dongle, struct contactglove_device *glove)
+contactglove_request_update_module_state_locked(struct contactglove_dongle *dongle, struct contactglove_device *glove)
 {
 	int ret;
 	if (!glove->module_state_valid[CONTACTGLOVE_MODULE_MAGNETRA2]) {
-		ret = contactglove_request_module_state(dongle, glove, CONTACTGLOVE_MODULE_MAGNETRA2);
+		ret = contactglove_request_module_state_locked(dongle, glove, CONTACTGLOVE_MODULE_MAGNETRA2);
 		if (ret < 0) {
 			return ret;
 		}
 	}
 	if (!glove->module_state_valid[CONTACTGLOVE_MODULE_SLEEP_MANAGER]) {
-		ret = contactglove_request_module_state(dongle, glove, CONTACTGLOVE_MODULE_SLEEP_MANAGER);
+		ret = contactglove_request_module_state_locked(dongle, glove, CONTACTGLOVE_MODULE_SLEEP_MANAGER);
 		if (ret < 0) {
 			return ret;
 		}
 	}
 	if (!glove->module_state_valid[CONTACTGLOVE_MODULE_LED_MANAGER]) {
-		ret = contactglove_request_module_state(dongle, glove, CONTACTGLOVE_MODULE_LED_MANAGER);
+		ret = contactglove_request_module_state_locked(dongle, glove, CONTACTGLOVE_MODULE_LED_MANAGER);
 		if (ret < 0) {
 			return ret;
 		}
@@ -287,9 +289,48 @@ contactglove_request_update_module_state(struct contactglove_dongle *dongle, str
 	    !glove->module_state_magnetra2.enabled) {
 		struct contactglove_module_state_magnetra2 module_state_magnetra2 = {.enabled = true};
 
-		ret = contactglove_set_module_state(dongle, glove, CONTACTGLOVE_MODULE_MAGNETRA2,
-		                                    (const uint8_t *)&module_state_magnetra2,
-		                                    sizeof(module_state_magnetra2));
+		ret = contactglove_set_module_state_locked(dongle, glove, CONTACTGLOVE_MODULE_MAGNETRA2,
+		                                           (const uint8_t *)&module_state_magnetra2,
+		                                           sizeof(module_state_magnetra2));
+		if (ret < 0) {
+			return ret;
+		}
+	}
+
+	// Change the LED in a pattern to show Monado has booted the glove
+	if (glove->module_state_valid[CONTACTGLOVE_MODULE_LED_MANAGER]) {
+		struct contactglove_module_state_led_manager next_state;
+
+		switch (glove->module_state_led_manager.r) {
+		default:
+		case 0x5B: {
+			next_state = (struct contactglove_module_state_led_manager){
+			    .r = 0xF5,
+			    .g = 0xAB,
+			    .b = 0xB9,
+			};
+			break;
+		}
+		case 0xF5: {
+			next_state = (struct contactglove_module_state_led_manager){
+			    .r = 0xFF,
+			    .g = 0xFF,
+			    .b = 0xFF,
+			};
+			break;
+		}
+		case 0xFF: {
+			next_state = (struct contactglove_module_state_led_manager){
+			    .r = 0x5B,
+			    .g = 0xCF,
+			    .b = 0xFB,
+			};
+			break;
+		}
+		}
+
+		ret = contactglove_set_module_state_locked(dongle, glove, CONTACTGLOVE_MODULE_LED_MANAGER,
+		                                           (const uint8_t *)&next_state, sizeof(next_state));
 		if (ret < 0) {
 			return ret;
 		}
@@ -314,13 +355,13 @@ contactglove_ping_tick(struct contactglove_dongle *dongle, timepoint_ns now)
 		}
 
 		if (dongle->left_glove) {
-			ret = contactglove_request_update_module_state(dongle, dongle->left_glove);
+			ret = contactglove_request_update_module_state_locked(dongle, dongle->left_glove);
 			if (ret < 0) {
 				return -1;
 			}
 		}
 		if (dongle->right_glove) {
-			ret = contactglove_request_update_module_state(dongle, dongle->right_glove);
+			ret = contactglove_request_update_module_state_locked(dongle, dongle->right_glove);
 			if (ret < 0) {
 				return -1;
 			}
