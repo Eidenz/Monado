@@ -571,37 +571,50 @@ pssense_get_fusion_pose(struct pssense_device *pssense,
 bool
 pssense_get_calibration_data(struct pssense_device *pssense)
 {
-	int ret;
-	uint8_t buffer[sizeof(struct pssense_feature_report)];
-	uint8_t data[CALIBRATION_DATA_LENGTH] = {0};
+	uint8_t calibration_data[CALIBRATION_DATA_LENGTH] = {0};
+
 	bool invalid_crc;
 	do {
 		invalid_crc = false;
+
+		// Calibration has to be read in two parts with two feature reads.
 		for (int i = 0; i < 2; i++) {
-			ret = os_hid_get_feature(pssense->hid, CALIBRATION_DATA_FEATURE_REPORT_ID, buffer,
-			                         sizeof(buffer));
+			// no need for initialization, we assert whole size is read
+			struct pssense_feature_report report_buffer;
+			int ret = os_hid_get_feature(pssense->hid, CALIBRATION_DATA_FEATURE_REPORT_ID,
+			                             (uint8_t *)&report_buffer, sizeof(report_buffer));
+
 			if (ret < 0) {
 				PSSENSE_ERROR(pssense, "Failed to retrieve calibration report: %d", ret);
 				return false;
 			}
-			if (ret != sizeof(buffer)) {
+
+			if (ret != sizeof(report_buffer)) {
 				PSSENSE_ERROR(pssense, "Invalid byte count transferred, expected %zu got %d",
-				              sizeof(buffer), ret);
-				return false;
-			}
-			struct pssense_feature_report *report = (struct pssense_feature_report *)buffer;
-			if (report->part_id == CALIBRATION_DATA_PART_ID_1) {
-				memcpy(data, report->data, sizeof(report->data));
-			} else if (report->part_id == CALIBRATION_DATA_PART_ID_2) {
-				memcpy(data + sizeof(report->data), report->data, sizeof(report->data));
-			} else {
-				PSSENSE_ERROR(pssense, "Unknown calibration data part ID %u", report->part_id);
+				              sizeof(report_buffer), ret);
 				return false;
 			}
 
+			switch (report_buffer.part_id) {
+			case CALIBRATION_DATA_PART_ID_1: {
+				memcpy(calibration_data, report_buffer.data, sizeof(report_buffer.data));
+				break;
+			}
+			case CALIBRATION_DATA_PART_ID_2: {
+				memcpy(calibration_data + sizeof(report_buffer.data), report_buffer.data,
+				       sizeof(report_buffer.data));
+				break;
+			}
+			default: {
+				PSSENSE_ERROR(pssense, "Unknown calibration data part ID %u", report_buffer.part_id);
+				return false;
+			}
+			}
+
 			uint32_t crc = crc32_le(0, &FEATURE_REPORT_CRC32_SEED, 1);
-			crc = crc32_le(crc, (uint8_t *)&buffer, sizeof(buffer) - 4);
-			uint32_t expected_crc = __le32_to_cpu(report->crc);
+			crc = crc32_le(crc, (uint8_t *)&report_buffer, sizeof(report_buffer) - 4);
+			uint32_t expected_crc = __le32_to_cpu(report_buffer.crc);
+
 			if (crc != expected_crc) {
 				PSSENSE_WARN(pssense, "Invalid feature report CRC. Expected 0x%08X, actual 0x%08X",
 				             expected_crc, crc);
