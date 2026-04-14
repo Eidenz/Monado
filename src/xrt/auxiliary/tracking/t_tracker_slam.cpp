@@ -847,14 +847,17 @@ predict_pose(TrackerSlam &t, timepoint_ns when_ns, struct xrt_space_relation *ou
 	if (t.pred_type == SLAM_PRED_DEAD_RECKONING) {
 		os_mutex_lock(&t.lock_ff);
 
-		t_apply_dead_reckoning(    //
-		    t.gyro_ff,             //
-		    t.accel_ff,            //
-		    &t.gravity_correction, //
-		    when_ns,               //
-		    &rel,                  //
-		    (int64_t)rel_ts,       //
-		    out_relation);         //
+		if (!t_apply_dead_reckoning(   //
+		        t.gyro_ff,             //
+		        t.accel_ff,            //
+		        &t.gravity_correction, //
+		        when_ns,               //
+		        &rel,                  //
+		        (int64_t)rel_ts,       //
+		        out_relation)) {
+			SLAM_ERROR("Failed to apply dead reckoning prediction. Did we stop getting SLAM poses?");
+			*out_relation = rel;
+		}
 
 		os_mutex_unlock(&t.lock_ff);
 		return;

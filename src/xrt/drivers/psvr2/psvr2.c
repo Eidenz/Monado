@@ -146,14 +146,17 @@ hmd_get_raw_tracker_pose(struct psvr2_hmd *hmd, timepoint_ns at_timestamp_ns, st
 	}
 
 	// Predict forward using dead reckoning
-	t_apply_dead_reckoning( //
-	    hmd->ff_gyro,       //
-	    NULL,               //
-	    NULL,               //
-	    at_timestamp_ns,    //
-	    &latest_relation,   //
-	    latest_relation_ts, //
-	    out_relation);      //
+	if (!t_apply_dead_reckoning( //
+	        hmd->ff_gyro,        //
+	        NULL,                //
+	        NULL,                //
+	        at_timestamp_ns,     //
+	        &latest_relation,    //
+	        latest_relation_ts,  //
+	        out_relation)) {
+		// If dead reckoning fails, return the latest SLAM pose
+		*out_relation = latest_relation;
+	}
 }
 
 static xrt_result_t
