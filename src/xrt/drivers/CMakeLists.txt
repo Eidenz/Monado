@@ -30,6 +30,19 @@ if(XRT_BUILD_DRIVER_BLUBUR_S1)
 	list(APPEND ENABLED_DRIVERS blubur_s1)
 endif()
 
+if(XRT_BUILD_DRIVER_CONTACTGLOVE)
+	add_library(
+		drv_contactglove STATIC
+		contactglove/contactglove.c
+		contactglove/contactglove.h
+		contactglove/contactglove_interface.h
+		contactglove/contactglove_protocol.h
+		contactglove/contactglove_prober.c
+		)
+	target_link_libraries(drv_contactglove PRIVATE xrt-interfaces aux_util aux_os)
+	list(APPEND ENABLED_DRIVERS contactglove)
+endif()
+
 if(XRT_BUILD_DRIVER_DAYDREAM)
 	add_library(
 		drv_daydream STATIC daydream/daydream_device.c daydream/daydream_device.h
