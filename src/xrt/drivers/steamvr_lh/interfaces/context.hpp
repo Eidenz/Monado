@@ -235,6 +235,26 @@ public:
 	                        const vr::VRBoneTransform_t *pTransforms,
 	                        uint32_t unTransformCount) override;
 
+	vr::EVRInputError
+	CreatePoseComponent(vr::PropertyContainerHandle_t ulContainer,
+	                    const char *pchName,
+	                    vr::VRInputComponentHandle_t *pHandle) override;
+
+	vr::EVRInputError
+	UpdatePoseComponent(vr::VRInputComponentHandle_t ulComponent,
+	                    const vr::HmdMatrix34_t *pMatPoseOffset,
+	                    double fTimeOffset) override;
+
+	vr::EVRInputError
+	CreateEyeTrackingComponent(vr::PropertyContainerHandle_t ulContainer,
+	                           const char *pchName,
+	                           vr::VRInputComponentHandle_t *pHandle) override;
+
+	vr::EVRInputError
+	UpdateEyeTrackingComponent(vr::VRInputComponentHandle_t ulComponent,
+	                           const vr::VREyeTrackingData_t *pEyeTrackingData,
+	                           double fTimeOffset) override;
+
 	/***** IVRProperties methods *****/
 
 	vr::ETrackedPropertyError
