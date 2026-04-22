@@ -257,8 +257,14 @@ rift_open_system_impl(struct xrt_builder *xb,
 		}
 
 		struct xrt_device *xdevs[XRT_SYSTEM_MAX_DEVICES] = {0};
-		int created_devices =
-		    rift_devices_create(hmd_hid_dev, radio_hid_dev, variant, (char *)serial_number, &rb->hmd, xdevs);
+		int created_devices = rift_devices_create( //
+		    hmd_hid_dev,                           //
+		    radio_hid_dev,                         //
+		    variant,                               //
+		    (char *)serial_number,                 //
+		    xfctx,                                 //
+		    &rb->hmd,                              //
+		    xdevs);                                //
 		if (rb->hmd == NULL) {
 			RIFT_ERROR(rb, "Rift HMD device creation failed");
 			goto unlock_and_fail;

@@ -31,6 +31,7 @@
 #include <assert.h>
 
 #include "rift_interface.h"
+#include "rift_timing_source.h"
 
 
 #define HMD_TRACE(hmd, ...) U_LOG_XDEV_IFL_T(&hmd->base, hmd->log_level, __VA_ARGS__)
@@ -910,9 +911,13 @@ struct rift_hmd
 	timepoint_ns last_sample_local_timestamp_ns;
 
 	uint32_t last_remote_exposure_time_us;
+	//! The time of the last exposure in remote time, only accessed from the sensor thread, not locked.
 	timepoint_ns last_remote_exposure_time_ns;
 	//! The time of the last exposure, locked by sensor_thread.
 	timepoint_ns last_local_exposure_time_ns;
+	//! A total counter for how many exposures have occurred
+	uint32_t exposure_counter;
+	uint16_t last_tracking_count;
 
 	struct m_imu_3dof fusion;
 	struct m_clock_windowed_skew_tracker *clock_tracker;
@@ -921,6 +926,10 @@ struct rift_hmd
 	enum rift_variant variant;
 	struct rift_config_report config;
 	struct rift_display_info_report display_info;
+
+	struct rift_timing_source *timing_source;
+
+	struct rift_tracking_report tracking;
 
 	const struct rift_lens_distortion *lens_distortions;
 	uint16_t num_lens_distortions;

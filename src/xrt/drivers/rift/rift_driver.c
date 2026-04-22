@@ -1,5 +1,5 @@
 // Copyright 2020-2025, Collabora, Ltd.
-// Copyright 2025, Beyley Cardellio
+// Copyright 2025-2026, Beyley Cardellio
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -156,16 +156,39 @@ rift_sensor_thread_tick(struct rift_hmd *hmd)
 			break;
 		}
 
+		timepoint_ns last_remote_exposure_time_ns = hmd->last_remote_exposure_time_ns;
+
 		// Update the exposure time
 		uint32_t remote_exposure_delta_us = report.tracking_timestamp - hmd->last_remote_exposure_time_us;
 		hmd->last_remote_exposure_time_us = report.tracking_timestamp;
 		hmd->last_remote_exposure_time_ns += (timepoint_ns)remote_exposure_delta_us * OS_NS_PER_USEC;
+
+		uint16_t tracking_count_delta = report.tracking_count - hmd->last_tracking_count;
+		hmd->last_tracking_count = report.tracking_count;
+		hmd->exposure_counter += tracking_count_delta;
 
 		if (remote_exposure_delta_us > 0) {
 			os_thread_helper_lock(&hmd->sensor_thread);
 			m_clock_windowed_skew_tracker_to_local(hmd->clock_tracker, hmd->last_remote_exposure_time_ns,
 			                                       &hmd->last_local_exposure_time_ns);
 			os_thread_helper_unlock(&hmd->sensor_thread);
+
+			if (hmd->timing_source) {
+				struct t_timing_event event = {
+				    .type = T_TIMING_EVENT_TYPE_CAMERA_EXPOSURE_START,
+				    .camera_exposure_start =
+				        {
+				            .sequence_id = hmd->exposure_counter,
+				            .timestamp_ns = hmd->last_local_exposure_time_ns,
+				            .frame_period_ns = (time_duration_ns)(hmd->last_remote_exposure_time_ns -
+				                                                  last_remote_exposure_time_ns),
+				            .exposure_time_ns =
+				                (time_duration_ns)(hmd->tracking.exposure_length * OS_NS_PER_USEC),
+				        },
+				};
+
+				rift_timing_source_push_event(hmd->timing_source, &event);
+			}
 		}
 
 		if (report.num_samples > 1)
@@ -653,6 +676,7 @@ rift_devices_create(struct os_hid_device *hmd_dev,
                     struct os_hid_device *radio_dev,
                     enum rift_variant variant,
                     const char *serial_number,
+                    struct xrt_frame_context *xfctx,
                     struct rift_hmd **out_hmd,
                     struct xrt_device **out_xdevs)
 {
@@ -674,6 +698,13 @@ rift_devices_create(struct os_hid_device *hmd_dev,
 	m_ff_vec3_f32_alloc(&hmd->gyro_ff, 4096);
 	m_ff_vec3_f32_alloc(&hmd->accel_ff, 4096);
 	m_ff_f64_alloc(&hmd->gravity_correction, 4096);
+
+	if (xfctx) {
+		result = rift_timing_source_init(xfctx, &hmd->timing_source);
+		if (result < 0) {
+			HMD_ERROR(hmd, "Failed to initialize timing source, reason %d", result);
+		}
+	}
 
 	result = rift_send_keepalive(hmd);
 	if (result < 0) {
@@ -799,28 +830,27 @@ rift_devices_create(struct os_hid_device *hmd_dev,
 		rift_fill_in_default_distortions(hmd);
 	}
 
-	struct rift_tracking_report tracking;
-	result = rift_get_tracking_report(hmd, &tracking);
+	result = rift_get_tracking_report(hmd, &hmd->tracking);
 	if (result == 0) {
-		tracking.flags = RIFT_TRACKING_ENABLE | RIFT_TRACKING_USE_CARRIER;
-		tracking.pattern_idx = 0xff;
+		hmd->tracking.flags = RIFT_TRACKING_ENABLE | RIFT_TRACKING_USE_CARRIER;
+		hmd->tracking.pattern_idx = 0xff;
 
-		tracking.vsync_offset = 0;
-		tracking.duty_cycle = 0x7f;
+		hmd->tracking.vsync_offset = 0;
+		hmd->tracking.duty_cycle = 0x7f;
 
 		switch (hmd->variant) {
 		default:
 		case RIFT_VARIANT_DK2:
-			tracking.exposure_length = 350;
-			tracking.frame_interval = 16666;
+			hmd->tracking.exposure_length = 350;
+			hmd->tracking.frame_interval = 16666;
 			break;
 		case RIFT_VARIANT_CV1:
-			tracking.exposure_length = 399;
-			tracking.frame_interval = 19200;
+			hmd->tracking.exposure_length = 399;
+			hmd->tracking.frame_interval = 19200;
 			break;
 		}
 
-		result = rift_set_tracking(hmd, &tracking);
+		result = rift_set_tracking(hmd, &hmd->tracking);
 		if (result < 0) {
 			HMD_ERROR(hmd, "Failed to enable tracking.");
 		}
@@ -1126,4 +1156,14 @@ rift_add_to_constellation_tracker(struct rift_hmd *hmd, struct t_constellation_t
 	hmd->use_constellation_poses = true;
 
 	return 0;
+}
+
+struct t_timing_event_source *
+rift_hmd_get_timing_event_source(struct rift_hmd *hmd)
+{
+	if (hmd->timing_source != NULL) {
+		return &hmd->timing_source->base;
+	}
+
+	return NULL;
 }
