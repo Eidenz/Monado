@@ -1002,3 +1002,16 @@ math_pose_transform_point(const struct xrt_pose *transform, const struct xrt_vec
 
 	map_vec3(*out_point) = transform_point(*transform, *point);
 }
+
+extern "C" void
+math_pose_convert_opencv(const struct xrt_pose *in, struct xrt_pose *out)
+{
+	const struct xrt_pose yz_flip = {
+	    {1.0, 0.0, 0.0, 0.0},
+	    {0.0, 0.0, 0.0},
+	};
+
+	struct xrt_pose tmp;
+	math_pose_transform(&yz_flip, in, &tmp);
+	math_pose_transform(&tmp, &yz_flip, out);
+}

@@ -655,7 +655,7 @@ comp_mirror_do_blit(struct comp_mirror_to_debug_gui *m,
 
 	// Tidies the descriptor we created.
 	vk->vkResetDescriptorPool(vk->device, m->blit.descriptor_pool, 0);
-	return XRT_ERROR_VULKAN;
+	return XRT_SUCCESS;
 }
 
 void

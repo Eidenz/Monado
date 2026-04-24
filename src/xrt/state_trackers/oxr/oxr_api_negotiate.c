@@ -384,6 +384,10 @@ handle_non_null(struct oxr_instance *inst, struct oxr_logger *log, const char *n
 	ENTRY_IF_EXT(xrGetD3D12GraphicsRequirementsKHR, KHR_D3D12_enable);
 #endif // OXR_HAVE_KHR_D3D12_enable
 
+#ifdef OXR_HAVE_MND_query_egl_device
+	ENTRY_IF_EXT(xrGetSystemEGLDeviceMND, MND_query_egl_device);
+#endif // OXR_HAVE_MND_query_egl_device
+
 #ifdef OXR_HAVE_HTC_facial_tracking
 	ENTRY_IF_EXT(xrCreateFacialTrackerHTC, HTC_facial_tracking);
 	ENTRY_IF_EXT(xrDestroyFacialTrackerHTC, HTC_facial_tracking);

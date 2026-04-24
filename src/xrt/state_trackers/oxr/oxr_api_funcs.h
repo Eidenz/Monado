@@ -266,6 +266,13 @@ oxr_xrGetD3D12GraphicsRequirementsKHR(XrInstance instance,
                                       XrGraphicsRequirementsD3D12KHR *graphicsRequirements);
 #endif // XR_USE_GRAPHICS_API_D3D12
 
+#ifdef OXR_HAVE_MND_query_egl_device
+
+//! OpenXR API function @ep{xrGetSystemEGLDeviceMND}
+XRAPI_ATTR XrResult XRAPI_CALL
+oxr_xrGetSystemEGLDeviceMND(XrInstance instance, const XrSystemEGLDeviceGetInfoMND *info, XrSystemEGLDeviceMND *device);
+#endif // OXR_HAVE_MND_query_egl_device
+
 /*
  *
  * oxr_api_session.c

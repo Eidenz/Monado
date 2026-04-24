@@ -55,13 +55,13 @@ struct euroc_recorder
 	struct xrt_slam_sinks cloner_queues; //!< Queue sinks that write into cloner sinks
 	struct xrt_imu_sink cloner_imu_sink;
 	struct xrt_pose_sink cloner_gt_sink;
-	struct xrt_frame_sink cloner_sinks[XRT_TRACKING_MAX_SLAM_CAMS];
+	struct xrt_frame_sink cloner_sinks[XRT_TRACKING_MAX_CAMS];
 
 	// Writer sinks: write copied frame to disk
 	struct xrt_slam_sinks writer_queues; //!< Queue sinks that write into writer sinks
 	struct xrt_imu_sink writer_imu_sink;
 	struct xrt_pose_sink writer_gt_sink;
-	struct xrt_frame_sink writer_sinks[XRT_TRACKING_MAX_SLAM_CAMS];
+	struct xrt_frame_sink writer_sinks[XRT_TRACKING_MAX_CAMS];
 
 	queue<xrt_imu_sample> imu_queue{}; //!< IMU pushes get saved here and are delayed until left_frame pushes
 	mutex imu_queue_lock{};            //!< Lock for imu_queue
@@ -73,7 +73,7 @@ struct euroc_recorder
 	// Using pointers because of `container_of`
 	ofstream *imu_csv = nullptr;
 	ofstream *gt_csv = nullptr;
-	ofstream *cams_csv[XRT_TRACKING_MAX_SLAM_CAMS] = {};
+	ofstream *cams_csv[XRT_TRACKING_MAX_CAMS] = {};
 };
 
 
@@ -215,9 +215,9 @@ DEFINE_SAVE_CAM(3)
 DEFINE_SAVE_CAM(4)
 
 //! Be sure to define the same number of defined functions as
-//! XRT_TRACKING_MAX_SLAM_CAMS and to add them to to euroc_recorder_save_cam
-static void (*euroc_recorder_save_cam[XRT_TRACKING_MAX_SLAM_CAMS])(struct xrt_frame_sink *sink,
-                                                                   struct xrt_frame *frame) = {
+//! XRT_TRACKING_MAX_CAMS and to add them to to euroc_recorder_save_cam
+static void (*euroc_recorder_save_cam[XRT_TRACKING_MAX_CAMS])(struct xrt_frame_sink *sink,
+                                                              struct xrt_frame *frame) = {
     euroc_recorder_save_cam0, //
     euroc_recorder_save_cam1, //
     euroc_recorder_save_cam2, //
@@ -297,9 +297,9 @@ DEFINE_RECEIVE_CAM(3)
 DEFINE_RECEIVE_CAM(4)
 
 //! Be sure to define the same number of defined functions as
-//! XRT_TRACKING_MAX_SLAM_CAMS and to add them to to euroc_recorder_receive_cam
-static void (*euroc_recorder_receive_cam[XRT_TRACKING_MAX_SLAM_CAMS])(struct xrt_frame_sink *,
-                                                                      struct xrt_frame *) = {
+//! XRT_TRACKING_MAX_CAMS and to add them to to euroc_recorder_receive_cam
+static void (*euroc_recorder_receive_cam[XRT_TRACKING_MAX_CAMS])(struct xrt_frame_sink *,
+                                                                 struct xrt_frame *) = {
     euroc_recorder_receive_cam0, //
     euroc_recorder_receive_cam1, //
     euroc_recorder_receive_cam2, //

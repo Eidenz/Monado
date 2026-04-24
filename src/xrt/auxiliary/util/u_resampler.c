@@ -18,9 +18,22 @@ struct u_resampler *
 u_resampler_create(size_t num_samples, float sample_rate)
 {
 	struct u_resampler *resampler = U_TYPED_CALLOC(struct u_resampler);
+	if (resampler == NULL) {
+		return NULL;
+	}
 
 	resampler->samples = calloc(num_samples, sizeof(sample_t));
+	if (resampler->samples == NULL) {
+		u_resampler_destroy(resampler);
+		return NULL;
+	}
+
 	resampler->scratch = calloc(num_samples, sizeof(sample_t));
+	if (resampler->scratch == NULL) {
+		u_resampler_destroy(resampler);
+		return NULL;
+	}
+
 	resampler->num_samples = num_samples;
 	resampler->sample_rate = sample_rate;
 
@@ -34,7 +47,10 @@ void
 u_resampler_destroy(struct u_resampler *resampler)
 {
 	free(resampler->samples);
+	resampler->samples = NULL;
 	free(resampler->scratch);
+	resampler->scratch = NULL;
+
 	free(resampler);
 }
 

@@ -44,8 +44,6 @@
 #define USB_RP_XFER_SIZE 821120
 #define USB_VD_XFER_SIZE 32768
 
-#define SERIAL_LENGTH 14
-
 #define GYRO_SCALE (2000.0 / 32767.0)
 #define ACCEL_SCALE (4.0 * MATH_GRAVITY_M_S2 / 32767.0)
 
@@ -240,6 +238,19 @@ struct pkt_gaze_state
 	__le16 version;    // 0002
 
 	struct pkt_gaze_packet_data packet_data;
+};
+
+struct pkt_firmware_info
+{
+	__le32 version;
+	__le32 reserved_0;
+	uint8_t commit_hash[40];
+	__le32 unknown_0;
+	__le32 unknown_1;
+	char pcb_id[16];
+	__le32 unknown_2;
+	__le32 reserved_1;
+	__le32 recovery_version;
 };
 
 #pragma pack(pop)

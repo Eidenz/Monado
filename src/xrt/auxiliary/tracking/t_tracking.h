@@ -647,9 +647,9 @@ struct t_slam_imu_calibration
  */
 struct t_slam_calibration
 {
-	struct t_slam_imu_calibration imu;                                 //!< IMU calibration data
-	struct t_slam_camera_calibration cams[XRT_TRACKING_MAX_SLAM_CAMS]; //!< Calib data of `cam_count` cams
-	int cam_count;                                                     //!< Number of cameras
+	struct t_slam_imu_calibration imu;                            //!< IMU calibration data
+	struct t_slam_camera_calibration cams[XRT_TRACKING_MAX_CAMS]; //!< Calib data of `cam_count` cams
+	int cam_count;                                                //!< Number of cameras
 };
 
 /*!

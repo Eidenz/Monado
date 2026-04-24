@@ -458,6 +458,28 @@ oxr_xrCreateVulkanDeviceKHR(XrInstance instance,
 #endif
 
 
+#ifdef OXR_HAVE_MND_query_egl_device
+
+XRAPI_ATTR XrResult XRAPI_CALL
+oxr_xrGetSystemEGLDeviceMND(XrInstance instance, const XrSystemEGLDeviceGetInfoMND *info, XrSystemEGLDeviceMND *device)
+{
+	OXR_TRACE_MARKER();
+
+	struct oxr_instance *inst;
+	struct oxr_logger log;
+	OXR_VERIFY_INSTANCE_AND_INIT_LOG(&log, instance, inst, "xrGetSystemEGLDeviceMND");
+	OXR_VERIFY_ARG_TYPE_AND_NOT_NULL(&log, info, XR_TYPE_SYSTEM_EGL_DEVICE_GET_INFO_MND);
+	OXR_VERIFY_SYSTEM_AND_GET(&log, inst, info->systemId, sys);
+	OXR_VERIFY_ARG_NOT_NULL(&log, info->getProcAddress);
+	OXR_VERIFY_ARG_TYPE_AND_NOT_NULL(&log, device, XR_TYPE_SYSTEM_EGL_DEVICE_MND);
+	OXR_VERIFY_XSYSC(&log, sys);
+
+	return oxr_egl_get_device(&log, sys, info->getProcAddress, &device->eglDevice);
+}
+
+#endif // OXR_HAVE_MND_query_egl_device
+
+
 /*
  *
  * D3D11

@@ -966,6 +966,12 @@ oxr_session_populate_egl(struct oxr_logger *log,
                          XrGraphicsBindingEGLMNDX const *next,
                          struct oxr_session *sess);
 
+XrResult
+oxr_egl_get_device(struct oxr_logger *log,
+                   struct oxr_system *sys,
+                   PFN_xrEglGetProcAddressMNDX getProcAddress,
+                   EGLDeviceEXT *out_egl_device);
+
 #endif
 
 /*
@@ -1317,6 +1323,13 @@ struct oxr_instance
 		 * causing most of the game to render as black, only showing glowing parts of the image.
 		 */
 		bool no_texture_source_alpha;
+
+		/*!
+		 * Don't return XR_ERROR_VALIDATION_FAILURE if an
+		 * application sets unsupported usage flags when
+		 * calling xrCreateSwapchain.
+		 */
+		bool no_usage_bit_validation_in_create_swapchain;
 	} quirks;
 
 	//! Debug messengers

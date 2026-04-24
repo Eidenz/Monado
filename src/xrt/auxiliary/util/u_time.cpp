@@ -97,8 +97,8 @@ time_state_from_timespec(struct time_state const *state, const struct timespec *
 	assert(timespecTime != NULL);
 
 	int64_t ns = 0;
-	ns += timespecTime->tv_nsec;
-	ns += timespecTime->tv_sec * U_1_000_000_000;
+	ns += (int64_t)timespecTime->tv_nsec;
+	ns += (int64_t)timespecTime->tv_sec * U_1_000_000_000;
 
 	return time_state_monotonic_to_ts_ns(state, ns);
 }

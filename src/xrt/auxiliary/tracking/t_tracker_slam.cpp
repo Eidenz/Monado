@@ -266,11 +266,11 @@ struct TrackerSlam
 	struct vit_tracker_extension_set exts; //!< VIT tracker supported extensions
 	struct vit_tracker *tracker;           //!< Pointer to the tracker created by the loaded VIT system;
 
-	struct xrt_slam_sinks sinks = {};                            //!< Pointers to the sinks below
-	struct xrt_frame_sink cam_sinks[XRT_TRACKING_MAX_SLAM_CAMS]; //!< Sends camera frames to the SLAM system
-	struct xrt_imu_sink imu_sink = {};                           //!< Sends imu samples to the SLAM system
-	struct xrt_pose_sink gt_sink = {};                           //!< Register groundtruth trajectory for stats
-	struct xrt_hand_masks_sink hand_masks_sink = {};             //!< Register latest masks to ignore
+	struct xrt_slam_sinks sinks = {};                       //!< Pointers to the sinks below
+	struct xrt_frame_sink cam_sinks[XRT_TRACKING_MAX_CAMS]; //!< Sends camera frames to the SLAM system
+	struct xrt_imu_sink imu_sink = {};                      //!< Sends imu samples to the SLAM system
+	struct xrt_pose_sink gt_sink = {};                      //!< Register groundtruth trajectory for stats
+	struct xrt_hand_masks_sink hand_masks_sink = {};        //!< Register latest masks to ignore
 
 	bool submit;        //!< Whether to submit data pushed to sinks to the SLAM tracker
 	uint32_t cam_count; //!< Number of cameras used for tracking
@@ -1344,8 +1344,8 @@ DEFINE_RECEIVE_CAM(2)
 DEFINE_RECEIVE_CAM(3)
 DEFINE_RECEIVE_CAM(4)
 
-//! Define a function for each XRT_TRACKING_MAX_SLAM_CAMS and reference it in this array
-void (*t_slam_receive_cam[XRT_TRACKING_MAX_SLAM_CAMS])(xrt_frame_sink *, xrt_frame *) = {
+//! Define a function for each XRT_TRACKING_MAX_CAMS and reference it in this array
+void (*t_slam_receive_cam[XRT_TRACKING_MAX_CAMS])(xrt_frame_sink *, xrt_frame *) = {
     t_slam_receive_cam0, //
     t_slam_receive_cam1, //
     t_slam_receive_cam2, //
@@ -1496,7 +1496,7 @@ t_slam_create(struct xrt_frame_context *xfctx,
 
 	SLAM_ASSERT(t_slam_receive_cam[ARRAY_SIZE(t_slam_receive_cam) - 1] != nullptr, "See `cam_sink_push` docs");
 	t.sinks.cam_count = config->cam_count;
-	for (int i = 0; i < XRT_TRACKING_MAX_SLAM_CAMS; i++) {
+	for (int i = 0; i < XRT_TRACKING_MAX_CAMS; i++) {
 		t.cam_sinks[i].push_frame = t_slam_receive_cam[i];
 		t.sinks.cams[i] = &t.cam_sinks[i];
 	}

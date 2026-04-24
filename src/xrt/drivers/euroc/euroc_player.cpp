@@ -51,7 +51,7 @@ DEBUG_GET_ONCE_BOOL_OPTION(print_progress, "EUROC_PRINT_PROGRESS", false)
 #define EUROC_PLAYER_STR "Euroc Player"
 
 //! Match max cameras to slam sinks max camera count
-#define EUROC_MAX_CAMS XRT_TRACKING_MAX_SLAM_CAMS
+#define EUROC_MAX_CAMS XRT_TRACKING_MAX_CAMS
 
 using std::async;
 using std::find_if;

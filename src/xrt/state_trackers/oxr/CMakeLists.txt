@@ -112,7 +112,7 @@ if(XRT_HAVE_OPENGL_GLX AND XRT_HAVE_XLIB)
 endif()
 
 if(XRT_HAVE_EGL)
-	target_sources(st_oxr PRIVATE oxr_session_gfx_egl.c)
+	target_sources(st_oxr PRIVATE oxr_session_gfx_egl.c oxr_egl.c)
 endif()
 
 if(XRT_HAVE_D3D11 OR XRT_HAVE_D3D12)

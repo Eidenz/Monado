@@ -205,6 +205,7 @@ apply_quirks(struct oxr_logger *log, struct oxr_instance *inst, const XrInstance
 	inst->quirks.no_validation_error_in_create_ref_space = false;
 	inst->quirks.parallel_views = false;
 	inst->quirks.no_texture_source_alpha = false;
+	inst->quirks.no_usage_bit_validation_in_create_swapchain = false;
 
 	if (starts_with("UnrealEngine", inst->appinfo.detected.engine.name) && //
 	    inst->appinfo.detected.engine.major == 4 &&                        //
@@ -216,6 +217,11 @@ apply_quirks(struct oxr_logger *log, struct oxr_instance *inst, const XrInstance
 	// the application name is "Unity Application" which is too generic.
 	if (strcmp("Beat Saber", create_info->applicationInfo.applicationName) == 0) {
 		inst->quirks.parallel_views = true;
+	}
+
+	// Metro Awakening sets XR_SWAPCHAIN_USAGE_INPUT_ATTACHMENT_BIT_KHR without requesting the extension.
+	if (strcmp("Impact", create_info->applicationInfo.applicationName) == 0) {
+		inst->quirks.no_usage_bit_validation_in_create_swapchain = true;
 	}
 
 	// Currently always true.
@@ -404,25 +410,27 @@ oxr_instance_create(struct oxr_logger *log,
 	        "\tquirks.no_validation_error_in_create_ref_space: %s\n"
 	        "\tquirks.skip_end_session: %s\n"
 	        "\tquirks.parallel_views: %s\n"
-	        "\tquirks.no_texture_source_alpha: %s\n",
-	        createInfo->applicationInfo.applicationName,                             //
-	        createInfo->applicationInfo.applicationVersion,                          //
-	        createInfo->applicationInfo.engineName,                                  //
-	        createInfo->applicationInfo.engineVersion,                               //
-	        XR_VERSION_MAJOR(createInfo->applicationInfo.apiVersion),                //
-	        XR_VERSION_MINOR(createInfo->applicationInfo.apiVersion),                //
-	        XR_VERSION_PATCH(createInfo->applicationInfo.apiVersion),                //
-	        inst->appinfo.detected.engine.name,                                      //
-	        inst->appinfo.detected.engine.major,                                     //
-	        inst->appinfo.detected.engine.minor,                                     //
-	        inst->appinfo.detected.engine.patch,                                     //
-	        inst->quirks.disable_vulkan_format_depth ? "true" : "false",             //
-	        inst->quirks.disable_vulkan_format_depth_stencil ? "true" : "false",     //
-	        inst->quirks.no_validation_error_in_create_ref_space ? "true" : "false", //
-	        inst->quirks.skip_end_session ? "true" : "false",                        //
-	        inst->quirks.parallel_views ? "true" : "false",                          //
-	        inst->quirks.no_texture_source_alpha ? "true" : "false"                  //
-	);                                                                               //
+	        "\tquirks.no_texture_source_alpha: %s\n"
+	        "\tquirks.ignore_invalid_swapchain_usage_bits: %s\n",
+	        createInfo->applicationInfo.applicationName,                                //
+	        createInfo->applicationInfo.applicationVersion,                             //
+	        createInfo->applicationInfo.engineName,                                     //
+	        createInfo->applicationInfo.engineVersion,                                  //
+	        XR_VERSION_MAJOR(createInfo->applicationInfo.apiVersion),                   //
+	        XR_VERSION_MINOR(createInfo->applicationInfo.apiVersion),                   //
+	        XR_VERSION_PATCH(createInfo->applicationInfo.apiVersion),                   //
+	        inst->appinfo.detected.engine.name,                                         //
+	        inst->appinfo.detected.engine.major,                                        //
+	        inst->appinfo.detected.engine.minor,                                        //
+	        inst->appinfo.detected.engine.patch,                                        //
+	        inst->quirks.disable_vulkan_format_depth ? "true" : "false",                //
+	        inst->quirks.disable_vulkan_format_depth_stencil ? "true" : "false",        //
+	        inst->quirks.no_validation_error_in_create_ref_space ? "true" : "false",    //
+	        inst->quirks.skip_end_session ? "true" : "false",                           //
+	        inst->quirks.parallel_views ? "true" : "false",                             //
+	        inst->quirks.no_texture_source_alpha ? "true" : "false",                    //
+	        inst->quirks.no_usage_bit_validation_in_create_swapchain ? "true" : "false" //
+	);                                                                                  //
 
 #ifdef XRT_FEATURE_RENDERDOC
 

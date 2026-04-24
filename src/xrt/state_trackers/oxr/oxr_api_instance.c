@@ -265,6 +265,10 @@ oxr_xrResultToString(XrInstance instance, XrResult value, char buffer[XR_MAX_RES
 	switch (value) {
 		XR_LIST_ENUM_XrResult(MAKE_RESULT_CASE);
 	default:
+#ifdef OXR_HAVE_MND_query_egl_device
+		EXT_RESULT(XR_ERROR_EGL_EXTENSION_NOT_AVAILABLE_MND)
+		EXT_RESULT(XR_ERROR_EGL_DEVICE_NOT_FOUND_MND)
+#endif
 		// Magic comment to make clang-format happy.
 		{
 			snprintf(buffer, XR_MAX_RESULT_STRING_SIZE, "XR_UNKNOWN_%s_%d",
@@ -305,6 +309,11 @@ oxr_xrStructureTypeToString(XrInstance instance, XrStructureType value, char buf
 		EXT_TYPE(XR_TYPE_GET_XDEV_INFO_MNDX)
 		EXT_TYPE(XR_TYPE_XDEV_PROPERTIES_MNDX)
 		EXT_TYPE(XR_TYPE_CREATE_XDEV_SPACE_INFO_MNDX)
+#endif
+
+#ifdef OXR_HAVE_MND_query_egl_device
+		EXT_TYPE(XR_TYPE_SYSTEM_EGL_DEVICE_GET_INFO_MND)
+		EXT_TYPE(XR_TYPE_SYSTEM_EGL_DEVICE_MND)
 #endif
 		{
 			snprintf(buffer, XR_MAX_STRUCTURE_NAME_SIZE, "XR_UNKNOWN_STRUCTURE_TYPE_%d", value);
@@ -349,6 +358,11 @@ oxr_xrStructureTypeToString2KHR(XrInstance instance,
 		EXT_TYPE(XR_TYPE_GET_XDEV_INFO_MNDX)
 		EXT_TYPE(XR_TYPE_XDEV_PROPERTIES_MNDX)
 		EXT_TYPE(XR_TYPE_CREATE_XDEV_SPACE_INFO_MNDX)
+#endif
+
+#ifdef OXR_HAVE_MND_query_egl_device
+		EXT_TYPE(XR_TYPE_SYSTEM_EGL_DEVICE_GET_INFO_MND)
+		EXT_TYPE(XR_TYPE_SYSTEM_EGL_DEVICE_MND)
 #endif
 		{
 			snprintf(buffer, XR_MAX_STRUCTURE_NAME_SIZE_EXTENDED_KHR, "XR_UNKNOWN_STRUCTURE_TYPE_%d",

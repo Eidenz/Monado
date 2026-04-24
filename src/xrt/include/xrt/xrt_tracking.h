@@ -11,7 +11,7 @@
 #pragma once
 
 #define XRT_TRACKING_NAME_LEN 256
-#define XRT_TRACKING_MAX_SLAM_CAMS 5
+#define XRT_TRACKING_MAX_CAMS 5
 
 #include "xrt/xrt_defines.h"
 
@@ -156,7 +156,7 @@ struct xrt_hand_masks_sample
 			bool enabled;             //!< Whether a mask for this hand is being reported
 			struct xrt_rect_f32 rect; //!< The mask itself in pixel coordinates
 		} hands[2];
-	} views[XRT_TRACKING_MAX_SLAM_CAMS];
+	} views[XRT_TRACKING_MAX_CAMS];
 };
 
 /*!
@@ -205,7 +205,7 @@ struct xrt_hand_masks_sink
 struct xrt_slam_sinks
 {
 	int cam_count;
-	struct xrt_frame_sink *cams[XRT_TRACKING_MAX_SLAM_CAMS];
+	struct xrt_frame_sink *cams[XRT_TRACKING_MAX_CAMS];
 	struct xrt_imu_sink *imu;
 	struct xrt_pose_sink *gt; //!< Can receive ground truth poses if available
 	struct xrt_hand_masks_sink *hand_masks;

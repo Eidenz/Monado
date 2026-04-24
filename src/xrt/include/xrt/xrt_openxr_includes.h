@@ -34,6 +34,7 @@ typedef void *GLXContext;
 typedef void *EGLDisplay;
 typedef void *EGLContext;
 typedef void *EGLConfig;
+typedef void *EGLDeviceEXT;
 typedef unsigned int EGLenum;
 typedef void (*__eglMustCastToProperFunctionPointerType)(void); // NOLINT
 typedef __eglMustCastToProperFunctionPointerType (*PFNEGLGETPROCADDRESSPROC)(const char *procname);
@@ -72,3 +73,4 @@ typedef __eglMustCastToProperFunctionPointerType (*PFNEGLGETPROCADDRESSPROC)(con
 #include "openxr/XR_MNDX_system_buttons.h"
 #include "openxr/XR_MNDX_xdev_space.h"
 #include "openxr/XR_MNDX_flipvr.h"
+#include "openxr/XR_MND_query_egl_device.h"
