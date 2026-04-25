@@ -25,10 +25,11 @@ struct rift_sensor_context
 	struct libusb_context *usb_ctx;
 
 	struct rift_sensor *sensors;
-	size_t num_sensors;
+	uint32_t sensor_count;
 
 	struct os_thread_helper usb_thread;
 };
+
 struct rift_sensor
 {
 	enum rift_variant variant;

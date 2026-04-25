@@ -367,21 +367,16 @@ rift_open_system_impl(struct xrt_builder *xb,
 		RIFT_WARN(rb, "Rift sensor context creation failed with code %d", ret);
 	}
 
-	ssize_t signed_num_sensors = 0;
+	uint32_t sensor_count = 0;
 	bool have_applicable_sensor = false;
 	if (rb->sensor_context) {
-		signed_num_sensors = rift_sensor_context_get_sensors(rb->sensor_context, &rb->sensors);
-		if (signed_num_sensors >= UINT32_MAX) {
-			RIFT_WARN(rb, "Rift sensor context got too many sensors: %zd", signed_num_sensors);
-			signed_num_sensors = 0;
-		}
-		if (signed_num_sensors < 0) {
-			RIFT_WARN(rb, "Rift sensor context get sensors failed with code: %zd", signed_num_sensors);
-			signed_num_sensors = 0;
+		ret = rift_sensor_context_get_sensors(rb->sensor_context, &rb->sensors, &sensor_count);
+		if (ret < 0) {
+			RIFT_WARN(rb, "Rift sensor context get sensors failed with code: %u", sensor_count);
 		}
 
 		// See if any sensors are applicable
-		for (ssize_t i = 0; i < signed_num_sensors; i++) {
+		for (uint32_t i = 0; i < sensor_count; i++) {
 			struct rift_sensor *sensor = rb->sensors[i];
 			enum rift_variant sensor_variant = rift_sensor_get_variant(sensor);
 			if (sensor_variant != variant) {
@@ -405,9 +400,8 @@ rift_open_system_impl(struct xrt_builder *xb,
 			RIFT_WARN(rb, "Rift sensor context start failed with code %d", ret);
 		}
 
-		uint32_t num_sensors = (uint32_t)signed_num_sensors;
-		rb->blobwatches = U_TYPED_ARRAY_CALLOC(struct t_blobwatch *, num_sensors);
-		rb->blobwatch_debug_sinks = U_TYPED_ARRAY_CALLOC(struct u_sink_debug, num_sensors);
+		rb->blobwatches = U_TYPED_ARRAY_CALLOC(struct t_blobwatch *, sensor_count);
+		rb->blobwatch_debug_sinks = U_TYPED_ARRAY_CALLOC(struct u_sink_debug, sensor_count);
 
 		struct t_constellation_tracker_params constellation_tracker_params = {
 		    .num_mosaics = 1,
@@ -415,7 +409,7 @@ rift_open_system_impl(struct xrt_builder *xb,
 
 		struct t_constellation_tracker_camera_mosaic *mosaic = &constellation_tracker_params.mosaics[0];
 
-		for (uint32_t i = 0; i < num_sensors && i < XRT_TRACKING_MAX_CAMS; i++) {
+		for (uint32_t i = 0; i < sensor_count && i < XRT_TRACKING_MAX_CAMS; i++) {
 			struct rift_sensor *sensor = rb->sensors[i];
 
 			enum rift_variant sensor_variant = rift_sensor_get_variant(sensor);
@@ -451,7 +445,7 @@ rift_open_system_impl(struct xrt_builder *xb,
 			goto unlock_and_fail;
 		}
 
-		for (uint32_t i = 0; i < num_sensors && rb->num_sensors < mosaic->num_cameras; i++) {
+		for (uint32_t i = 0; i < sensor_count && rb->num_sensors < mosaic->num_cameras; i++) {
 			struct rift_sensor *sensor = rb->sensors[i];
 
 			enum rift_variant sensor_variant = rift_sensor_get_variant(sensor);
