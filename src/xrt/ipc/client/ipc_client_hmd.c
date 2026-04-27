@@ -140,20 +140,25 @@ ipc_client_hmd_get_view_poses(struct xrt_device *xdev,
                               struct xrt_pose *out_poses)
 {
 	ipc_client_hmd_t *ich = ipc_client_hmd(xdev);
-	xrt_result_t xret;
 
-	struct ipc_info_get_view_poses_2 info = {0};
+	// Artificial limit.
+	if (view_count == 0 || view_count <= IPC_MAX_RAW_VIEWS) {
+		IPC_ERROR(ich->ipc_c, "Cannot handle %u view_count, %u or less supported.", view_count,
+		          (uint32_t)IPC_MAX_RAW_VIEWS);
+		return XRT_ERROR_IPC_FAILURE;
+	}
 
+	// Fast path.
 	if (view_count == 2) {
-		// Fast path.
-		xret = ipc_call_device_get_view_poses_2( //
-		    ich->ipc_c,                          //
-		    ich->device_id,                      //
-		    default_eye_relation,                //
-		    at_timestamp_ns,                     //
-		    view_type,                           //
-		    view_count,                          //
-		    &info);                              //
+		struct ipc_info_get_view_poses_2 info = {0};
+		xrt_result_t xret = ipc_call_device_get_view_poses_2( //
+		    ich->ipc_c,                                       //
+		    ich->device_id,                                   //
+		    default_eye_relation,                             //
+		    at_timestamp_ns,                                  //
+		    view_type,                                        //
+		    view_count,                                       //
+		    &info);                                           //
 		IPC_CHK_AND_RET(ich->ipc_c, xret, "ipc_call_device_get_view_poses_2");
 
 		*out_head_relation = info.head_relation;
@@ -162,24 +167,18 @@ ipc_client_hmd_get_view_poses(struct xrt_device *xdev,
 			out_poses[i] = info.poses[i];
 		}
 
-	} else if (view_count <= IPC_MAX_RAW_VIEWS) {
-		// Artificial limit.
-		xret = call_get_view_poses_raw( //
-		    ich,                        //
-		    default_eye_relation,       //
-		    at_timestamp_ns,            //
-		    view_type,                  //
-		    view_count,                 //
-		    out_head_relation,          //
-		    out_fovs,                   //
-		    out_poses);                 //
-	} else {
-		IPC_ERROR(ich->ipc_c, "Cannot handle %u view_count, %u or less supported.", view_count,
-		          (uint32_t)IPC_MAX_RAW_VIEWS);
-		assert(false && !"Too large view_count!");
+		return xret;
 	}
 
-	return xret;
+	return call_get_view_poses_raw( //
+	    ich,                        //
+	    default_eye_relation,       //
+	    at_timestamp_ns,            //
+	    view_type,                  //
+	    view_count,                 //
+	    out_head_relation,          //
+	    out_fovs,                   //
+	    out_poses);                 //
 }
 
 static xrt_result_t
