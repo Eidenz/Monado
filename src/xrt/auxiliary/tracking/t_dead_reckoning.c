@@ -83,19 +83,21 @@ t_apply_dead_reckoning(struct m_ff_vec3_f32 *gyro_ff,
 
 		// No SLAM samples within the window of the gyro buffer.
 		if (!got) {
-			U_LOG_T("Failed to get %s sample at index %d for timestamp %lu",
+			U_LOG_T("Failed to get %s sample at index %d for timestamp %" PRIu64,
 			        using_accel ? "gyro and accel" : "gyro", i, ts);
 			return false;
 		}
 
 		if (using_accel && gyro_ts != accel_ts) {
-			U_LOG_E("Failure getting synced gyro and accel samples at index %d: gyro ts %lu accel ts %lu",
+			U_LOG_E("Failure getting synced gyro and accel samples at index %d: gyro ts %" PRIu64
+			        " accel ts %" PRIu64,
 			        i, gyro_ts, accel_ts);
 			return false;
 		}
 
 		if (ts < base_rel_ts) {
-			U_LOG_E("IMU sample at %lu is older than latest SLAM pose at %lu", ts, base_rel_ts);
+			U_LOG_E("IMU sample at %" PRIu64 " is older than latest SLAM pose at %" PRIu64, ts,
+			        base_rel_ts);
 			return false;
 		}
 
