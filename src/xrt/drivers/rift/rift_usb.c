@@ -68,7 +68,7 @@ rift_send_keepalive(struct rift_hmd *hmd)
 	}
 
 	hmd->last_keepalive_time = os_monotonic_get_ns();
-	HMD_TRACE(hmd, "Sent keepalive at time %ld", hmd->last_keepalive_time);
+	HMD_TRACE(hmd, "Sent keepalive at time %" PRIi64, hmd->last_keepalive_time);
 
 	return 0;
 }

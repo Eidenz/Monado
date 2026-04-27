@@ -195,7 +195,7 @@ rift_sensor_read_calibration(struct rift_sensor_context *context,
                              const struct libusb_device_descriptor *desc)
 {
 	int ret;
-	double fx, fy, cx, cy;
+	double fx = 0.0, fy = 0.0, cx = 0.0, cy = 0.0;
 
 	switch (desc->idProduct) {
 	case OCULUS_DK2_SENSOR_PID: {
@@ -259,7 +259,7 @@ rift_sensor_read_calibration(struct rift_sensor_context *context,
 
 		break;
 	}
-	default: assert(false);
+	default: SENSOR_ERROR(context, "Unknown sensor PID %" PRIu16, desc->idProduct); return -1;
 	}
 
 	// clang-format off

@@ -78,7 +78,7 @@ uvc_set_cur(libusb_device_handle *dev,
             void *data,
             uint16_t data_length)
 {
-	uint8_t bmRequestType = LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE;
+	uint8_t bmRequestType = (uint8_t)LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE;
 	uint8_t bRequest = SET_CUR;
 	uint16_t wValue = selector << 8;
 	uint16_t wIndex = entity << 8 | usb_interface;

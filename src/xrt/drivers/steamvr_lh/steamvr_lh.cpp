@@ -732,7 +732,7 @@ Context::UpdateSkeletonComponent(vr::VRInputComponentHandle_t ulComponent,
 
 	auto *device = skeleton_to_controller[ulComponent];
 	if (!device) {
-		CTX_ERR("Got unknown component handle %lu", ulComponent);
+		CTX_ERR("Got unknown component handle %" PRIu64, ulComponent);
 		return vr::VRInputError_InvalidHandle;
 	}
 

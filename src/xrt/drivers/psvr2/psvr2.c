@@ -1013,12 +1013,11 @@ update_brightness(struct psvr2_hmd *hmd)
 static void
 psvr2_usb_stop(struct psvr2_hmd *hmd)
 {
-	int ret;
-
 #define X(xfer)                                                                                                        \
 	if (xfer) {                                                                                                    \
-		ret = libusb_cancel_transfer(xfer);                                                                    \
-		assert(ret == 0 || ret == LIBUSB_ERROR_NOT_FOUND);                                                     \
+		if (libusb_cancel_transfer(xfer) != 0) {                                                               \
+			PSVR2_ERROR(hmd, "failed to cancel transfer");                                                 \
+		}                                                                                                      \
 	}
 
 	os_mutex_lock(&hmd->data_lock);
