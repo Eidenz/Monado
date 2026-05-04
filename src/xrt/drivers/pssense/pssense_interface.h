@@ -14,6 +14,8 @@
 
 #include "tracking/t_time_sync.h"
 
+#include "constellation/t_constellation_tracker.h"
+
 #include <stdlib.h>
 
 
@@ -46,6 +48,18 @@ pssense_create(struct xrt_prober *xp,
                struct xrt_prober_device *xpdev,
                struct xrt_frame_context *xfctx,
                struct t_timing_event_sink **out_timing_sink);
+
+/*!
+ * Add a PlayStation Sense controller device to the constellation tracker.
+ *
+ * @param xdev The PlayStation Sense controller device.
+ * @param tracker The constellation tracker to add the device to.
+ * @return 0 on success, negative error code on failure.
+ *
+ * @ingroup drv_pssense
+ */
+int
+pssense_add_to_constellation_tracker(struct xrt_device *xdev, struct t_constellation_tracker *tracker);
 
 /*!
  * @dir drivers/pssense

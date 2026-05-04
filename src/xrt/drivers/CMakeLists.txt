@@ -208,9 +208,17 @@ endif()
 if(XRT_BUILD_DRIVER_PSSENSE)
 	add_library(
 		drv_pssense STATIC pssense/pssense_driver.c pssense/pssense_interface.h
-				   pssense/pssense_protocol.h
+				   pssense/pssense_protocol.h pssense/pssense_led_model.h
 		)
-	target_link_libraries(drv_pssense PRIVATE aux_os aux_util)
+	target_link_libraries(
+		drv_pssense
+		PRIVATE
+			xrt-interfaces
+			tracking-includes
+			aux_os
+			aux_util
+			constellation
+		)
 	list(APPEND ENABLED_DRIVERS pssense)
 endif()
 

@@ -76,6 +76,11 @@ struct rift_builder
 
 	struct t_constellation_tracker *constellation_tracker;
 #endif
+
+#ifdef XRT_BUILD_DRIVER_PSSENSE
+	struct xrt_device *pssense_left;
+	struct xrt_device *pssense_right;
+#endif
 };
 
 static struct rift_builder *
@@ -225,6 +230,8 @@ rift_open_pssense(struct rift_builder *rb,
 			if (rb->timing_event_source != NULL) {
 				t_timing_event_source_add_sink(rb->timing_event_source, timing_sink);
 			}
+
+			rb->pssense_left = left_xdev;
 		}
 	}
 
@@ -247,6 +254,8 @@ rift_open_pssense(struct rift_builder *rb,
 			if (rb->timing_event_source != NULL) {
 				t_timing_event_source_add_sink(rb->timing_event_source, timing_sink);
 			}
+
+			rb->pssense_right = right_xdev;
 		}
 	}
 #endif
@@ -309,6 +318,33 @@ rift_open_contactglove(struct rift_builder *rb,
 		}
 	} else {
 		RIFT_ERROR(rb, "Failed to open ContactGlove dongle serial device with code %d.", ret);
+	}
+#endif
+}
+
+static void
+add_devices_to_constellation_tracker(struct rift_builder *rb)
+{
+	int ret = rift_add_to_constellation_tracker(rb->hmd, rb->constellation_tracker);
+	if (ret != 0) {
+		RIFT_ERROR(rb, "Failed to add Rift HMD to constellation tracker with code %d", ret);
+	}
+
+#ifdef XRT_BUILD_DRIVER_PSSENSE
+	if (rb->pssense_left != NULL) {
+		ret = pssense_add_to_constellation_tracker(rb->pssense_left, rb->constellation_tracker);
+		if (ret != 0) {
+			RIFT_ERROR(rb, "Failed to add PS Sense left controller to constellation tracker with code %d",
+			           ret);
+		}
+	}
+
+	if (rb->pssense_right != NULL) {
+		ret = pssense_add_to_constellation_tracker(rb->pssense_right, rb->constellation_tracker);
+		if (ret != 0) {
+			RIFT_ERROR(rb, "Failed to add PS Sense right controller to constellation tracker with code %d",
+			           ret);
+		}
 	}
 #endif
 }
@@ -502,11 +538,7 @@ rift_open_system_impl(struct xrt_builder *xb,
 			goto unlock_and_fail;
 		}
 
-		ret = rift_add_to_constellation_tracker(rb->hmd, rb->constellation_tracker);
-		if (ret != 0) {
-			RIFT_ERROR(rb, "Failed to add Rift HMD to constellation tracker with code %d", ret);
-			goto unlock_and_fail;
-		}
+		add_devices_to_constellation_tracker(rb);
 
 		for (uint32_t i = 0; i < sensor_count && rb->num_sensors < mosaic->num_cameras; i++) {
 			struct rift_sensor *sensor = rb->sensors[i];

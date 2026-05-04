@@ -18,6 +18,9 @@
 #include "math/m_vec3.h"
 
 #include "tracking/t_imu.h"
+#include "tracking/t_constellation.h"
+
+#include "constellation/t_constellation_tracker.h"
 
 #include "util/u_var.h"
 #include "util/u_debug.h"
@@ -34,6 +37,7 @@
 
 #include "pssense_interface.h"
 #include "pssense_protocol.h"
+#include "pssense_led_model.h"
 
 #include <stdio.h>
 #include <errno.h>
@@ -184,12 +188,17 @@ struct pssense_input_state
  * @implements xrt_device
  * @implements xrt_frame_node
  * @implements t_timing_event_sink
+ * @implements t_constellation_tracker_led_model
+ * @implements t_constellation_tracker_device
  */
 struct pssense_device
 {
 	struct xrt_device base;
 	struct xrt_frame_node node;
 	struct t_timing_event_sink timing_event_sink;
+	struct t_constellation_tracker_led_model led_model;
+	struct t_constellation_tracker_device constellation_device;
+	struct t_constellation_tracker_tracking_source constellation_tracking_source;
 
 	struct os_hid_device *hid;
 	struct os_thread_helper controller_thread;
@@ -219,7 +228,7 @@ struct pssense_device
 
 	struct
 	{
-		struct m_relation_history *relation_history;
+		struct m_relation_history *imu_relation_history;
 		struct m_imu_3dof fusion;
 		struct xrt_pose pose;
 
@@ -235,6 +244,10 @@ struct pssense_device
 
 		//! Locked by controller_thread.
 		struct pssense_led_settings led_settings;
+
+		bool use_constellation;
+		t_constellation_device_id_t constellation_device_id;
+		struct m_relation_history *constellation_relation_history;
 	} tracking;
 
 	enum
@@ -290,6 +303,18 @@ static struct pssense_device *
 from_timing_event_sink(struct t_timing_event_sink *sink)
 {
 	return container_of(sink, struct pssense_device, timing_event_sink);
+}
+
+static struct pssense_device *
+from_constellation_device(struct t_constellation_tracker_device *device)
+{
+	return container_of(device, struct pssense_device, constellation_device);
+}
+
+static struct pssense_device *
+from_constellation_tracking_source(struct t_constellation_tracker_tracking_source *tracking_source)
+{
+	return container_of(tracking_source, struct pssense_device, constellation_tracking_source);
 }
 
 const uint32_t CRC_POLYNOMIAL = 0xedb88320;
@@ -349,6 +374,22 @@ pssense_add_clock_offset_sample(struct pssense_device *pssense, double offset_ns
 	pssense->timing.last_clock_sample_ns = os_monotonic_get_ns();
 }
 
+static bool
+pssense_host_ts_to_device(struct pssense_device *pssense,
+                          timepoint_ns host_timestamp_ns,
+                          timepoint_ns *out_device_timestamp_ns)
+{
+	if (!pssense->timing.has_clock_offset) {
+		return false;
+	}
+
+	// Convert host-domain query time to device IMU time using the PSVR2TK clock offset.
+	// Corresponds to the inverse of PSVR2TK's libpad_deviceToHostHook conversion.
+	// See: PSVR2Toolkit/projects/psvr2_openvr_driver_ex/libpad_hooks.cpp
+	*out_device_timestamp_ns = host_timestamp_ns + (timepoint_ns)pssense->timing.filtered_offset_ns;
+	return true;
+}
+
 /*!
  * Reads one packet from the device, handles time out, locking and checking if
  * the thread has been told to shut down.
@@ -402,7 +443,7 @@ pssense_update_fusion(struct pssense_device *pssense)
 	                      XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT,
 	    .angular_velocity = gyro,
 	};
-	m_relation_history_push(pssense->tracking.relation_history, &space_relation,
+	m_relation_history_push(pssense->tracking.imu_relation_history, &space_relation,
 	                        pssense->timing.latest_imu_time_ns);
 }
 
@@ -726,21 +767,31 @@ pssense_run_thread(void *ptr)
 }
 
 static void
-pssense_get_fusion_pose(struct pssense_device *pssense,
-                        enum xrt_input_name name,
-                        int64_t at_timestamp_ns,
-                        struct xrt_space_relation *out_relation)
+pssense_get_imu_fusion_pose(struct pssense_device *pssense,
+                            int64_t at_timestamp_ns,
+                            struct xrt_space_relation *out_relation)
 {
-	// Convert host-domain query time to device IMU time using the PSVR2TK clock offset.
-	// Corresponds to the inverse of PSVR2TK's libpad_deviceToHostHook conversion.
-	// See: PSVR2Toolkit/projects/psvr2_openvr_driver_ex/libpad_hooks.cpp
-	if (!pssense->timing.has_clock_offset) {
+	timepoint_ns device_ts;
+	if (!pssense_host_ts_to_device(pssense, at_timestamp_ns, &device_ts)) {
 		(*out_relation) = (struct xrt_space_relation){0};
 		return;
 	}
-	timepoint_ns imu_timestamp_ns = at_timestamp_ns + (timepoint_ns)pssense->timing.filtered_offset_ns;
 
-	m_relation_history_get(pssense->tracking.relation_history, imu_timestamp_ns, out_relation);
+	m_relation_history_get(pssense->tracking.imu_relation_history, device_ts, out_relation);
+}
+
+static void
+pssense_get_constellation_pose(struct pssense_device *pssense,
+                               int64_t at_timestamp_ns,
+                               struct xrt_space_relation *out_relation)
+{
+	timepoint_ns device_ts;
+	if (!pssense_host_ts_to_device(pssense, at_timestamp_ns, &device_ts)) {
+		(*out_relation) = (struct xrt_space_relation){0};
+		return;
+	}
+
+	m_relation_history_get(pssense->tracking.constellation_relation_history, device_ts, out_relation);
 }
 
 /*!
@@ -848,7 +899,6 @@ static void
 pssense_timing_event_sink_push(struct t_timing_event_sink *sink, const struct t_timing_event *event)
 {
 	struct pssense_device *pssense = from_timing_event_sink(sink);
-	(void)pssense;
 
 	// We only care about exposure start.
 	if (event->type != T_TIMING_EVENT_TYPE_CAMERA_EXPOSURE_START) {
@@ -950,6 +1000,54 @@ pssense_timing_event_sink_push(struct t_timing_event_sink *sink, const struct t_
 
 /*
  *
+ * Constellation tracker device implementations
+ *
+ */
+
+static void
+pssense_push_constellation_tracker_sample(struct t_constellation_tracker_device *device,
+                                          struct t_constellation_tracker_sample *sample)
+{
+	struct pssense_device *pssense = from_constellation_device(device);
+
+	os_thread_helper_lock(&pssense->controller_thread);
+	timepoint_ns device_ts;
+	if (!pssense_host_ts_to_device(pssense, sample->timestamp_ns, &device_ts)) {
+		os_thread_helper_unlock(&pssense->controller_thread);
+		return;
+	}
+	os_thread_helper_unlock(&pssense->controller_thread);
+
+	struct xrt_space_relation relation = {
+	    .pose = sample->pose,
+	    .relation_flags = XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
+	                      XRT_SPACE_RELATION_POSITION_VALID_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT,
+	};
+
+	m_relation_history_push_with_motion_estimation(pssense->tracking.constellation_relation_history, &relation,
+	                                               device_ts);
+}
+
+/*
+ *
+ * Constellation tracking source implementations
+ *
+ */
+
+static void
+pssense_get_constellation_tracking_source_pose(struct t_constellation_tracker_tracking_source *tracking_source,
+                                               int64_t when_ns,
+                                               struct xrt_space_relation *out_relation)
+{
+	struct pssense_device *pssense = from_constellation_tracking_source(tracking_source);
+
+	os_thread_helper_lock(&pssense->controller_thread);
+	pssense_get_imu_fusion_pose(pssense, when_ns, out_relation);
+	os_thread_helper_unlock(&pssense->controller_thread);
+}
+
+/*
+ *
  * Driver implementations
  *
  */
@@ -979,7 +1077,8 @@ pssense_device_destroy(struct xrt_device *xdev)
 		pssense->hid = NULL;
 	}
 
-	m_relation_history_destroy(&pssense->tracking.relation_history);
+	m_relation_history_destroy(&pssense->tracking.imu_relation_history);
+	m_relation_history_destroy(&pssense->tracking.constellation_relation_history);
 
 	// Don't free the pointer, since that's handled in @ref pssense_node_destroy
 }
@@ -1162,17 +1261,26 @@ pssense_get_tracked_pose(struct xrt_device *xdev,
 	}
 
 	struct xrt_relation_chain xrc = {0};
-	struct xrt_pose pose_correction = {0};
+	struct xrt_pose pose_correction = XRT_POSE_IDENTITY;
 
-	// Rotate the grip/aim pose up by 60 degrees around the X axis
-	struct xrt_vec3 axis = {1.0, 0, 0};
-	math_quat_from_angle_vector(DEG_TO_RAD(60), &axis, &pose_correction.orientation);
+	if (!pssense->tracking.use_constellation) {
+		// Rotate the grip/aim pose up by 60 degrees around the X axis if we're using IMU fusion, since the IMU
+		// is mounted weirdly. We don't presently have an IMU->constellation offset, but this at least makes
+		// both modes usable
+		struct xrt_vec3 axis = XRT_VEC3_UNIT_X;
+		math_quat_from_angle_vector(DEG_TO_RAD(60), &axis, &pose_correction.orientation);
+	}
+
 	m_relation_chain_push_pose(&xrc, &pose_correction);
 
 	struct xrt_space_relation *rel = m_relation_chain_reserve(&xrc);
 
 	os_thread_helper_lock(&pssense->controller_thread);
-	pssense_get_fusion_pose(pssense, name, at_timestamp_ns, rel);
+	if (pssense->tracking.use_constellation) {
+		pssense_get_constellation_pose(pssense, at_timestamp_ns, rel);
+	} else {
+		pssense_get_imu_fusion_pose(pssense, at_timestamp_ns, rel);
+	}
 	os_thread_helper_unlock(&pssense->controller_thread);
 
 	m_relation_chain_resolve(&xrc, out_relation);
@@ -1241,6 +1349,10 @@ pssense_create(struct xrt_prober *xp,
 
 	pssense->timing_event_sink.push_timing_event = pssense_timing_event_sink_push;
 
+	pssense->constellation_device.push_constellation_tracker_sample = pssense_push_constellation_tracker_sample;
+
+	pssense->constellation_tracking_source.get_tracked_pose = pssense_get_constellation_tracking_source_pose;
+
 	pssense->base.name = XRT_DEVICE_PSSENSE;
 	snprintf(pssense->base.str, XRT_DEVICE_NAME_LEN, "%s", product_name);
 	pssense->base.update_inputs = pssense_device_update_inputs;
@@ -1261,7 +1373,8 @@ pssense_create(struct xrt_prober *xp,
 	pssense->tracking.timing_fudge_100us = 20; // 2.0ms fudge
 	pssense->tracking.increment_sequence_num = true;
 
-	m_relation_history_create(&pssense->tracking.relation_history);
+	m_relation_history_create(&pssense->tracking.imu_relation_history);
+	m_relation_history_create(&pssense->tracking.constellation_relation_history);
 
 	pssense->log_level = debug_get_log_option_pssense_log();
 	pssense->hid = hid;
@@ -1269,9 +1382,15 @@ pssense_create(struct xrt_prober *xp,
 	if (xpdev->product_id == PSSENSE_PID_LEFT) {
 		pssense->base.device_type = XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER;
 		pssense->hand = PSSENSE_HAND_LEFT;
+
+		pssense->led_model.leds = pssense_left_leds;
+		pssense->led_model.led_count = ARRAY_SIZE(pssense_left_leds);
 	} else if (xpdev->product_id == PSSENSE_PID_RIGHT) {
 		pssense->base.device_type = XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER;
 		pssense->hand = PSSENSE_HAND_RIGHT;
+
+		pssense->led_model.leds = pssense_right_leds;
+		pssense->led_model.led_count = ARRAY_SIZE(pssense_right_leds);
 	} else {
 		PSSENSE_ERROR(pssense, "Unable to determine controller type");
 		pssense_device_destroy(&pssense->base);
@@ -1387,6 +1506,7 @@ pssense_create(struct xrt_prober *xp,
 	u_var_add_bool(pssense, &pssense->tracking.increment_sequence_num, "Increment LED Sequence Number");
 	u_var_add_u8(pssense, &pssense->tracking.led_sequence_num, "LED Sequence Number");
 	u_var_add_i32(pssense, &pssense->tracking.timing_fudge_100us, "Timing Fudge (100us)");
+	u_var_add_bool(pssense, &pssense->tracking.use_constellation, "Use Constellation Tracking");
 
 	xrt_frame_context_add(xfctx, &pssense->node);
 
@@ -1395,6 +1515,29 @@ pssense_create(struct xrt_prober *xp,
 	}
 
 	return &pssense->base;
+}
+
+int
+pssense_add_to_constellation_tracker(struct xrt_device *xdev, struct t_constellation_tracker *tracker)
+{
+	struct pssense_device *pssense = from_device(xdev);
+
+	struct t_constellation_tracker_device_params params = {
+	    .led_model = pssense->led_model,
+	    .tracking_source = &pssense->constellation_tracking_source,
+	};
+	int ret = t_constellation_tracker_add_device(tracker, &params, &pssense->constellation_device,
+	                                             &pssense->tracking.constellation_device_id);
+	if (ret < 0) {
+		PSSENSE_ERROR(pssense, "Failed to add device to constellation tracker: %d", ret);
+		return -1;
+	} else {
+		pssense->tracking.use_constellation = true;
+	}
+
+	pssense->base.tracking_origin = t_constellation_tracker_get_tracking_origin(tracker);
+
+	return 0;
 }
 
 /*!
