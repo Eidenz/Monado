@@ -146,14 +146,17 @@ hmd_get_raw_tracker_pose(struct psvr2_hmd *hmd, timepoint_ns at_timestamp_ns, st
 	}
 
 	// Predict forward using dead reckoning
-	t_apply_dead_reckoning( //
-	    hmd->ff_gyro,       //
-	    NULL,               //
-	    NULL,               //
-	    at_timestamp_ns,    //
-	    &latest_relation,   //
-	    latest_relation_ts, //
-	    out_relation);      //
+	if (!t_apply_dead_reckoning( //
+	        hmd->ff_gyro,        //
+	        NULL,                //
+	        NULL,                //
+	        at_timestamp_ns,     //
+	        &latest_relation,    //
+	        latest_relation_ts,  //
+	        out_relation)) {
+		// If dead reckoning fails, return the latest SLAM pose
+		*out_relation = latest_relation;
+	}
 }
 
 static xrt_result_t
@@ -1010,12 +1013,11 @@ update_brightness(struct psvr2_hmd *hmd)
 static void
 psvr2_usb_stop(struct psvr2_hmd *hmd)
 {
-	int ret;
-
 #define X(xfer)                                                                                                        \
 	if (xfer) {                                                                                                    \
-		ret = libusb_cancel_transfer(xfer);                                                                    \
-		assert(ret == 0 || ret == LIBUSB_ERROR_NOT_FOUND);                                                     \
+		if (libusb_cancel_transfer(xfer) != 0) {                                                               \
+			PSVR2_ERROR(hmd, "failed to cancel transfer");                                                 \
+		}                                                                                                      \
 	}
 
 	os_mutex_lock(&hmd->data_lock);

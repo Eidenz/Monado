@@ -53,11 +53,13 @@ rift_sensor_destroy(struct rift_sensor *sensor)
 static void
 rift_sensor_context_destroy(struct rift_sensor_context *context)
 {
-	os_thread_helper_destroy(&context->usb_thread);
+	if (context->usb_thread.initialized) {
+		os_thread_helper_destroy(&context->usb_thread);
+	}
 
 	u_var_remove_root(context);
 
-	for (size_t i = 0; i < context->num_sensors; i++) {
+	for (uint32_t i = 0; i < context->sensor_count; i++) {
 		rift_sensor_destroy(&context->sensors[i]);
 	}
 
@@ -79,7 +81,9 @@ rift_sensor_context_node_break_apart(struct xrt_frame_node *node)
 
 	SENSOR_DEBUG(context, "Breaking apart Rift sensor context node");
 
-	os_thread_helper_stop_and_wait(&context->usb_thread);
+	if (context->usb_thread.initialized) {
+		os_thread_helper_stop_and_wait(&context->usb_thread);
+	}
 }
 
 static void
@@ -191,7 +195,7 @@ rift_sensor_read_calibration(struct rift_sensor_context *context,
                              const struct libusb_device_descriptor *desc)
 {
 	int ret;
-	double fx, fy, cx, cy;
+	double fx = 0.0, fy = 0.0, cx = 0.0, cy = 0.0;
 
 	switch (desc->idProduct) {
 	case OCULUS_DK2_SENSOR_PID: {
@@ -255,7 +259,7 @@ rift_sensor_read_calibration(struct rift_sensor_context *context,
 
 		break;
 	}
-	default: assert(false);
+	default: SENSOR_ERROR(context, "Unknown sensor PID %" PRIu16, desc->idProduct); return -1;
 	}
 
 	// clang-format off
@@ -407,7 +411,7 @@ rift_sensor_context_create(struct rift_sensor_context **out_context, struct xrt_
 	}
 
 	// Find how many sensors are connected
-	size_t found_sensors = 0;
+	uint32_t found_sensors = 0;
 	for (ssize_t i = 0; i < num_devices; i++) {
 		libusb_device *device = devices[i];
 
@@ -419,12 +423,22 @@ rift_sensor_context_create(struct rift_sensor_context **out_context, struct xrt_
 		}
 
 		// skip oculus devices
-		if (desc.idVendor != OCULUS_VR_VID)
+		if (desc.idVendor != OCULUS_VR_VID) {
 			continue;
+		}
 
 		switch (desc.idProduct) {
 		case OCULUS_CV1_SENSOR_PID:
 		case OCULUS_DK2_SENSOR_PID: {
+			if (found_sensors >= UINT32_MAX) {
+				SENSOR_WARN(
+				    context,
+				    "Way too many sensors connected, found at least %u, skipping additional sensors.",
+				    found_sensors);
+
+				break;
+			}
+
 			found_sensors++;
 			break;
 		}
@@ -444,13 +458,14 @@ rift_sensor_context_create(struct rift_sensor_context **out_context, struct xrt_
 			continue;
 		}
 
-		if (desc.idVendor != OCULUS_VR_VID)
+		if (desc.idVendor != OCULUS_VR_VID) {
 			continue;
+		}
 
 		switch (desc.idProduct) {
 		case OCULUS_CV1_SENSOR_PID:
 		case OCULUS_DK2_SENSOR_PID: {
-			struct rift_sensor *sensor = &context->sensors[context->num_sensors];
+			struct rift_sensor *sensor = &context->sensors[context->sensor_count];
 
 			ret = rift_sensor_create(context, xfctx, sensor, device, &desc);
 			if (ret < 0) {
@@ -465,7 +480,7 @@ rift_sensor_context_create(struct rift_sensor_context **out_context, struct xrt_
 
 			libusb_ref_device(device);
 
-			context->num_sensors++;
+			context->sensor_count++;
 
 			break;
 		}
@@ -541,20 +556,23 @@ rift_sensor_context_start(struct rift_sensor_context *context)
 	return 0;
 }
 
-ssize_t
-rift_sensor_context_get_sensors(struct rift_sensor_context *context, struct rift_sensor ***out_sensors)
+int
+rift_sensor_context_get_sensors(struct rift_sensor_context *context,
+                                struct rift_sensor ***out_sensors,
+                                uint32_t *out_count)
 {
-	struct rift_sensor **sensors = U_TYPED_ARRAY_CALLOC(struct rift_sensor *, context->num_sensors);
+	struct rift_sensor **sensors = U_TYPED_ARRAY_CALLOC(struct rift_sensor *, context->sensor_count);
 	if (sensors == NULL) {
 		return -1;
 	}
 
-	for (size_t i = 0; i < context->num_sensors; i++) {
+	for (size_t i = 0; i < context->sensor_count; i++) {
 		sensors[i] = &context->sensors[i];
 	}
 	*out_sensors = sensors;
+	*out_count = context->sensor_count;
 
-	return context->num_sensors;
+	return 0;
 }
 
 struct xrt_fs *

@@ -1188,6 +1188,7 @@ public:
 	virtual void GetEyeOutputViewport(vr::EVREye eEye, uint32_t *pnX, uint32_t *pnY, uint32_t *pnWidth, uint32_t *pnHeight);
 	virtual void GetProjectionRaw(vr::EVREye eEye, float *pfLeft, float *pfRight, float *pfTop, float *pfBottom);
 	virtual vr::DistortionCoordinates_t ComputeDistortion(vr::EVREye eEye, float fU, float fV);
+	virtual bool ComputeInverseDistortion(vr::HmdVector2_t *pResult, vr::EVREye eEye, uint32_t unChannel, float fU, float fV);
 
 	// clang-format on
 
@@ -1504,6 +1505,14 @@ CDeviceDriver_Monado::ComputeDistortion(vr::EVREye eEye, float fU, float fV)
 	// %f,%f!\n", eEye, U, V, d.r.x, d.r.y, d.g.x, d.g.y, d.b.x, d.b.y);
 
 	return coordinates;
+}
+
+bool
+CDeviceDriver_Monado::ComputeInverseDistortion(
+    vr::HmdVector2_t *pResult, vr::EVREye eEye, uint32_t unChannel, float fU, float fV)
+{
+	// Unsupported, so return false
+	return false;
 }
 
 

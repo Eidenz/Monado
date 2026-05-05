@@ -408,8 +408,10 @@ rift_s_tracker_create(struct xrt_tracking_origin *origin,
 		int hand_status = rift_s_create_hand_tracker(t, xfctx, masks_sink, &hand_sinks, &hand_device);
 		if (hand_status != 0 || hand_sinks == NULL || hand_device == NULL) {
 			RIFT_S_WARN("Unable to setup the hand tracker");
-			rift_s_tracker_destroy(t);
-			return NULL;
+
+			// Disable hand tracking since it failed to init
+			hand_enabled = false;
+			t->tracking.hand_enabled = false;
 		}
 	}
 
@@ -541,7 +543,10 @@ rift_s_tracker_imu_update(struct rift_s_tracker *t,
 	}
 }
 
+// @todo remove when clang-format is updated in CI
+// clang-format off
 #define UPPER_32BITS(x) ((x)&0xffffffff00000000ULL)
+// clang-format on
 
 void
 rift_s_tracker_push_slam_frames(struct rift_s_tracker *t,

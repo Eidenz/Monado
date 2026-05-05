@@ -196,5 +196,5 @@ Checks:       |
     -readability-use-std-min-max,
 
 WarningsAsErrors: '*'
-HeaderFilterRegex: '.*'
+HeaderFilterRegex: 'src/xrt/.*'
 FormatStyle:     file

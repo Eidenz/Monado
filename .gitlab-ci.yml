@@ -25,7 +25,10 @@ include:
       - "/templates/ubuntu.yml"
       - "/templates/arch.yml"
       - "/templates/alpine.yml"
-  # - local: .gitlab-ci/containers/ci-container-prep.yml
+  - project: 'freedesktop/ci-templates'
+    ref: 5cc6ded703fc990f9d055f0d948ffd4460a9ca40
+    file: '/templates/ci-fairy.yml'
+
 
   # This include is for compatibility with the fdo CI restrictions/checks
   # needed due to https://gitlab.freedesktop.org/freedesktop/freedesktop/-/issues/438
@@ -131,7 +134,7 @@ win:container_prep:
 .monado.variables.debian:trixie:
   variables:
     FDO_DISTRIBUTION_VERSION: "trixie"
-    FDO_DISTRIBUTION_TAG: "2026-02-07"
+    FDO_DISTRIBUTION_TAG: "2026-03-03"
 
 # Variables for build and usage of Debian bookworm image
 .monado.variables.debian:bookworm:
@@ -180,7 +183,7 @@ debian:trixie:container_prep:
     - .fdo.container-build@debian # from ci-templates
 
   variables:
-    FDO_DISTRIBUTION_PACKAGES: 'build-essential ca-certificates clang-tidy cmake curl debhelper devscripts doxygen dput-ng gettext-base git glslang-tools graphviz libbluetooth-dev libbsd-dev libcjson-dev libdbus-1-dev libdistro-info-perl libegl1-mesa-dev libeigen3-dev libgl1-mesa-dev libglvnd-dev libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev libhidapi-dev libopencv-dev libsdl2-dev libsystemd-dev libudev-dev libusb-1.0-0-dev libuvc-dev libv4l-dev libvulkan-dev libwayland-dev libx11-dev libx11-xcb-dev libxcb-randr0-dev libxrandr-dev libxxf86vm-dev ninja-build pandoc patch pipx pkg-config python3 python3-click python3-pip reprepro unzip wayland-protocols wget'
+    FDO_DISTRIBUTION_PACKAGES: 'build-essential ca-certificates clang clang-tidy cmake curl debhelper devscripts doxygen dput-ng gettext-base git glslang-tools graphviz libbluetooth-dev libbsd-dev libcjson-dev libdbus-1-dev libdistro-info-perl libegl1-mesa-dev libeigen3-dev libgl1-mesa-dev libglvnd-dev libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev libhidapi-dev libopencv-dev libsdl2-dev libsystemd-dev libudev-dev libusb-1.0-0-dev libuvc-dev libv4l-dev libvulkan-dev libwayland-dev libx11-dev libx11-xcb-dev libxcb-randr0-dev libxrandr-dev libxxf86vm-dev ninja-build pandoc patch pipx pkg-config python3 python3-click python3-pip reprepro unzip wayland-protocols wget'
     FDO_DISTRIBUTION_EXEC: 'env FDO_CI_CONCURRENT=${FDO_CI_CONCURRENT} bash .gitlab-ci/i386_and_proclamation_container_prep.sh'
 
 # Make Debian bookworm image
@@ -366,6 +369,23 @@ reuse:
   script:
     - reuse lint
 
+check-signoff:
+  extends:
+    - .fdo.ci-fairy
+  stage: verify
+  script:
+    - ci-fairy check-commits --signed-off-by --junit-xml=results.xml
+  variables:
+    GIT_DEPTH: 100
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: always
+    - when: never
+  artifacts:
+    reports:
+      junit: results.xml
+
+
 
 debian:trixie:
   stage: build
@@ -380,13 +400,24 @@ debian:trixie:
 
   script:
     - .gitlab-ci/prebuild.sh
-    - .gitlab-ci/ci-cmake-build.sh -DBUILD_DOC=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    - .gitlab-ci/ci-cmake-build.sh -DBUILD_DOC=ON -DCMAKE_BUILD_TYPE=Release
     - cd build && ctest --output-on-failure
 
   artifacts:
     untracked: true
     paths:
       - build
+
+debian:trixie:clang:
+  stage: build
+  extends:
+    - .monado.image.debian:trixie
+
+  script:
+    - .gitlab-ci/prebuild.sh
+    - .gitlab-ci/ci-cmake-build.sh -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++
+    - cd build && ctest --output-on-failure
+
 
 debian:trixie:opencv-off:
   stage: build
@@ -699,7 +730,7 @@ ndk:arm64-v8a:clang-tidy:
   needs:
     - ndk:arm64-v8a
   script:
-    - run-clang-tidy -quiet -p build
+    - run-clang-tidy -quiet -allow-no-checks -p build
 
 
 debian:trixie:package:

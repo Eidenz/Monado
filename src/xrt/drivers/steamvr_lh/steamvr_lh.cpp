@@ -243,10 +243,7 @@ Context::setup_hmd(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 	vr::EVRInitError err = driver->Activate(0);
 	VERIFY(err == vr::VRInitError_None, std::to_string(err).c_str());
 
-	auto *display = static_cast<vr::IVRDisplayComponent *>(driver->GetComponent(vr::IVRDisplayComponent_Version3));
-	if (display == NULL) {
-		display = static_cast<vr::IVRDisplayComponent *>(driver->GetComponent(vr::IVRDisplayComponent_Version));
-	}
+	auto *display = static_cast<vr::IVRDisplayComponent *>(driver->GetComponent(vr::IVRDisplayComponent_Version));
 	VERIFY(display, "IVRDisplayComponent is null");
 #undef VERIFY
 
@@ -804,12 +801,44 @@ Context::UpdateSkeletonComponent(vr::VRInputComponentHandle_t ulComponent,
 
 	auto *device = skeleton_to_controller[ulComponent];
 	if (!device) {
-		CTX_ERR("Got unknown component handle %lu", ulComponent);
+		CTX_ERR("Got unknown component handle %" PRIu64, ulComponent);
 		return vr::VRInputError_InvalidHandle;
 	}
 
 	device->update_skeleton_transforms(std::span(pTransforms, unTransformCount));
 
+	return vr::VRInputError_None;
+}
+
+vr::EVRInputError
+Context::CreatePoseComponent(vr::PropertyContainerHandle_t ulContainer,
+                             const char *pchName,
+                             vr::VRInputComponentHandle_t *pHandle)
+{
+	return vr::VRInputError_None;
+}
+
+vr::EVRInputError
+Context::UpdatePoseComponent(vr::VRInputComponentHandle_t ulComponent,
+                             const vr::HmdMatrix34_t *pMatPoseOffset,
+                             double fTimeOffset)
+{
+	return vr::VRInputError_None;
+}
+
+vr::EVRInputError
+Context::CreateEyeTrackingComponent(vr::PropertyContainerHandle_t ulContainer,
+                                    const char *pchName,
+                                    vr::VRInputComponentHandle_t *pHandle)
+{
+	return vr::VRInputError_None;
+}
+
+vr::EVRInputError
+Context::UpdateEyeTrackingComponent(vr::VRInputComponentHandle_t ulComponent,
+                                    const vr::VREyeTrackingData_t *pEyeTrackingData,
+                                    double fTimeOffset)
+{
 	return vr::VRInputError_None;
 }
 

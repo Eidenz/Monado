@@ -49,18 +49,51 @@
 
 DEBUG_GET_ONCE_LOG_OPTION(pssense_log, "PSSENSE_LOG", U_LOGGING_INFO)
 
-static struct xrt_binding_input_pair simple_inputs_pssense[4] = {
+static struct xrt_binding_input_pair touch_inputs_pssense[] = {
+    {XRT_INPUT_TOUCH_X_CLICK, XRT_INPUT_PSSENSE_SQUARE_CLICK},
+    {XRT_INPUT_TOUCH_X_TOUCH, XRT_INPUT_PSSENSE_SQUARE_TOUCH},
+    {XRT_INPUT_TOUCH_Y_CLICK, XRT_INPUT_PSSENSE_TRIANGLE_CLICK},
+    {XRT_INPUT_TOUCH_Y_TOUCH, XRT_INPUT_PSSENSE_TRIANGLE_TOUCH},
+    {XRT_INPUT_TOUCH_MENU_CLICK, XRT_INPUT_PSSENSE_PS_CLICK},
+    {XRT_INPUT_TOUCH_A_CLICK, XRT_INPUT_PSSENSE_CROSS_CLICK},
+    {XRT_INPUT_TOUCH_A_TOUCH, XRT_INPUT_PSSENSE_CROSS_TOUCH},
+    {XRT_INPUT_TOUCH_B_CLICK, XRT_INPUT_PSSENSE_CIRCLE_CLICK},
+    {XRT_INPUT_TOUCH_B_TOUCH, XRT_INPUT_PSSENSE_CIRCLE_TOUCH},
+    {XRT_INPUT_TOUCH_SYSTEM_CLICK, XRT_INPUT_PSSENSE_PS_CLICK},
+    {XRT_INPUT_TOUCH_SQUEEZE_VALUE, XRT_INPUT_PSSENSE_SQUEEZE_CLICK},
+    {XRT_INPUT_TOUCH_TRIGGER_TOUCH, XRT_INPUT_PSSENSE_TRIGGER_TOUCH},
+    {XRT_INPUT_TOUCH_TRIGGER_VALUE, XRT_INPUT_PSSENSE_TRIGGER_VALUE},
+    {XRT_INPUT_TOUCH_THUMBSTICK_CLICK, XRT_INPUT_PSSENSE_THUMBSTICK_CLICK},
+    {XRT_INPUT_TOUCH_THUMBSTICK_TOUCH, XRT_INPUT_PSSENSE_THUMBSTICK_TOUCH},
+    {XRT_INPUT_TOUCH_THUMBSTICK, XRT_INPUT_PSSENSE_THUMBSTICK},
+    {XRT_INPUT_TOUCH_GRIP_POSE, XRT_INPUT_PSSENSE_GRIP_POSE},
+    {XRT_INPUT_TOUCH_AIM_POSE, XRT_INPUT_PSSENSE_AIM_POSE},
+    {XRT_INPUT_TOUCH_TRIGGER_PROXIMITY, XRT_INPUT_PSSENSE_TRIGGER_PROXIMITY},
+};
+
+static struct xrt_binding_output_pair touch_outputs_pssense[] = {
+    {XRT_OUTPUT_NAME_TOUCH_HAPTIC, XRT_OUTPUT_NAME_PSSENSE_VIBRATION},
+};
+
+static struct xrt_binding_input_pair simple_inputs_pssense[] = {
     {XRT_INPUT_SIMPLE_SELECT_CLICK, XRT_INPUT_PSSENSE_TRIGGER_VALUE},
     {XRT_INPUT_SIMPLE_MENU_CLICK, XRT_INPUT_PSSENSE_OPTIONS_CLICK},
     {XRT_INPUT_SIMPLE_GRIP_POSE, XRT_INPUT_PSSENSE_GRIP_POSE},
     {XRT_INPUT_SIMPLE_AIM_POSE, XRT_INPUT_PSSENSE_AIM_POSE},
 };
 
-static struct xrt_binding_output_pair simple_outputs_pssense[1] = {
+static struct xrt_binding_output_pair simple_outputs_pssense[] = {
     {XRT_OUTPUT_NAME_SIMPLE_VIBRATION, XRT_OUTPUT_NAME_PSSENSE_VIBRATION},
 };
 
-static struct xrt_binding_profile binding_profiles_pssense[1] = {
+static struct xrt_binding_profile binding_profiles_pssense[] = {
+    {
+        .name = XRT_DEVICE_TOUCH_CONTROLLER,
+        .inputs = touch_inputs_pssense,
+        .input_count = ARRAY_SIZE(touch_inputs_pssense),
+        .outputs = touch_outputs_pssense,
+        .output_count = ARRAY_SIZE(touch_outputs_pssense),
+    },
     {
         .name = XRT_DEVICE_SIMPLE_CONTROLLER,
         .inputs = simple_inputs_pssense,
@@ -88,16 +121,19 @@ enum pssense_input_index
 	PSSENSE_INDEX_CIRCLE_TOUCH,
 	PSSENSE_INDEX_SQUEEZE_CLICK,
 	PSSENSE_INDEX_SQUEEZE_TOUCH,
+	PSSENSE_INDEX_SQUEEZE_PROXIMITY,
 	PSSENSE_INDEX_SQUEEZE_PROXIMITY_FLOAT,
 	PSSENSE_INDEX_TRIGGER_CLICK,
 	PSSENSE_INDEX_TRIGGER_TOUCH,
 	PSSENSE_INDEX_TRIGGER_VALUE,
+	PSSENSE_INDEX_TRIGGER_PROXIMITY,
 	PSSENSE_INDEX_TRIGGER_PROXIMITY_FLOAT,
 	PSSENSE_INDEX_THUMBSTICK,
 	PSSENSE_INDEX_THUMBSTICK_CLICK,
 	PSSENSE_INDEX_THUMBSTICK_TOUCH,
 	PSSENSE_INDEX_GRIP_POSE,
 	PSSENSE_INDEX_AIM_POSE,
+	PSSENSE_INPUT_COUNT,
 };
 
 /*!
@@ -696,10 +732,12 @@ pssense_device_update_inputs(struct xrt_device *xdev)
 	pssense->base.inputs[PSSENSE_INDEX_CIRCLE_TOUCH].value.boolean = pssense->state.circle_touch;
 	pssense->base.inputs[PSSENSE_INDEX_SQUEEZE_CLICK].value.boolean = pssense->state.squeeze_click;
 	pssense->base.inputs[PSSENSE_INDEX_SQUEEZE_TOUCH].value.boolean = pssense->state.squeeze_touch;
+	pssense->base.inputs[PSSENSE_INDEX_SQUEEZE_PROXIMITY].value.boolean = pssense->state.squeeze_proximity > 0.7f;
 	pssense->base.inputs[PSSENSE_INDEX_SQUEEZE_PROXIMITY_FLOAT].value.vec1.x = pssense->state.squeeze_proximity;
 	pssense->base.inputs[PSSENSE_INDEX_TRIGGER_CLICK].value.boolean = pssense->state.trigger_click;
 	pssense->base.inputs[PSSENSE_INDEX_TRIGGER_TOUCH].value.boolean = pssense->state.trigger_touch;
 	pssense->base.inputs[PSSENSE_INDEX_TRIGGER_VALUE].value.vec1.x = pssense->state.trigger_value;
+	pssense->base.inputs[PSSENSE_INDEX_TRIGGER_PROXIMITY].value.boolean = pssense->state.trigger_proximity > 0.7f;
 	pssense->base.inputs[PSSENSE_INDEX_TRIGGER_PROXIMITY_FLOAT].value.vec1.x = pssense->state.trigger_proximity;
 	pssense->base.inputs[PSSENSE_INDEX_THUMBSTICK].value.vec2 = pssense->state.thumbstick;
 	pssense->base.inputs[PSSENSE_INDEX_THUMBSTICK_CLICK].value.boolean = pssense->state.thumbstick_click;
@@ -915,7 +953,7 @@ pssense_create(struct xrt_prober *xp, struct xrt_prober_device *xpdev)
 	}
 
 	enum u_device_alloc_flags flags = U_DEVICE_ALLOC_TRACKING_NONE;
-	struct pssense_device *pssense = U_DEVICE_ALLOCATE(struct pssense_device, flags, 23, 2);
+	struct pssense_device *pssense = U_DEVICE_ALLOCATE(struct pssense_device, flags, PSSENSE_INPUT_COUNT, 2);
 	PSSENSE_DEBUG(pssense, "PlayStation Sense controller found");
 
 	pssense->base.name = XRT_DEVICE_PSSENSE;
@@ -963,10 +1001,12 @@ pssense_create(struct xrt_prober *xp, struct xrt_prober_device *xpdev)
 	SET_INPUT(CIRCLE_TOUCH);
 	SET_INPUT(SQUEEZE_CLICK);
 	SET_INPUT(SQUEEZE_TOUCH);
+	SET_INPUT(SQUEEZE_PROXIMITY);
 	SET_INPUT(SQUEEZE_PROXIMITY_FLOAT);
 	SET_INPUT(TRIGGER_CLICK);
 	SET_INPUT(TRIGGER_TOUCH);
 	SET_INPUT(TRIGGER_VALUE);
+	SET_INPUT(TRIGGER_PROXIMITY);
 	SET_INPUT(TRIGGER_PROXIMITY_FLOAT);
 	SET_INPUT(THUMBSTICK);
 	SET_INPUT(THUMBSTICK_CLICK);

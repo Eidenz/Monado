@@ -14,3 +14,7 @@ target_link_libraries(
 		comp_multi
 	)
 target_include_directories(comp_null PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+if(ANDROID)
+	target_compile_options(comp_null PRIVATE -Wno-gnu-offsetof-extensions)
+endif()

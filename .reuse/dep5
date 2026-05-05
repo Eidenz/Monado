@@ -142,3 +142,7 @@ Files: src/xrt/auxiliary/android_cardboard/src/main/res/drawable/cardboard_oss_q
 Copyright: 2019 Google LLC
 License: Apache-2.0
 Comment: SPDX-License-Identifier missing.
+
+Files: src/external/metrics/*
+Copyright: 2022, Collabora, Ltd.
+License: BSL-1.0

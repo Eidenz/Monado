@@ -93,7 +93,14 @@ rift_found(struct xrt_prober *xp,
 	}
 
 	struct rift_hmd *hmd = NULL;
-	int created_devices = rift_devices_create(hmd_dev, radio_dev, variant, (char *)serial_number, &hmd, out_xdevs);
+	int created_devices = rift_devices_create( //
+	    hmd_dev,                               //
+	    radio_dev,                             //
+	    variant,                               //
+	    (char *)serial_number,                 //
+	    NULL,                                  //
+	    &hmd,                                  //
+	    out_xdevs);                            //
 	if (created_devices < 0) {
 		return -1;
 	}

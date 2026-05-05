@@ -1,5 +1,5 @@
 // Copyright 2020-2025, Collabora, Ltd.
-// Copyright 2025, Beyley Cardellio
+// Copyright 2025-2026, Beyley Cardellio
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -18,6 +18,7 @@
 #include "xrt/xrt_defines.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_results.h"
+#include "xrt/xrt_compiler.h"
 
 #include "math/m_relation_history.h"
 #include "math/m_clock_tracking.h"
@@ -25,6 +26,8 @@
 #include "math/m_vec2.h"
 #include "math/m_vec3.h"
 #include "math/m_mathinclude.h" // IWYU pragma: keep
+
+#include "tracking/t_dead_reckoning.h"
 
 #include "util/u_debug.h"
 #include "util/u_device.h"
@@ -153,16 +156,39 @@ rift_sensor_thread_tick(struct rift_hmd *hmd)
 			break;
 		}
 
+		timepoint_ns last_remote_exposure_time_ns = hmd->last_remote_exposure_time_ns;
+
 		// Update the exposure time
 		uint32_t remote_exposure_delta_us = report.tracking_timestamp - hmd->last_remote_exposure_time_us;
 		hmd->last_remote_exposure_time_us = report.tracking_timestamp;
 		hmd->last_remote_exposure_time_ns += (timepoint_ns)remote_exposure_delta_us * OS_NS_PER_USEC;
+
+		uint16_t tracking_count_delta = report.tracking_count - hmd->last_tracking_count;
+		hmd->last_tracking_count = report.tracking_count;
+		hmd->exposure_counter += tracking_count_delta;
 
 		if (remote_exposure_delta_us > 0) {
 			os_thread_helper_lock(&hmd->sensor_thread);
 			m_clock_windowed_skew_tracker_to_local(hmd->clock_tracker, hmd->last_remote_exposure_time_ns,
 			                                       &hmd->last_local_exposure_time_ns);
 			os_thread_helper_unlock(&hmd->sensor_thread);
+
+			if (hmd->timing_source) {
+				struct t_timing_event event = {
+				    .type = T_TIMING_EVENT_TYPE_CAMERA_EXPOSURE_START,
+				    .camera_exposure_start =
+				        {
+				            .sequence_id = hmd->exposure_counter,
+				            .timestamp_ns = hmd->last_local_exposure_time_ns,
+				            .frame_period_ns = (time_duration_ns)(hmd->last_remote_exposure_time_ns -
+				                                                  last_remote_exposure_time_ns),
+				            .exposure_time_ns =
+				                (time_duration_ns)(hmd->tracking.exposure_length * OS_NS_PER_USEC),
+				        },
+				};
+
+				rift_timing_source_push_event(hmd->timing_source, &event);
+			}
 		}
 
 		if (report.num_samples > 1)
@@ -198,10 +224,29 @@ rift_sensor_thread_tick(struct rift_hmd *hmd)
 				break;
 			}
 
-			hmd->last_sample_local_timestamp_ns = sample_local_timestamp_ns;
+			os_thread_helper_lock(&hmd->sensor_thread);
+			{
+				// update the IMU for that sample
+				m_imu_3dof_update(&hmd->fusion, sample_local_timestamp_ns, &accel, &gyro);
 
-			// update the IMU for that sample
-			m_imu_3dof_update(&hmd->fusion, sample_local_timestamp_ns, &accel, &gyro);
+				// Ensure these are monotonic. Sometimes due to the super fast IMU and clock jitter
+				// we might estimate samples out of order a bit.
+				if (sample_local_timestamp_ns > hmd->last_ff_timestamp_ns) {
+					m_ff_vec3_f32_push(hmd->gyro_ff, &gyro, sample_local_timestamp_ns);
+					m_ff_vec3_f32_push(hmd->accel_ff, &accel, sample_local_timestamp_ns);
+
+					if (!hmd->fusion.grav.is_accel) {
+						double grav_length = m_vec3_len(accel);
+						m_ff_f64_push(hmd->gravity_correction, &grav_length,
+						              sample_local_timestamp_ns);
+					}
+
+					hmd->last_ff_timestamp_ns = sample_local_timestamp_ns;
+				}
+			}
+			os_thread_helper_unlock(&hmd->sensor_thread);
+
+			hmd->last_sample_local_timestamp_ns = sample_local_timestamp_ns;
 
 			// push the pose of the IMU for that sample, doing so per sample
 			struct xrt_space_relation relation = XRT_SPACE_RELATION_ZERO;
@@ -210,6 +255,7 @@ rift_sensor_thread_tick(struct rift_hmd *hmd)
 			    XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT);
 			relation.pose.orientation = hmd->fusion.rot;
 			relation.angular_velocity = gyro;
+
 			m_relation_history_push(hmd->relation_hist, &relation, sample_local_timestamp_ns);
 		}
 
@@ -409,6 +455,45 @@ read_led_model_err:
 
 #undef PARSE_MICROMETER_TRIPLET
 
+static void
+get_raw_pose(struct rift_hmd *hmd, timepoint_ns when_ns, struct xrt_space_relation *out_relation)
+{
+	struct xrt_space_relation relation = XRT_SPACE_RELATION_ZERO;
+	if (hmd->use_constellation_poses) {
+		struct xrt_space_relation constellation_relation = XRT_SPACE_RELATION_ZERO;
+		timepoint_ns constellation_when_ns;
+		if (m_relation_history_get_latest(hmd->raw_constellation_relation_hist, &constellation_when_ns,
+		                                  &constellation_relation)) {
+			os_thread_helper_lock(&hmd->sensor_thread);
+
+			double gravity_correction_len;
+
+			struct xrt_vec3 gravity_correction = {0, -MATH_GRAVITY_M_S2, 0};
+			if (m_ff_f64_filter(hmd->gravity_correction, 0, when_ns, &gravity_correction_len) > 0) {
+				gravity_correction.y = -gravity_correction_len;
+			}
+
+			if (!t_apply_dead_reckoning(hmd->gyro_ff,            //
+			                            hmd->accel_ff,           //
+			                            &gravity_correction,     //
+			                            when_ns,                 //
+			                            &constellation_relation, //
+			                            constellation_when_ns,   //
+			                            &relation)) {
+				relation = constellation_relation;
+			}
+
+			os_thread_helper_unlock(&hmd->sensor_thread);
+		}
+	}
+
+	if (relation.relation_flags == 0) {
+		m_relation_history_get(hmd->relation_hist, when_ns, &relation);
+	}
+
+	*out_relation = relation;
+}
+
 /*
  *
  * Driver functions
@@ -420,16 +505,27 @@ rift_hmd_destroy(struct xrt_device *xdev)
 {
 	struct rift_hmd *hmd = rift_hmd(xdev);
 
+	if (hmd->constellation_tracker) {
+		t_constellation_tracker_remove_device(hmd->constellation_tracker, hmd->constellation_device_id);
+	}
+
 	// Remove the variable tracking.
 	u_var_remove_root(hmd);
 
-	if (hmd->sensor_thread.initialized)
+	if (hmd->sensor_thread.initialized) {
 		os_thread_helper_destroy(&hmd->sensor_thread);
+	}
 
-	if (hmd->clock_tracker)
+	if (hmd->clock_tracker) {
 		m_clock_windowed_skew_tracker_destroy(hmd->clock_tracker);
+	}
 
 	m_relation_history_destroy(&hmd->relation_hist);
+	m_relation_history_destroy(&hmd->raw_constellation_relation_hist);
+
+	m_ff_vec3_f32_free(&hmd->gyro_ff);
+	m_ff_vec3_f32_free(&hmd->accel_ff);
+	m_ff_f64_free(&hmd->gravity_correction);
 
 	// Only free if we are definitely the ones that allocated it
 	if (hmd->lens_distortions && debug_get_bool_option_rift_use_firmware_distortion())
@@ -480,13 +576,7 @@ rift_hmd_get_tracked_pose(struct xrt_device *xdev,
 
 	struct xrt_space_relation relation = XRT_SPACE_RELATION_ZERO;
 
-	enum m_relation_history_result history_result =
-	    m_relation_history_get(hmd->relation_hist, at_timestamp_ns, &relation);
-	if (history_result == M_RELATION_HISTORY_RESULT_INVALID) {
-		// If you get in here, it means you did not push any poses into the relation history.
-		// You may want to handle this differently.
-		HMD_ERROR(hmd, "Internal error: no poses pushed?");
-	}
+	get_raw_pose(hmd, at_timestamp_ns, &relation);
 
 	if ((relation.relation_flags & XRT_SPACE_RELATION_ORIENTATION_VALID_BIT) != 0) {
 		// If we provide an orientation, make sure that it is normalized.
@@ -553,11 +643,40 @@ rift_hmd_get_presence(struct xrt_device *xdev, bool *out_presence)
 	return XRT_SUCCESS;
 }
 
+static void
+rift_hmd_constellation_tracking_source_get_tracked_pose(struct t_constellation_tracker_tracking_source *tracking_source,
+                                                        timepoint_ns when_ns,
+                                                        struct xrt_space_relation *out_relation)
+{
+	struct rift_hmd *hmd = container_of(tracking_source, struct rift_hmd, constellation_tracking_source);
+
+	*out_relation = (struct xrt_space_relation)XRT_SPACE_RELATION_ZERO;
+
+	get_raw_pose(hmd, when_ns, out_relation);
+}
+
+void
+rift_hmd_constellation_device_push_constellation_tracker_sample(struct t_constellation_tracker_device *connection,
+                                                                struct t_constellation_tracker_sample *sample)
+{
+	struct rift_hmd *hmd = container_of(connection, struct rift_hmd, constellation_device);
+
+	struct xrt_space_relation relation = XRT_SPACE_RELATION_ZERO;
+	relation.pose = sample->pose;
+	relation.relation_flags = XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
+	                          XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT |
+	                          XRT_SPACE_RELATION_POSITION_VALID_BIT;
+
+	m_relation_history_push_with_motion_estimation(hmd->raw_constellation_relation_hist, &relation,
+	                                               sample->timestamp_ns);
+}
+
 int
 rift_devices_create(struct os_hid_device *hmd_dev,
                     struct os_hid_device *radio_dev,
                     enum rift_variant variant,
                     const char *serial_number,
+                    struct xrt_frame_context *xfctx,
                     struct rift_hmd **out_hmd,
                     struct xrt_device **out_xdevs)
 {
@@ -575,6 +694,17 @@ rift_devices_create(struct os_hid_device *hmd_dev,
 	hmd->variant = variant;
 	hmd->hmd_dev = hmd_dev;
 	hmd->radio_dev = radio_dev;
+
+	m_ff_vec3_f32_alloc(&hmd->gyro_ff, 4096);
+	m_ff_vec3_f32_alloc(&hmd->accel_ff, 4096);
+	m_ff_f64_alloc(&hmd->gravity_correction, 4096);
+
+	if (xfctx) {
+		result = rift_timing_source_init(xfctx, &hmd->timing_source);
+		if (result < 0) {
+			HMD_ERROR(hmd, "Failed to initialize timing source, reason %d", result);
+		}
+	}
 
 	result = rift_send_keepalive(hmd);
 	if (result < 0) {
@@ -700,28 +830,27 @@ rift_devices_create(struct os_hid_device *hmd_dev,
 		rift_fill_in_default_distortions(hmd);
 	}
 
-	struct rift_tracking_report tracking;
-	result = rift_get_tracking_report(hmd, &tracking);
+	result = rift_get_tracking_report(hmd, &hmd->tracking);
 	if (result == 0) {
-		tracking.flags = RIFT_TRACKING_ENABLE | RIFT_TRACKING_USE_CARRIER;
-		tracking.pattern_idx = 0xff;
+		hmd->tracking.flags = RIFT_TRACKING_ENABLE | RIFT_TRACKING_USE_CARRIER;
+		hmd->tracking.pattern_idx = 0xff;
 
-		tracking.vsync_offset = 0;
-		tracking.duty_cycle = 0x7f;
+		hmd->tracking.vsync_offset = 0;
+		hmd->tracking.duty_cycle = 0x7f;
 
 		switch (hmd->variant) {
 		default:
 		case RIFT_VARIANT_DK2:
-			tracking.exposure_length = 350;
-			tracking.frame_interval = 16666;
+			hmd->tracking.exposure_length = 350;
+			hmd->tracking.frame_interval = 16666;
 			break;
 		case RIFT_VARIANT_CV1:
-			tracking.exposure_length = 399;
-			tracking.frame_interval = 19200;
+			hmd->tracking.exposure_length = 399;
+			hmd->tracking.frame_interval = 19200;
 			break;
 		}
 
-		result = rift_set_tracking(hmd, &tracking);
+		result = rift_set_tracking(hmd, &hmd->tracking);
 		if (result < 0) {
 			HMD_ERROR(hmd, "Failed to enable tracking.");
 		}
@@ -734,6 +863,10 @@ rift_devices_create(struct os_hid_device *hmd_dev,
 	} else {
 		HMD_DEBUG(hmd, "Read LED model from Rift.");
 	}
+
+	hmd->constellation_tracking_source.get_tracked_pose = rift_hmd_constellation_tracking_source_get_tracked_pose;
+	hmd->constellation_device.push_constellation_tracker_sample =
+	    rift_hmd_constellation_device_push_constellation_tracker_sample;
 
 	// fill in extra display info about the headset
 
@@ -787,6 +920,7 @@ rift_devices_create(struct os_hid_device *hmd_dev,
 	u_truncate_snprintf(hmd->base.serial, XRT_DEVICE_NAME_LEN, "%s", serial_number);
 
 	m_relation_history_create(&hmd->relation_hist);
+	m_relation_history_create(&hmd->raw_constellation_relation_hist);
 
 	// Setup input.
 	hmd->base.name = XRT_DEVICE_GENERIC_HMD;
@@ -886,13 +1020,6 @@ rift_devices_create(struct os_hid_device *hmd_dev,
 		break;
 	}
 	}
-
-	// Just put an initial identity value in the tracker
-	struct xrt_space_relation identity = XRT_SPACE_RELATION_ZERO;
-	identity.relation_flags = (enum xrt_space_relation_flags)(XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
-	                                                          XRT_SPACE_RELATION_ORIENTATION_VALID_BIT);
-	uint64_t now = os_monotonic_get_ns();
-	m_relation_history_push(hmd->relation_hist, &identity, now);
 
 	m_imu_3dof_init(&hmd->fusion, M_IMU_3DOF_USE_GRAVITY_DUR_20MS);
 	hmd->clock_tracker = m_clock_windowed_skew_tracker_alloc(64);
@@ -1006,4 +1133,37 @@ rift_hmd_frame_timestamp_callback(void *user_data, timepoint_ns *timestamp, uint
 	os_thread_helper_unlock(&hmd->sensor_thread);
 
 	return true;
+}
+
+int
+rift_add_to_constellation_tracker(struct rift_hmd *hmd, struct t_constellation_tracker *tracker)
+{
+	struct t_constellation_tracker_device_params params = {
+	    .led_model = hmd->led_model,
+	    .tracking_source = &hmd->constellation_tracking_source,
+	};
+
+	hmd->constellation_tracker = tracker;
+
+	int ret = t_constellation_tracker_add_device(tracker, &params, &hmd->constellation_device,
+	                                             &hmd->constellation_device_id);
+	if (ret < 0) {
+		HMD_ERROR(hmd, "Failed to add Rift HMD to constellation tracker, reason %d", ret);
+		return ret;
+	}
+
+	// Mark that we're using constellation poses now
+	hmd->use_constellation_poses = true;
+
+	return 0;
+}
+
+struct t_timing_event_source *
+rift_hmd_get_timing_event_source(struct rift_hmd *hmd)
+{
+	if (hmd->timing_source != NULL) {
+		return &hmd->timing_source->base;
+	}
+
+	return NULL;
 }

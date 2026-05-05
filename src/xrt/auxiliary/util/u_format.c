@@ -1,13 +1,15 @@
-// Copyright 2019, Collabora, Ltd.
+// Copyright 2019-2026, Collabora, Ltd.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
  * @brief  Format helpers and block code.
  * @author Jakob Bornecrantz <jakob@collabora.com>
+ * @author Simon Zeni <simon.zeni@collabora.com>
  * @ingroup aux_util
  */
 
 #include "util/u_format.h"
+#include "util/u_logging.h"
 
 #include <assert.h>
 
@@ -30,8 +32,10 @@ u_format_str(enum xrt_format f)
 	case XRT_FORMAT_UYVY422: return "XRT_FORMAT_UYVY422";
 	case XRT_FORMAT_MJPEG: return "XRT_FORMAT_MJPEG";
 	case XRT_FORMAT_BC4: return "XRT_FORMAT_BC4";
-	default: assert(!"unsupported format"); return 0;
 	}
+
+	U_LOG_E("Unknown format %d", f);
+	return NULL;
 }
 
 bool
@@ -56,8 +60,10 @@ u_format_is_blocks(enum xrt_format f)
 	case XRT_FORMAT_MJPEG:
 		// Compressed
 		return false;
-	default: assert(!"unsupported format"); return 0;
 	}
+
+	U_LOG_E("Unknown format %d", f);
+	return false;
 }
 
 uint32_t
@@ -85,8 +91,12 @@ u_format_block_width(enum xrt_format f)
 	case XRT_FORMAT_BC4:
 		// four pixels wide
 		return 4;
-	default: assert(!"unsupported format"); return 0;
+	case XRT_FORMAT_MJPEG:
+	default: break;
 	}
+
+	U_LOG_E("Unknown format %d", f);
+	return 0;
 }
 
 uint32_t
@@ -112,8 +122,12 @@ u_format_block_height(enum xrt_format f)
 	case XRT_FORMAT_BC4:
 		// four pixels high
 		return 4;
-	default: assert(!"unsupported format"); return 0;
+	case XRT_FORMAT_MJPEG:
+	default: break;
 	}
+
+	U_LOG_E("Unknown format %d", f);
+	return 0;
 }
 
 size_t
@@ -141,8 +155,12 @@ u_format_block_size(enum xrt_format f)
 		return 4;
 	case XRT_FORMAT_BC4: // 64 bits.
 	case XRT_FORMAT_BITMAP_8X8: return 8;
-	default: assert(!"unsupported format"); return 0;
+	case XRT_FORMAT_MJPEG:
+	default: break;
 	}
+
+	U_LOG_E("Unknown format %d", f);
+	return 0;
 }
 
 void
@@ -151,6 +169,12 @@ u_format_size_for_dimensions(enum xrt_format f, uint32_t width, uint32_t height,
 	uint32_t sw = u_format_block_width(f);
 	uint32_t sh = u_format_block_height(f);
 	size_t block_size = u_format_block_size(f);
+
+	if (sw == 0 || sh == 0 || block_size == 0) {
+		*out_stride = 0;
+		*out_size = 0;
+		return;
+	}
 
 	// Round up
 	uint32_t num_blocks_x = (width + (sw - 1)) / sw;

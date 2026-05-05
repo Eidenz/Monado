@@ -23,7 +23,7 @@
 #include "t_dead_reckoning.h"
 
 
-void
+bool
 t_apply_dead_reckoning(struct m_ff_vec3_f32 *gyro_ff,
                        struct m_ff_vec3_f32 *accel_ff,
                        const struct xrt_vec3 *gravity_correction,
@@ -80,10 +80,26 @@ t_apply_dead_reckoning(struct m_ff_vec3_f32 *gyro_ff,
 			// g = prev_g + ((when_ns - prev_ts) / (ts - prev_ts)) * (g - prev_g);
 			ts = when_ns; // clamp ts to when_ns
 		}
-		if (using_accel) {
-			assert(got && gyro_ts == accel_ts && "Failure getting synced gyro and accel samples");
+
+		// No SLAM samples within the window of the gyro buffer.
+		if (!got) {
+			U_LOG_T("Failed to get %s sample at index %d for timestamp %" PRIu64,
+			        using_accel ? "gyro and accel" : "gyro", i, ts);
+			return false;
 		}
-		assert(ts >= base_rel_ts && "Accessing imu sample that is older than latest SLAM pose");
+
+		if (using_accel && gyro_ts != accel_ts) {
+			U_LOG_E("Failure getting synced gyro and accel samples at index %d: gyro ts %" PRIu64
+			        " accel ts %" PRIu64,
+			        i, gyro_ts, accel_ts);
+			return false;
+		}
+
+		if (ts < base_rel_ts) {
+			U_LOG_E("IMU sample at %" PRIu64 " is older than latest SLAM pose at %" PRIu64, ts,
+			        base_rel_ts);
+			return false;
+		}
 
 		// Update time
 		float dt = (float)time_ns_to_s(ts - integ_rel_ts);
@@ -121,4 +137,6 @@ t_apply_dead_reckoning(struct m_ff_vec3_f32 *gyro_ff,
 	m_predict_relation(&integ_rel, last_imu_to_now_dt, &predicted_relation);
 
 	*out_relation = predicted_relation;
+
+	return true;
 }

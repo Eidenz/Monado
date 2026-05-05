@@ -250,6 +250,10 @@ ht_device_create(struct xrt_frame_context *xfctx,
 	}
 
 	sync = t_hand_tracking_sync_mercury_create(calib, create_info, path);
+	if (sync == NULL) {
+		U_LOG_E("Failed to create hand tracking sync!");
+		return -1;
+	}
 
 	struct ht_device *htd = ht_device_create_common(calib, false, xfctx, sync);
 

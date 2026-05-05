@@ -115,6 +115,7 @@ endif()
 if(ANDROID)
 	target_sources(comp_main PRIVATE comp_window_android.c)
 	target_link_libraries(comp_main PRIVATE aux_ogl aux_android)
+	target_compile_options(comp_main PRIVATE -Wno-gnu-offsetof-extensions)
 endif()
 
 target_link_libraries(comp_main PRIVATE comp_multi)

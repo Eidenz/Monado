@@ -990,6 +990,7 @@ struct xrt_begin_session_info
 	bool fb_face_tracking2_enabled;
 	bool meta_body_tracking_full_body_enabled;
 	bool meta_body_tracking_calibration_enabled;
+	bool meta_body_tracking_fidelity_enabled;
 	bool android_face_tracking_enabled;
 };
 

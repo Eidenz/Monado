@@ -35,8 +35,10 @@ rift_sensor_enable_exposure_sync(struct rift_sensor_context *context, struct rif
 int
 rift_sensor_context_start(struct rift_sensor_context *context);
 
-ssize_t
-rift_sensor_context_get_sensors(struct rift_sensor_context *context, struct rift_sensor ***out_sensors);
+int
+rift_sensor_context_get_sensors(struct rift_sensor_context *context,
+                                struct rift_sensor ***out_sensors,
+                                uint32_t *out_count);
 
 struct xrt_fs *
 rift_sensor_get_frame_server(struct rift_sensor *sensor);

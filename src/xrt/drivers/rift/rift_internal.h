@@ -18,6 +18,7 @@
 #include "math/m_api.h"
 #include "math/m_mathinclude.h"
 #include "math/m_clock_tracking.h"
+#include "math/m_filter_fifo.h"
 
 #include "tracking/t_imu.h"
 #include "tracking/t_constellation.h"
@@ -30,6 +31,7 @@
 #include <assert.h>
 
 #include "rift_interface.h"
+#include "rift_timing_source.h"
 
 
 #define HMD_TRACE(hmd, ...) U_LOG_XDEV_IFL_T(&hmd->base, hmd->log_level, __VA_ARGS__)
@@ -885,6 +887,8 @@ union rift_radio_command_data {
  * A rift HMD device.
  *
  * @implements xrt_device
+ * @implements t_constellation_tracker_device
+ * @implements t_constellation_tracker_tracking_source
  */
 struct rift_hmd
 {
@@ -894,6 +898,8 @@ struct rift_hmd
 
 	// has built-in mutex so thread safe
 	struct m_relation_history *relation_hist;
+
+	bool use_constellation_poses;
 
 	struct os_hid_device *hmd_dev;
 	struct os_hid_device *radio_dev;
@@ -905,9 +911,13 @@ struct rift_hmd
 	timepoint_ns last_sample_local_timestamp_ns;
 
 	uint32_t last_remote_exposure_time_us;
+	//! The time of the last exposure in remote time, only accessed from the sensor thread, not locked.
 	timepoint_ns last_remote_exposure_time_ns;
 	//! The time of the last exposure, locked by sensor_thread.
 	timepoint_ns last_local_exposure_time_ns;
+	//! A total counter for how many exposures have occurred
+	uint32_t exposure_counter;
+	uint16_t last_tracking_count;
 
 	struct m_imu_3dof fusion;
 	struct m_clock_windowed_skew_tracker *clock_tracker;
@@ -916,6 +926,10 @@ struct rift_hmd
 	enum rift_variant variant;
 	struct rift_config_report config;
 	struct rift_display_info_report display_info;
+
+	struct rift_timing_source *timing_source;
+
+	struct rift_tracking_report tracking;
 
 	const struct rift_lens_distortion *lens_distortions;
 	uint16_t num_lens_distortions;
@@ -937,6 +951,17 @@ struct rift_hmd
 	int device_count;
 	int added_devices;
 	struct xrt_device *devices[4]; // left touch, right touch, tracked object, remote
+
+	struct t_constellation_tracker *constellation_tracker;
+	struct t_constellation_tracker_device constellation_device;
+	struct t_constellation_tracker_tracking_source constellation_tracking_source;
+	t_constellation_device_id_t constellation_device_id;
+
+	struct m_ff_vec3_f32 *gyro_ff;
+	struct m_ff_vec3_f32 *accel_ff;
+	struct m_relation_history *raw_constellation_relation_hist;
+	timepoint_ns last_ff_timestamp_ns;
+	struct m_ff_f64 *gravity_correction;
 
 	struct t_constellation_tracker_led_model led_model;
 	struct xrt_pose T_imu_device;
