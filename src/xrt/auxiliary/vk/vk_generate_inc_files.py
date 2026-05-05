@@ -190,6 +190,8 @@ def get_device_cmds():
         Cmd("vkSetDebugUtilsObjectTagEXT", requires=("VK_EXT_debug_utils",)),
         None,
         Cmd("vkWaitForPresentKHR", requires=("VK_KHR_present_wait",)),
+        None,
+        Cmd("vkGetSwapchainStatusKHR", requires=("VK_KHR_shared_presentable_image",)),
     ]
 
 
@@ -286,12 +288,16 @@ def get_instance_cmds():
         Cmd("vkCreateDebugUtilsMessengerEXT", requires=("VK_EXT_debug_utils",)),
         Cmd("vkSubmitDebugUtilsMessageEXT", requires=("VK_EXT_debug_utils",)),
         Cmd("vkDestroyDebugUtilsMessengerEXT", requires=("VK_EXT_debug_utils",)),
+        None,
+        Cmd("vkGetPhysicalDeviceSurfaceCapabilities2KHR", requires=("VK_KHR_get_surface_capabilities2",)),
+        Cmd("vkGetPhysicalDeviceSurfaceFormats2KHR", requires=("VK_KHR_get_surface_capabilities2",)),
     ]
 
 
 # Sorted KHR, EXT, Vendor, internally alphabetically
 INSTANCE_EXTENSIONS_TO_CHECK = [
     "VK_KHR_external_memory_capabilities",
+    "VK_KHR_get_surface_capabilities2",
     "VK_KHR_portability_enumeration",
     "VK_EXT_display_surface_counter",
     "VK_EXT_swapchain_colorspace",
@@ -312,6 +318,7 @@ DEVICE_EXTENSIONS_TO_CHECK = [
     "VK_KHR_maintenance4",
     "VK_KHR_present_wait",
     "VK_KHR_portability_subset",
+    "VK_KHR_shared_presentable_image",
     "VK_KHR_synchronization2",
     "VK_KHR_timeline_semaphore",
     "VK_KHR_video_maintenance1",

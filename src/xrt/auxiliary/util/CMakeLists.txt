@@ -96,6 +96,8 @@ add_library(
 	u_system_helpers.c
 	u_system_helpers.h
 	u_template_historybuf.hpp
+	u_thread_priority.c
+	u_thread_priority.h
 	u_time.cpp
 	u_time.h
 	u_trace_marker.c
@@ -145,6 +147,11 @@ endif()
 # Only uses POSIX/Linux libraries, doesn't add anything extra.
 if(XRT_HAVE_LINUX OR ANDROID)
 	target_sources(aux_util PRIVATE u_linux.c u_linux.h)
+endif()
+
+# Only uses Android NDK libraries, doesn't add anything extra.
+if(ANDROID)
+	target_sources(aux_util PRIVATE u_android.c u_android.h)
 endif()
 
 # Is basically used everywhere, unavoidable.
