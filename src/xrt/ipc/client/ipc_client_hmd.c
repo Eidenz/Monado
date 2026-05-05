@@ -142,7 +142,7 @@ ipc_client_hmd_get_view_poses(struct xrt_device *xdev,
 	ipc_client_hmd_t *ich = ipc_client_hmd(xdev);
 
 	// Artificial limit.
-	if (view_count == 0 || view_count <= IPC_MAX_RAW_VIEWS) {
+	if (view_count == 0 || view_count > IPC_MAX_RAW_VIEWS) {
 		IPC_ERROR(ich->ipc_c, "Cannot handle %u view_count, %u or less supported.", view_count,
 		          (uint32_t)IPC_MAX_RAW_VIEWS);
 		return XRT_ERROR_IPC_FAILURE;
