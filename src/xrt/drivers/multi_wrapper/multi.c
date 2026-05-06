@@ -13,6 +13,7 @@
 #include "util/u_misc.h"
 #include "util/u_debug.h"
 #include "util/u_device.h"
+#include "util/u_var.h"
 
 #include "multi.h"
 
@@ -135,6 +136,8 @@ destroy(struct xrt_device *xdev)
 	// we replaced the target device with us, but no the tracker
 	// xrt_device_destroy(&d->tracking_override.tracker);
 
+	u_var_remove_root(d);
+
 	free(d);
 }
 
@@ -230,7 +233,7 @@ compute_distortion(struct xrt_device *xdev, uint32_t view, float u, float v, str
 {
 	struct multi_device *d = (struct multi_device *)xdev;
 	struct xrt_device *target = d->tracking_override.target;
-	return target->compute_distortion(target, view, u, v, result);
+	return xrt_device_compute_distortion(target, view, u, v, result);
 }
 
 static xrt_result_t
@@ -239,6 +242,14 @@ update_inputs(struct xrt_device *xdev)
 	struct multi_device *d = (struct multi_device *)xdev;
 	struct xrt_device *target = d->tracking_override.target;
 	return xrt_device_update_inputs(target);
+}
+
+static xrt_result_t
+get_battery_status(struct xrt_device *xdev, bool *out_present, bool *out_charging, float *out_charge)
+{
+	struct multi_device *d = (struct multi_device *)xdev;
+	struct xrt_device *target = d->tracking_override.target;
+	return xrt_device_get_battery_status(target, out_present, out_charging, out_charge);
 }
 
 
@@ -278,13 +289,17 @@ multi_create_tracking_override(enum xrt_tracking_override_type override_type,
 	d->tracking_override.tracker = tracking_override_tracker;
 	d->tracking_override.input_name = tracking_override_input_name;
 
-	d->base.get_tracked_pose = get_tracked_pose;
-	d->base.destroy = destroy;
+	u_device_populate_function_pointers(&d->base, get_tracked_pose, destroy);
+
 	d->base.get_hand_tracking = get_hand_tracking;
 	d->base.set_output = set_output;
 	d->base.update_inputs = update_inputs;
 	d->base.compute_distortion = compute_distortion;
 	d->base.get_view_poses = get_view_poses;
+	d->base.get_battery_status = get_battery_status;
+
+	u_var_add_root(d, "Multi Tracking Override", true);
+	u_var_add_pose(d, &d->tracking_override.offset_inv, "Offset Inverse");
 
 	return &d->base;
 }
