@@ -6,7 +6,7 @@
  * @author Rylie Pavlik <rylie.pavlik@collabora.com>
  */
 
-#include "oxr_handle.h"
+#include "oxr_handle_base.h"
 
 #include "util/u_debug.h"
 #include "util/u_misc.h"

@@ -6,6 +6,7 @@
  * @author Korcan Hussein <korcan.hussein@collabora.com>
  * @ingroup oxr_api
  */
+
 #include "util/u_trace_marker.h"
 
 #include "oxr_objects.h"
@@ -13,8 +14,9 @@
 
 #include "oxr_api_funcs.h"
 #include "oxr_api_verify.h"
-#include "oxr_handle.h"
+#include "oxr_handle_base.h"
 #include "oxr_defines.h"
+
 
 XRAPI_ATTR XrResult XRAPI_CALL
 oxr_xrPollFutureEXT(XrInstance instance, const XrFuturePollInfoEXT *pollInfo, XrFuturePollResultEXT *pollResult)

@@ -7,12 +7,12 @@
  * @ingroup oxr_api
  */
 
-#include "oxr_objects.h"
-#include "oxr_logger.h"
-#include "oxr_handle.h"
-
 #include "util/u_debug.h"
 #include "util/u_trace_marker.h"
+
+#include "oxr_objects.h"
+#include "oxr_logger.h"
+#include "oxr_handle_base.h"
 
 #include "oxr_api_funcs.h"
 #include "oxr_api_verify.h"
@@ -20,6 +20,7 @@
 #include "oxr_subaction.h"
 
 #include <stdio.h>
+
 
 XrResult
 oxr_xrCreateGeometryInstanceFB(XrSession session,

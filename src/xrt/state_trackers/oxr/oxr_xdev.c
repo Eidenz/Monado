@@ -8,6 +8,8 @@
  * @ingroup oxr_main
  */
 
+#include "xrt/xrt_defines.h"
+
 #include "os/os_time.h"
 
 #include "math/m_api.h"
@@ -16,10 +18,9 @@
 #include "util/u_time.h"
 #include "util/u_misc.h"
 
+#include "oxr_handle_base.h"
 #include "oxr_objects.h"
 #include "oxr_logger.h"
-#include "oxr_handle.h"
-#include "xrt/xrt_defines.h"
 
 #include <stdio.h>
 

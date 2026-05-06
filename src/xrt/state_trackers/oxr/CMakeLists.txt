@@ -43,6 +43,8 @@ add_library(
 	actions/oxr_subaction.h
 	common/oxr_defines.h
 	common/oxr_forward_declarations.h
+	common/oxr_handle_base.c
+	common/oxr_handle_base.h
 	common/oxr_refcounted.h
 	path/oxr_path_store.c
 	path/oxr_path_store.h
@@ -60,7 +62,6 @@ add_library(
 	oxr_event.c
 	oxr_frame_sync.c
 	oxr_frame_sync.h
-	oxr_handle_base.c
 	oxr_instance.c
 	oxr_logger.c
 	oxr_logger.h

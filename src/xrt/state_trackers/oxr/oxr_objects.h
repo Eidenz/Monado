@@ -1,10 +1,12 @@
 // Copyright 2018-2024, Collabora, Ltd.
 // Copyright 2023-2026, NVIDIA CORPORATION.
+// Copyright 2026, Beyley Cardellio
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
  * @brief  The objects representing OpenXR handles, and prototypes for internal functions used in the state tracker.
  * @author Jakob Bornecrantz <jakob@collabora.com>
+ * @author Beyley Cardellio <ep1cm1n10n123@gmail.com>
  * @author Korcan Hussein <korcan.hussein@collabora.com>
  * @ingroup oxr_main
  */
@@ -32,6 +34,7 @@
 
 #include "oxr_extension_support.h"
 #include "oxr_defines.h"
+#include "oxr_handle_base.h"
 #include "oxr_frame_sync.h"
 #include "oxr_forward_declarations.h"
 #include "oxr_refcounted.h"
@@ -109,16 +112,7 @@ extern "C" {
  */
 
 
-#define XRT_MAX_HANDLE_CHILDREN 256
 #define OXR_MAX_BINDINGS_PER_ACTION 32
-
-/*!
- * Function pointer type for a handle destruction function.
- *
- * @relates oxr_handle_base
- */
-typedef XrResult (*oxr_handle_destroyer)(struct oxr_logger *log, struct oxr_handle_base *hb);
-
 
 
 /*
@@ -1074,38 +1068,6 @@ oxr_swapchain_d3d12_create(struct oxr_logger *,
  *
  */
 
-
-/*!
- * Used to hold diverse child handles and ensure orderly destruction.
- *
- * Each object referenced by an OpenXR handle should have one of these as its
- * first element, thus "extending" this class.
- */
-struct oxr_handle_base
-{
-	//! Magic (per-handle-type) value for debugging.
-	uint64_t debug;
-
-	/*!
-	 * Pointer to this object's parent handle holder, if any.
-	 */
-	struct oxr_handle_base *parent;
-
-	/*!
-	 * Array of children, if any.
-	 */
-	struct oxr_handle_base *children[XRT_MAX_HANDLE_CHILDREN];
-
-	/*!
-	 * Current handle state.
-	 */
-	enum oxr_handle_state state;
-
-	/*!
-	 * Destroy the object this handle refers to.
-	 */
-	oxr_handle_destroyer destroy;
-};
 
 /*!
  * Holds the properties that a system supports for a view configuration type.

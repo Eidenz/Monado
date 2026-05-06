@@ -20,7 +20,7 @@
 #include "oxr_hand_tracking.h"
 #include "oxr_api_funcs.h"
 #include "oxr_api_verify.h"
-#include "oxr_handle.h"
+#include "oxr_handle_base.h"
 #include "oxr_chain.h"
 
 

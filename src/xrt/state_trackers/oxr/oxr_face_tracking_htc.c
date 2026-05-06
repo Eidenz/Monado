@@ -8,14 +8,15 @@
  * @ingroup oxr_main
  */
 
+#include "oxr_objects.h"
+#include "oxr_logger.h"
+#include "oxr_handle_base.h"
+#include "oxr_roles.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "oxr_objects.h"
-#include "oxr_logger.h"
-#include "oxr_handle.h"
-#include "oxr_roles.h"
 
 static enum xrt_facial_tracking_type_htc
 oxr_to_xrt_facial_tracking_type_htc(enum XrFacialTrackingTypeHTC ft_type)

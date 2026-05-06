@@ -13,7 +13,7 @@
 #include "oxr_chain.h"
 #include "oxr_objects.h"
 #include "oxr_logger.h"
-#include "oxr_handle.h"
+#include "oxr_handle_base.h"
 #include "oxr_swapchain_common.h"
 #include "oxr_xret.h"
 

@@ -9,12 +9,13 @@
  * @ingroup oxr_main
  */
 
+#include "xrt/xrt_compiler.h"
+
 #include "util/u_debug.h"
 #include "util/u_time.h"
 #include "util/u_misc.h"
-#include "math/m_vec2.h"
 
-#include "xrt/xrt_compiler.h"
+#include "math/m_vec2.h"
 
 #include "oxr_input.h"
 #include "oxr_binding.h"
@@ -23,10 +24,10 @@
 #include "oxr_dpad_state.h"
 #include "oxr_input_transform.h"
 #include "oxr_generated_bindings.h"
+#include "oxr_handle_base.h"
 
 #include "../oxr_objects.h"
 #include "../oxr_logger.h"
-#include "../oxr_handle.h"
 #include "../oxr_two_call.h"
 #include "../oxr_conversions.h"
 #include "../oxr_xret.h"

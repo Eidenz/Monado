@@ -12,7 +12,8 @@
 #pragma once
 
 #include "xrt/xrt_openxr_includes.h"
-#include "oxr_handle.h"
+
+#include "oxr_handle_base.h"
 
 
 /*

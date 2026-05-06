@@ -7,14 +7,15 @@
  * @ingroup oxr_main
  */
 
-#include <stdlib.h>
-
 #include "util/u_debug.h"
 #include "util/u_misc.h"
 
 #include "oxr_objects.h"
 #include "oxr_logger.h"
-#include "oxr_handle.h"
+#include "oxr_handle_base.h"
+
+#include <stdlib.h>
+
 
 static XrResult
 oxr_messenger_destroy(struct oxr_logger *log, struct oxr_handle_base *hb)
