@@ -24,7 +24,14 @@
 // IMU ticks are in thirds of a microsecond, so 1 tick = 333.333... nanoseconds
 #define NS_TO_IMU_TICKS(ns) (((uint64_t)(ns) * 3) / 1000)
 #define IMU_TICKS_TO_NS(ticks) (((uint64_t)(ticks) * 1000) / 3)
+
+#define PERIOD_ID_TO_DURATION_NS(period_id) (time_duration_ns)(IMU_TICKS_TO_NS(150LLU * (uint64_t)period_id + 1250))
+// @note: the +1 is to ensure things round correctly when dealing with converting to and back
+#define DURATION_NS_TO_PERIOD_ID(duration_ns) (uint8_t)(((NS_TO_IMU_TICKS(duration_ns + 1) - 1250) / 150LLU) & 0xFF)
 // clang-format on
+
+#define MIN_PERIOD_ID 1
+#define MAX_PERIOD_ID 42
 
 #define PCM_SAMPLE_RATE 3000
 #define PCM_HAPTIC_BUF_SIZE 32

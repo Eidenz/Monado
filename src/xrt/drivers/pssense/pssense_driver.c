@@ -21,6 +21,7 @@
 #include "tracking/t_constellation.h"
 
 #include "constellation/t_constellation_tracker.h"
+#include "constellation/t_led_sync_refinement.h"
 
 #include "util/u_var.h"
 #include "util/u_debug.h"
@@ -224,6 +225,8 @@ struct pssense_device
 
 		uint32_t device_ticks_last;
 		uint64_t device_ticks_total;
+
+		uint32_t last_sent_host_timestamp_us;
 	} timing;
 
 	struct
@@ -248,6 +251,13 @@ struct pssense_device
 		bool use_constellation;
 		t_constellation_device_id_t constellation_device_id;
 		struct m_relation_history *constellation_relation_history;
+
+		struct t_led_sync_refinement led_sync_refinement;
+		uint8_t period_id;
+
+		bool led_sync_sample_needs_marking;
+		bool led_sync_sample_needs_sending;
+		struct t_led_sync_sample latest_led_sync_sample;
 	} tracking;
 
 	enum
@@ -599,6 +609,14 @@ pssense_handle_read(struct pssense_device *pssense)
 
 	os_thread_helper_lock(&pssense->controller_thread);
 
+	// Mark the LED sync refinement sample as applied
+	uint32_t latest_host_send_time = __le32_to_cpu(data.host_timestamp);
+	if (latest_host_send_time != pssense->timing.last_sent_host_timestamp_us &&
+	    pssense->tracking.led_sync_sample_needs_marking) {
+		t_led_sync_mark_latest_sample_applied(&pssense->tracking.led_sync_refinement, recv_time_ns);
+		pssense->tracking.led_sync_sample_needs_marking = false;
+	}
+
 	// Update the clock offset from accumulated IMU time vs host receive time.
 	// Corresponds to PSVR2TK's libpad_deviceToHostHook + SenseController::AddTimestampOffsetSample.
 	// See: PSVR2Toolkit/projects/psvr2_openvr_driver_ex/libpad_hooks.cpp, sense_controller.h
@@ -669,8 +687,10 @@ pssense_send_output_report_locked(struct pssense_device *pssense)
 
 	pssense->output.next_seq_no = (pssense->output.next_seq_no + 1) % 16;
 
+	uint32_t host_send_ts = os_monotonic_get_ns() / U_TIME_1US_IN_NS;
+
 	// Set the host timestamp as *close* as possible to us sending the packet
-	report.settings.host_timestamp_send_time_us = __cpu_to_le32(os_monotonic_get_ns() / U_TIME_1US_IN_NS);
+	report.settings.host_timestamp_send_time_us = __cpu_to_le32(host_send_ts);
 
 	uint32_t crc = crc32_le(0, &OUTPUT_REPORT_CRC32_SEED, 1);
 	crc = crc32_le(crc, (uint8_t *)&report, sizeof(struct pssense_ps5_output_report) - 4);
@@ -685,6 +705,12 @@ pssense_send_output_report_locked(struct pssense_device *pssense)
 	if (ret != sizeof(struct pssense_ps5_output_report)) {
 		PSSENSE_WARN(pssense, "Failed to send output report: %d", ret);
 		return ret < 0 ? ret : -EIO;
+	}
+
+	if (pssense->tracking.led_sync_sample_needs_sending) {
+		pssense->timing.last_sent_host_timestamp_us = host_send_ts;
+		pssense->tracking.led_sync_sample_needs_sending = false;
+		pssense->tracking.led_sync_sample_needs_marking = true;
 	}
 
 #if 0
@@ -885,6 +911,9 @@ pssense_node_destroy(struct xrt_frame_node *node)
 {
 	struct pssense_device *pssense = from_node(node);
 
+	// LED sync is used on the frame context lifecycle, so it needs to be destroyed in here.
+	t_led_sync_refinement_destroy(&pssense->tracking.led_sync_refinement);
+
 	// Really free the pointer
 	free(pssense);
 }
@@ -941,6 +970,13 @@ pssense_timing_event_sink_push(struct t_timing_event_sink *sink, const struct t_
 	pssense->tracking.last_exposure_sequence_id = camera_exposure.sequence_id;
 	pssense->tracking.last_exposure_local_timestamp_ns = camera_exposure.timestamp_ns;
 
+	if (pssense->tracking.average_exposure_interval_ns > 0) {
+		// Update the frame period to the one we're using internally and push the timing event
+		struct t_timing_event_camera_exposure_start led_sync_event = event->camera_exposure_start;
+		led_sync_event.frame_period_ns = pssense->tracking.average_exposure_interval_ns;
+		t_led_sync_push_timing_event(&pssense->tracking.led_sync_refinement, &led_sync_event);
+	}
+
 	os_thread_helper_lock(&pssense->controller_thread);
 
 	// update the LED settings
@@ -948,15 +984,30 @@ pssense_timing_event_sink_push(struct t_timing_event_sink *sink, const struct t_
 		// Convert host-domain exposure timestamp to device IMU time using the PSVR2TK clock offset.
 		// Corresponds to PSVR2TK's libpad_hostToDeviceHook: device_time = host_time + filteredOffset.
 		// See: PSVR2Toolkit/projects/psvr2_openvr_driver_ex/libpad_hooks.cpp
-		timepoint_ns last_exposure_remote_ns = pssense->tracking.last_exposure_local_timestamp_ns +
-		                                       (timepoint_ns)pssense->timing.filtered_offset_ns;
+		timepoint_ns next_blink_time = pssense->tracking.last_exposure_local_timestamp_ns +
+		                               (timepoint_ns)pssense->timing.filtered_offset_ns;
 
-		last_exposure_remote_ns += (int64_t)pssense->tracking.timing_fudge_100us * 100 * U_TIME_1US_IN_NS;
+		uint8_t period_id = pssense->tracking.period_id;
+
+		if (t_led_sync_get_sample(&pssense->tracking.led_sync_refinement,
+		                          &pssense->tracking.latest_led_sync_sample)) {
+			pssense->tracking.led_sync_sample_needs_sending = true;
+			period_id =
+			    DURATION_NS_TO_PERIOD_ID(pssense->tracking.latest_led_sync_sample.blink_duration_ns);
+			pssense->tracking.led_sequence_num += 1;
+		}
+
+		next_blink_time += (int64_t)pssense->tracking.timing_fudge_100us * 100 * U_TIME_1US_IN_NS;
+		next_blink_time += (int64_t)pssense->tracking.latest_led_sync_sample.fudge_offset_ns;
+
+		// PSSENSE cycle position is the *center* of the exposure, but our LED sync assumes it's the start of
+		// the exposure, so we need to offset
+		next_blink_time += PERIOD_ID_TO_DURATION_NS(period_id) / 2;
 
 		// inside thirds of a nanosecond
 		uint32_t cycle_length = pssense->tracking.average_exposure_interval_ns * 3;
 		// in IMU ticks
-		uint32_t cycle_position = NS_TO_IMU_TICKS(last_exposure_remote_ns);
+		uint32_t cycle_position = NS_TO_IMU_TICKS(next_blink_time);
 
 #if 0
 		static int64_t jitter_integration = 0;
@@ -973,25 +1024,23 @@ pssense_timing_event_sink_push(struct t_timing_event_sink *sink, const struct t_
 		}
 #endif
 
-		if (pssense->tracking.increment_sequence_num && (pssense->tracking.received_frames % 10) == 0) {
-			pssense->tracking.led_sequence_num += sequence_id_delta;
+		pssense->tracking.led_settings = (struct pssense_led_settings){
+		    .phase = LED_SYNC_PHASE_PRESCAN,
+		    .cycle_length = __cpu_to_le32(cycle_length),
+		    .cycle_position = __cpu_to_le32(cycle_position),
+		    .sequence_number = pssense->tracking.led_sequence_num,
+		    .led_blink = {0xFF, 0xFF, 0xFF, 0xFF},
+		    .period_id = period_id,
+		};
 
-			pssense->tracking.led_settings = (struct pssense_led_settings){
-			    .phase = LED_SYNC_PHASE_PRESCAN,
-			    .cycle_length = __cpu_to_le32(cycle_length),
-			    .cycle_position = __cpu_to_le32(cycle_position),
-			    .sequence_number = pssense->tracking.led_sequence_num,
-			    .led_blink = {0xFF, 0xFF, 0xFF, 0xFF},
-			    .period_id = 32,
-			};
-
+		if (pssense->tracking.increment_sequence_num && (pssense->tracking.received_frames % 50) == 0) {
+			pssense->tracking.led_sequence_num += 1;
 #if 0
 			PSSENSE_DEBUG(pssense, "%lu\t%lu",
 			              (pssense->tracking.last_exposure_local_timestamp_ns %
 			               pssense->tracking.average_exposure_interval_ns) /
 			                  1000,
-			              (last_exposure_remote_ns % pssense->tracking.average_exposure_interval_ns) /
-			                  1000);
+			              (next_blink_time % pssense->tracking.average_exposure_interval_ns) / 1000);
 #endif
 		}
 	}
@@ -1009,6 +1058,8 @@ pssense_push_constellation_tracker_sample(struct t_constellation_tracker_device 
                                           struct t_constellation_tracker_sample *sample)
 {
 	struct pssense_device *pssense = from_constellation_device(device);
+
+	t_led_sync_push_constellation_sample(&pssense->tracking.led_sync_refinement, sample);
 
 	os_thread_helper_lock(&pssense->controller_thread);
 	timepoint_ns device_ts;
@@ -1370,7 +1421,7 @@ pssense_create(struct xrt_prober *xp,
 
 	m_imu_3dof_init(&pssense->tracking.fusion, M_IMU_3DOF_USE_GRAVITY_DUR_20MS);
 
-	pssense->tracking.timing_fudge_100us = 20; // 2.0ms fudge
+	// pssense->tracking.timing_fudge_100us = 20; // 2.0ms fudge
 	pssense->tracking.increment_sequence_num = true;
 
 	m_relation_history_create(&pssense->tracking.imu_relation_history);
@@ -1431,6 +1482,23 @@ pssense_create(struct xrt_prober *xp,
 	pssense->output.pcm_haptics_resampler = u_resampler_create(4000, PCM_SAMPLE_RATE);
 	if (pssense->output.pcm_haptics_resampler == NULL) {
 		PSSENSE_ERROR(pssense, "Failed to create PCM resampler");
+		pssense_device_destroy(&pssense->base);
+		return NULL;
+	}
+
+	pssense->tracking.period_id = 32;
+	struct t_led_sync_refinement_options led_sync_refinement_options = {
+	    .flags = T_LED_SYNC_REFINEMENT_FLAGS_NONE,
+	    .initial_blink_duration_ns = PERIOD_ID_TO_DURATION_NS(pssense->tracking.period_id),
+	    .min_blink_duration_ns = PERIOD_ID_TO_DURATION_NS(MIN_PERIOD_ID),
+	    .max_blink_duration_ns = PERIOD_ID_TO_DURATION_NS(MAX_PERIOD_ID),
+	    .time_to_resync_ns = T_LED_SYNC_DEFAULT_RESYNC_TIME,
+	    .settle_frames = 10,
+	};
+	pssense->tracking.period_id = DURATION_NS_TO_PERIOD_ID(led_sync_refinement_options.initial_blink_duration_ns);
+	ret = t_led_sync_refinement_init(&pssense->tracking.led_sync_refinement, &led_sync_refinement_options);
+	if (ret != 0) {
+		PSSENSE_ERROR(pssense, "Failed to init LED sync refinement!");
 		pssense_device_destroy(&pssense->base);
 		return NULL;
 	}
