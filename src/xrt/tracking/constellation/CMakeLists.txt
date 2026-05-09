@@ -17,6 +17,8 @@ add_library(
 	t_constellation_tracker.cpp
 	t_constellation_tracker.h
 	t_constellation_tracker_internal.hpp
+	t_led_sync_refinement.c
+	t_led_sync_refinement.h
 	t_rift_blobwatch.c
 	t_rift_blobwatch.h
 	lambdatwist/cubic.h
