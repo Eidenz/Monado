@@ -122,8 +122,9 @@ CameraSample::MarkMatchingBlobs(ConstellationTracker *ct,
 Camera::Camera(ConstellationTracker *tracker,
                std::weak_ptr<CameraMosaic> mosaic,
                const t_constellation_tracker_camera &camera_params,
-               enum u_logging_level *log_level_ptr)
-    : tracker(tracker), mosaic(mosaic), calibration(camera_params.calibration)
+               enum u_logging_level *log_level_ptr,
+               size_t index)
+    : tracker(tracker), mosaic(mosaic), calibration(camera_params.calibration), index(index)
 {
 	this->tracker = tracker;
 	this->mosaic = mosaic;
@@ -557,10 +558,28 @@ Camera::PushPose(CameraSample &camera_sample,
 	xrt_pose Txr_world_device;
 	math_pose_transform(&Txr_world_cam.value(), &Txr_cam_device, &Txr_world_device);
 
+	float average_brightness = 0.0f;
+	uint32_t used_blobs = 0;
+	for (uint32_t i = 0; i < camera_sample.blob_count; i++) {
+		struct t_blob &b = camera_sample.blobs[i];
+		if (b.matched_device_id == device->id) {
+			average_brightness += b.brightness;
+			used_blobs++;
+		}
+	}
+	if (used_blobs > 0) {
+		average_brightness /= used_blobs;
+	} else {
+		average_brightness = 1.0f;
+	}
+
 	// Push the sample to the device
 	t_constellation_tracker_sample sample = {
 	    .timestamp_ns = camera_sample.timestamp_ns,
 	    .pose = Txr_world_device,
+	    .mosaic_index = mosaic->index,
+	    .camera_index = this->index,
+	    .average_brightness = average_brightness, // @todo compute this
 	};
 	t_constellation_tracker_device_push_sample(device->device, &sample);
 
@@ -579,7 +598,10 @@ Camera::PushPose(CameraSample &camera_sample,
  *
  */
 
-CameraMosaic::CameraMosaic(ConstellationTracker *tracker, const t_constellation_tracker_camera_mosaic &mosaic_params)
+CameraMosaic::CameraMosaic(ConstellationTracker *tracker,
+                           const t_constellation_tracker_camera_mosaic &mosaic_params,
+                           size_t index)
+    : index(index)
 {
 	this->tracking_origin = mosaic_params.tracking_origin;
 
@@ -663,21 +685,21 @@ ConstellationTracker::ConstellationTracker(t_constellation_tracker_params *param
 	this->mosaics.reserve(params->num_mosaics);
 
 	// Fill in our internal data structures based on the provided params
-	for (size_t i = 0; i < params->num_mosaics; i++) {
-		const t_constellation_tracker_camera_mosaic &mosaic_params = params->mosaics[i];
+	for (size_t mosaic_idx = 0; mosaic_idx < params->num_mosaics; mosaic_idx++) {
+		const t_constellation_tracker_camera_mosaic &mosaic_params = params->mosaics[mosaic_idx];
 
-		std::shared_ptr<CameraMosaic> mosaic = std::make_shared<CameraMosaic>(this, mosaic_params);
+		std::shared_ptr<CameraMosaic> mosaic = std::make_shared<CameraMosaic>(this, mosaic_params, mosaic_idx);
 
 		// Assert pointer stability!
 		assert(mosaic->cameras.capacity() >= mosaic_params.num_cameras);
 
-		for (size_t i = 0; i < mosaic_params.num_cameras; i++) {
-			const t_constellation_tracker_camera &camera_params = mosaic_params.cameras[i];
+		for (size_t cam_idx = 0; cam_idx < mosaic_params.num_cameras; cam_idx++) {
+			const t_constellation_tracker_camera &camera_params = mosaic_params.cameras[cam_idx];
 
 			// This can't be in the constructor since the `shared_ptr` of the `mosaic` isn't formed
 			// yet, but the camera needs to own a weak_ptr to it's mosaic.
 			mosaic->cameras.push_back(
-			    std::make_unique<Camera>(this, mosaic, camera_params, &this->log_level));
+			    std::make_unique<Camera>(this, mosaic, camera_params, &this->log_level, cam_idx));
 		}
 
 		this->mosaics.push_back(mosaic);
