@@ -8,7 +8,7 @@
  * @author Philipp Zabel <philipp.zabel@gmail.com>
  * @author Jan Schmidt <jan@centricular.com>
  * @author Beyley Cardellio <ep1cm1n10n123@gmail.com>
- * @ingroup aux_tracking
+ * @ingroup tracking
  */
 
 #include "util/u_logging.h"

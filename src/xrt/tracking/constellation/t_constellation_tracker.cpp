@@ -4,7 +4,7 @@
  * @file
  * @brief  Implementation of the main logic for the constellation tracker.
  * @author Beyley Cardellio <ep1cm1n10n123@gmail.com>
- * @ingroup aux_tracking
+ * @ingroup tracking
  */
 
 #include "t_constellation_tracker_internal.hpp"

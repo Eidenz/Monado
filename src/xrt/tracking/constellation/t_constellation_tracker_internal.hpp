@@ -4,7 +4,7 @@
  * @file
  * @brief  Internal ures for the constellation tracker.
  * @author Beyley Cardellio <ep1cm1n10n123@gmail.com>
- * @ingroup aux_tracking
+ * @ingroup tracking
  */
 
 #pragma once
