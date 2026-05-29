@@ -358,7 +358,7 @@ get_interaction_bound_to_sub_path(const struct oxr_session_action_context *actio
                                   enum oxr_subaction_path subaction_path)
 {
 	switch (subaction_path) {
-#define OXR_PATH_MEMBER(lower, CAP, _)                                                                                 \
+#define OXR_PATH_MEMBER(lower, CAP, PATH, LOCALIZED_NAME)                                                              \
 	case OXR_SUB_ACTION_PATH_##CAP: return action_context->lower;
 
 		OXR_FOR_EACH_VALID_SUBACTION_PATH_DETAILED(OXR_PATH_MEMBER)

@@ -779,7 +779,7 @@ get_binding(struct oxr_logger *log,
 	//! @todo This probably falls on its head if the application doesn't use
 	//! sub action paths.
 	switch (subaction_path) {
-#define PATH_CASE(NAME, NAMECAPS, PATH)                                                                                \
+#define PATH_CASE(NAME, NAMECAPS, PATH, LOCALIZED_NAME)                                                                \
 	case OXR_SUB_ACTION_PATH_##NAMECAPS:                                                                           \
 		user_path_str = PATH;                                                                                  \
 		xdev = GET_XDEV_BY_ROLE(roles, NAME);                                                                  \
@@ -942,7 +942,7 @@ oxr_action_attachment_bind(struct oxr_logger *log,
 #endif
 	}
 
-#define BIND_SUBACTION(NAME, NAME_CAPS, PATH)                                                                          \
+#define BIND_SUBACTION(NAME, NAME_CAPS, PATH, LOCALIZED_NAME)                                                          \
 	if (act_ref->subaction_paths.NAME || act_ref->subaction_paths.any) {                                           \
 		oxr_action_bind_io(log, &slog, &inst->path_store, roles, act_ref, act_set_key, &act_attached->NAME,    \
 		                   profiles->NAME, OXR_SUB_ACTION_PATH_##NAME_CAPS);                                   \
