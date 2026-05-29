@@ -1548,9 +1548,9 @@ oxr_action_populate_input_transform(struct oxr_logger *log,
  */
 static bool
 find_matching_dpad(const struct oxr_path_store *store,
-                   struct oxr_dpad_entry *dpad_entry,
+                   const struct oxr_dpad_entry *dpad_entry,
                    const char *bound_path_string,
-                   struct oxr_dpad_binding_modification **out_dpad_binding)
+                   const struct oxr_dpad_binding_modification **out_dpad_binding)
 {
 	if (dpad_entry != NULL) {
 		for (uint32_t i = 0; i < dpad_entry->dpad_count; i++) {
@@ -1581,7 +1581,7 @@ oxr_action_populate_input_transform_dpad(struct oxr_logger *log,
                                          struct oxr_sink_logger *slog,
                                          const struct oxr_path_store *store,
                                          const struct oxr_action_ref *act_ref,
-                                         struct oxr_dpad_entry *dpad_entry,
+                                         const struct oxr_dpad_entry *dpad_entry,
                                          enum oxr_dpad_region dpad_region,
                                          struct oxr_interaction_profile *profile,
                                          struct oxr_action_input *action_inputs,
@@ -1597,7 +1597,7 @@ oxr_action_populate_input_transform_dpad(struct oxr_logger *log,
 	oxr_path_store_get_string(store, action_input->bound_path, &bound_path_string, &bound_path_length);
 
 	// find correct dpad entry
-	struct oxr_dpad_binding_modification *dpad_binding_modification = NULL;
+	const struct oxr_dpad_binding_modification *dpad_binding_modification = NULL;
 	find_matching_dpad(store, dpad_entry, bound_path_string, &dpad_binding_modification);
 
 	enum xrt_input_type t = XRT_GET_INPUT_TYPE(action_input->input->name);
@@ -1738,7 +1738,8 @@ oxr_action_bind_io(struct oxr_logger *log,
 
 			enum oxr_dpad_region dpad_region;
 			if (get_dpad_region_from_path(store, inputs[i].bound_path, &dpad_region)) {
-				struct oxr_dpad_entry *entry = oxr_dpad_state_get(&profile->dpad_state, act_set_key);
+				const struct oxr_dpad_entry *entry =
+				    oxr_dpad_state_get(&profile->dpad_state, act_set_key);
 
 				bool bret = oxr_action_populate_input_transform_dpad( //
 				    log,                                              //
