@@ -9,12 +9,15 @@
  * @ingroup comp_client
  */
 
+#include "vk/vk_compositor_flags.h"
+
 #include "util/u_misc.h"
 #include "util/u_handles.h"
 #include "util/u_trace_marker.h"
 #include "util/u_debug.h"
 
 #include "comp_vk_client.h"
+
 
 // Prefixed with OXR since the only user right now is the OpenXR state tracker.
 DEBUG_GET_ONCE_LOG_OPTION(vulkan_log, "OXR_VULKAN_LOG", U_LOGGING_INFO)

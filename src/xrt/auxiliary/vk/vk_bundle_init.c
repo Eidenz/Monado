@@ -17,6 +17,8 @@
  */
 
 #include "util/u_pretty_print.h"
+
+#include "vk/vk_compositor_flags.h"
 #include "vk/vk_helpers.h"
 #include "vk/vk_extensions_helpers.h"
 #include "vk/vk_queue_builder.h"

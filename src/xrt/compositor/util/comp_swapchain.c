@@ -17,8 +17,10 @@
 #include "util/u_trace_marker.h"
 #include "util/u_limited_unique_id.h"
 
-#include "vk/vk_helpers.h"
 #include "vk/vk_cmd_pool.h"
+#include "vk/vk_compositor_flags.h"
+#include "vk/vk_format.h"
+#include "vk/vk_helpers.h"
 #include "vk/vk_mini_helpers.h"
 
 #include "util/comp_swapchain.h"
