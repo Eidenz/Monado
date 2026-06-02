@@ -20,7 +20,7 @@
 #include "oxr_hand_tracking.h"
 #include "oxr_api_funcs.h"
 #include "oxr_api_verify.h"
-#include "oxr_handle.h"
+#include "oxr_handle_base.h"
 #include "oxr_chain.h"
 
 
@@ -54,6 +54,10 @@ oxr_xrCreateHandTrackerEXT(XrSession session,
 		return oxr_error(&log, XR_ERROR_VALIDATION_FAILURE, "Invalid hand value %d\n", createInfo->hand);
 	}
 
+	if (!oxr_system_get_hand_tracking_support(&log, sess->sys->inst)) {
+		return oxr_error(&log, XR_ERROR_FEATURE_UNSUPPORTED, "System does not support hand tracking");
+	}
+
 #ifdef OXR_HAVE_EXT_hand_tracking_data_source
 	const XrHandTrackingDataSourceInfoEXT *data_source_info = NULL;
 	if (sess->sys->inst->extensions.EXT_hand_tracking_data_source) {
@@ -63,7 +67,39 @@ oxr_xrCreateHandTrackerEXT(XrSession session,
 	OXR_VERIFY_HAND_TRACKING_DATA_SOURCE_OR_NULL(&log, data_source_info);
 #endif
 
-	ret = oxr_hand_tracker_create(&log, sess, createInfo, &hand_tracker);
+	// Lookup the external xdev if provided via XrCreateHandTrackerXDevMNDX
+	struct xrt_device *override_xdev = NULL;
+#ifdef OXR_HAVE_MNDX_xdev_space
+	const XrCreateHandTrackerXDevMNDX *xdev_info = NULL;
+	if (sess->sys->supports_xdev_space && sess->sys->inst->extensions.MNDX_xdev_space) {
+		xdev_info = OXR_GET_INPUT_FROM_CHAIN(createInfo, XR_TYPE_CREATE_HAND_TRACKER_XDEV_MNDX,
+		                                     XrCreateHandTrackerXDevMNDX);
+	}
+
+	if (xdev_info != NULL) {
+		struct oxr_xdev_list *xdl = NULL;
+		OXR_VERIFY_ARG_TYPE_AND_NOT_NULL(&log, xdev_info, XR_TYPE_CREATE_HAND_TRACKER_XDEV_MNDX);
+		OXR_VERIFY_XDEVLIST_NOT_NULL(&log, xdev_info->xdevList, xdl);
+
+		if (!oxr_xdev_list_get_xdev(&log, xdl, xdev_info->id, &override_xdev)) {
+			return oxr_error(&log, XR_ERROR_VALIDATION_FAILURE,
+			                 "(createInfo->next->id == %" PRIu64 ") not a valid XrXDevIdMNDX",
+			                 xdev_info->id);
+		}
+
+		if (override_xdev == NULL) {
+			return oxr_error(&log, XR_ERROR_RUNTIME_FAILURE, "Got null xrt_device?");
+		}
+
+		if (!override_xdev->supported.hand_tracking) {
+			return oxr_error(&log, XR_ERROR_FEATURE_UNSUPPORTED,
+			                 "(createInfo->next->id == %" PRIu64 ") XDev does not support hand tracking",
+			                 xdev_info->id);
+		}
+	}
+#endif
+
+	ret = oxr_hand_tracker_create(&log, sess, createInfo, override_xdev, &hand_tracker);
 	if (ret != XR_SUCCESS) {
 		return ret;
 	}
@@ -143,7 +179,10 @@ oxr_xrLocateHandJointsEXT(XrHandTrackerEXT handTracker,
 
 	if (data_source_state != NULL) {
 		OXR_VERIFY_ARG_TYPE_AND_NOT_NULL(&log, data_source_state, XR_TYPE_HAND_TRACKING_DATA_SOURCE_STATE_EXT);
-		OXR_VERIFY_ARG_NOT_ZERO(&log, hand_tracker->requested_sources_count);
+		if (!hand_tracker->has_requested_sources) {
+			return oxr_error(&log, XR_ERROR_VALIDATION_FAILURE,
+			                 "XrHandTracker was created without sources.");
+		}
 	}
 #endif
 

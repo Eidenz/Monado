@@ -310,8 +310,11 @@ render_distortion_buffer_init(struct render_resources *r,
 	 * view_count=3,RRRGGGBBB
 	 */
 	for (uint32_t i = 0; i < r->view_count; ++i) {
-		ret = create_and_fill_in_distortion_buffer_for_view(vk, xdev, &bufs[i], &bufs[r->view_count + i],
-		                                                    &bufs[2 * r->view_count + i], i, pre_rotate);
+		ret = create_and_fill_in_distortion_buffer_for_view(vk, xdev,
+		                                                    &bufs[r->view_count * 0 + i], // r_buffer
+		                                                    &bufs[r->view_count * 1 + i], // g_buffer
+		                                                    &bufs[r->view_count * 2 + i], // b_buffer
+		                                                    i, pre_rotate);
 		VK_CHK_WITH_GOTO(ret, "create_and_fill_in_distortion_buffer_for_view", err_resources);
 	}
 

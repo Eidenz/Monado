@@ -159,7 +159,7 @@ psvr2_open_system_impl(struct xrt_builder *xb,
 	struct xrt_prober_device *left_xpdev =
 	    u_builder_find_prober_device(xpdevs, xpdev_count, PSSENSE_VID, PSSENSE_PID_LEFT, XRT_BUS_TYPE_BLUETOOTH);
 	if (left_xpdev != NULL) {
-		left_xdev = pssense_create(xp, left_xpdev);
+		left_xdev = pssense_create(xp, left_xpdev, xfctx, NULL);
 		if (left_xdev == NULL) {
 			PSVR2_ERROR(psvr2_builder(xb), "PS Sense left controller device creation failed");
 		} else {
@@ -171,7 +171,7 @@ psvr2_open_system_impl(struct xrt_builder *xb,
 	struct xrt_prober_device *right_xpdev =
 	    u_builder_find_prober_device(xpdevs, xpdev_count, PSSENSE_VID, PSSENSE_PID_RIGHT, XRT_BUS_TYPE_BLUETOOTH);
 	if (right_xpdev != NULL) {
-		right_xdev = pssense_create(xp, right_xpdev);
+		right_xdev = pssense_create(xp, right_xpdev, xfctx, NULL);
 		if (right_xdev == NULL) {
 			PSVR2_ERROR(psvr2_builder(xb), "PS Sense right controller device creation failed");
 		} else {

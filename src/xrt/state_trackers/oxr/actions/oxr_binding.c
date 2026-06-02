@@ -85,9 +85,9 @@ setup_paths(struct oxr_path_store *store, const char **src_paths, XrPath **dest_
 static bool
 get_profile_template_from_path(const struct oxr_instance_path_cache *cache,
                                XrPath path,
-                               struct profile_template **out_templ)
+                               struct oxr_profile_template **out_templ)
 {
-	static_assert(OXR_BINDINGS_PROFILE_TEMPLATE_COUNT == ARRAY_SIZE(profile_templates), "Must match");
+	static_assert(OXR_BINDINGS_PROFILE_TEMPLATE_COUNT == ARRAY_SIZE(oxr_profile_templates), "Must match");
 	static_assert(OXR_BINDINGS_PROFILE_TEMPLATE_COUNT == ARRAY_SIZE(cache->template_paths), "Must match");
 
 	for (size_t x = 0; x < OXR_BINDINGS_PROFILE_TEMPLATE_COUNT; x++) {
@@ -95,7 +95,7 @@ get_profile_template_from_path(const struct oxr_instance_path_cache *cache,
 			continue;
 		}
 
-		*out_templ = &profile_templates[x];
+		*out_templ = &oxr_profile_templates[x];
 		return true;
 	}
 
@@ -116,7 +116,7 @@ interaction_profile_find_or_create_in_instance(struct oxr_logger *log,
 		return true;
 	}
 
-	struct profile_template *templ = NULL;
+	struct oxr_profile_template *templ = NULL;
 	if (!get_profile_template_from_path(cache, path, &templ)) {
 		*out_p = NULL;
 		return false;
@@ -358,7 +358,7 @@ get_interaction_bound_to_sub_path(const struct oxr_session_action_context *actio
                                   enum oxr_subaction_path subaction_path)
 {
 	switch (subaction_path) {
-#define OXR_PATH_MEMBER(lower, CAP, _)                                                                                 \
+#define OXR_PATH_MEMBER(lower, CAP, PATH, LOCALIZED_NAME)                                                              \
 	case OXR_SUB_ACTION_PATH_##CAP: return action_context->lower;
 
 		OXR_FOR_EACH_VALID_SUBACTION_PATH_DETAILED(OXR_PATH_MEMBER)

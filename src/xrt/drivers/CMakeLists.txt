@@ -208,9 +208,17 @@ endif()
 if(XRT_BUILD_DRIVER_PSSENSE)
 	add_library(
 		drv_pssense STATIC pssense/pssense_driver.c pssense/pssense_interface.h
-				   pssense/pssense_protocol.h
+				   pssense/pssense_protocol.h pssense/pssense_led_model.h
 		)
-	target_link_libraries(drv_pssense PRIVATE aux_os aux_util)
+	target_link_libraries(
+		drv_pssense
+		PRIVATE
+			xrt-interfaces
+			tracking-includes
+			aux_os
+			aux_util
+			constellation
+		)
 	list(APPEND ENABLED_DRIVERS pssense)
 endif()
 
@@ -274,7 +282,7 @@ if(XRT_BUILD_DRIVER_REMOTE)
 		remote/r_interface.h
 		remote/r_internal.h
 		)
-	target_link_libraries(drv_remote PRIVATE xrt-interfaces aux_util aux_vive)
+	target_link_libraries(drv_remote PRIVATE xrt-interfaces aux_util aux_vive base)
 	if(WIN32)
 		target_link_libraries(drv_remote PRIVATE ws2_32)
 	endif()
@@ -306,8 +314,6 @@ if(XRT_BUILD_DRIVER_RIFT)
 		rift/rift_driver.c
 		rift/rift_distortion.c
 		rift/rift_prober.c
-		rift/rift_timing_source.c
-		rift/rift_timing_source.h
 		rift/rift_usb.c
 		rift/rift_usb.h
 		rift/rift_radio.c
@@ -323,6 +329,8 @@ if(XRT_BUILD_DRIVER_RIFT)
 			aux_util
 			aux_util_sink
 			aux_math
+			base
+			constellation
 			xrt-external-cjson
 			xrt-external-tinyceres
 		)
@@ -631,6 +639,7 @@ if(XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE)
 			aux_vive
 			drv_vp2
 			drv_includes
+			base
 			xrt-interfaces
 			xrt-external-openvr
 			xrt-external-cjson

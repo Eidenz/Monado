@@ -187,7 +187,7 @@ rift_sensor_thread_tick(struct rift_hmd *hmd)
 				        },
 				};
 
-				rift_timing_source_push_event(hmd->timing_source, &event);
+				b_timing_source_push_event(hmd->timing_source, &event);
 			}
 		}
 
@@ -466,16 +466,16 @@ get_raw_pose(struct rift_hmd *hmd, timepoint_ns when_ns, struct xrt_space_relati
 		                                  &constellation_relation)) {
 			os_thread_helper_lock(&hmd->sensor_thread);
 
-			double gravity_correction_len;
-
-			struct xrt_vec3 gravity_correction = {0, -MATH_GRAVITY_M_S2, 0};
-			if (m_ff_f64_filter(hmd->gravity_correction, 0, when_ns, &gravity_correction_len) > 0) {
-				gravity_correction.y = -gravity_correction_len;
-			}
+			// @todo Some kind of accelerometer integration
+			// double gravity_correction_len;
+			// struct xrt_vec3 gravity_correction = {0, -MATH_GRAVITY_M_S2, 0};
+			// if (m_ff_f64_filter(hmd->gravity_correction, 0, when_ns, &gravity_correction_len) > 0) {
+			// 	gravity_correction.y = -gravity_correction_len;
+			// }
 
 			if (!t_apply_dead_reckoning(hmd->gyro_ff,            //
-			                            hmd->accel_ff,           //
-			                            &gravity_correction,     //
+			                            NULL,                    // hmd->accel_ff,           //
+			                            NULL,                    // &gravity_correction,     //
 			                            when_ns,                 //
 			                            &constellation_relation, //
 			                            constellation_when_ns,   //
@@ -667,6 +667,14 @@ rift_hmd_constellation_device_push_constellation_tracker_sample(struct t_constel
 	                          XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT |
 	                          XRT_SPACE_RELATION_POSITION_VALID_BIT;
 
+	struct xrt_space_relation relation_3dof = XRT_SPACE_RELATION_ZERO;
+	m_relation_history_get(hmd->relation_hist, sample->timestamp_ns, &relation_3dof);
+
+	if (relation_3dof.relation_flags & XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT) {
+		relation.angular_velocity = relation_3dof.angular_velocity;
+		relation.relation_flags |= XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT;
+	}
+
 	m_relation_history_push_with_motion_estimation(hmd->raw_constellation_relation_hist, &relation,
 	                                               sample->timestamp_ns);
 }
@@ -695,12 +703,13 @@ rift_devices_create(struct os_hid_device *hmd_dev,
 	hmd->hmd_dev = hmd_dev;
 	hmd->radio_dev = radio_dev;
 
+	// 4 seconds of IMU samples at 1000hz, should be more than enough
 	m_ff_vec3_f32_alloc(&hmd->gyro_ff, 4096);
 	m_ff_vec3_f32_alloc(&hmd->accel_ff, 4096);
 	m_ff_f64_alloc(&hmd->gravity_correction, 4096);
 
 	if (xfctx) {
-		result = rift_timing_source_init(xfctx, &hmd->timing_source);
+		result = b_timing_source_init(xfctx, &hmd->timing_source);
 		if (result < 0) {
 			HMD_ERROR(hmd, "Failed to initialize timing source, reason %d", result);
 		}
@@ -1151,6 +1160,9 @@ rift_add_to_constellation_tracker(struct rift_hmd *hmd, struct t_constellation_t
 		HMD_ERROR(hmd, "Failed to add Rift HMD to constellation tracker, reason %d", ret);
 		return ret;
 	}
+
+	struct xrt_tracking_origin *tracking_origin = t_constellation_tracker_get_tracking_origin(tracker);
+	hmd->base.tracking_origin = tracking_origin;
 
 	// Mark that we're using constellation poses now
 	hmd->use_constellation_poses = true;

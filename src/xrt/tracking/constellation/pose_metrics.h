@@ -95,7 +95,7 @@ struct pose_metrics_blob_match_info
 };
 
 void
-pose_metrics_match_pose_to_blobs(struct xrt_pose *pose,
+pose_metrics_match_pose_to_blobs(const struct xrt_pose *pose,
                                  struct t_blob *blobs,
                                  int num_blobs,
                                  struct t_constellation_tracker_led_model *led_model,
@@ -105,7 +105,7 @@ pose_metrics_match_pose_to_blobs(struct xrt_pose *pose,
 
 void
 pose_metrics_evaluate_pose(struct pose_metrics *score,
-                           struct xrt_pose *pose,
+                           const struct xrt_pose *pose,
                            struct t_blob *blobs,
                            int num_blobs,
                            struct t_constellation_tracker_led_model *leds_model,
@@ -115,7 +115,7 @@ pose_metrics_evaluate_pose(struct pose_metrics *score,
 
 void
 pose_metrics_evaluate_pose_with_prior(struct pose_metrics *score,
-                                      struct xrt_pose *pose,
+                                      const struct xrt_pose *pose,
                                       bool prior_must_match,
                                       struct xrt_pose *pose_prior,
                                       const struct xrt_vec3 *pos_error_thresh,

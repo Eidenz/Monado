@@ -8,7 +8,7 @@
  * @author Philipp Zabel <philipp.zabel@gmail.com>
  * @author Jan Schmidt <jan@centricular.com>
  * @author Beyley Cardellio <ep1cm1n10n123@gmail.com>
- * @ingroup aux_tracking
+ * @ingroup tracking
  */
 
 #include "util/u_logging.h"
@@ -131,7 +131,7 @@ ransac_pnp_pose(enum u_logging_level log_level,
 		list_points2d[j].y = blobs[i].center.y;
 		j++;
 
-		U_LOG_IFL_D(log_level, "LED %d at %f,%f (3D %f %f %f)", blob_led_id, blobs[i].center.x,
+		U_LOG_IFL_T(log_level, "LED %d at %f,%f (3D %f %f %f)", blob_led_id, blobs[i].center.x,
 		            blobs[i].center.y, leds_model->leds[blob_led_id].position.x,
 		            leds_model->leds[blob_led_id].position.y, leds_model->leds[blob_led_id].position.z);
 	}

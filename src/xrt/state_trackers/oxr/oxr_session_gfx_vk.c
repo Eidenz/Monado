@@ -21,7 +21,7 @@
 #include "oxr_objects.h"
 #include "oxr_logger.h"
 #include "oxr_two_call.h"
-#include "oxr_handle.h"
+#include "oxr_handle_base.h"
 
 
 #ifndef XR_USE_GRAPHICS_API_VULKAN

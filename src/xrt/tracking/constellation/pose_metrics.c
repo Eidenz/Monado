@@ -109,7 +109,7 @@ find_best_matching_led(struct pose_metrics_visible_led_info *led_points,
 
 static void
 check_pose_prior(struct pose_metrics *score,
-                 struct xrt_pose *pose,
+                 const struct xrt_pose *pose,
                  struct xrt_pose *pose_prior,
                  const struct xrt_vec3 *pos_error_thresh,
                  const struct xrt_vec3 *rot_error_thresh)
@@ -150,7 +150,7 @@ check_pose_prior(struct pose_metrics *score,
 static bool
 project_led_points(struct t_constellation_tracker_led_model *led_model,
                    struct camera_model *calib,
-                   struct xrt_pose *pose,
+                   const struct xrt_pose *pose,
                    struct xrt_vec3 *out_positions,
                    struct xrt_vec2 *out_points)
 {
@@ -169,7 +169,7 @@ project_led_points(struct t_constellation_tracker_led_model *led_model,
 }
 
 static void
-get_visible_leds_and_bounds(struct xrt_pose *T_cam_obj,
+get_visible_leds_and_bounds(const struct xrt_pose *T_cam_obj,
                             struct t_constellation_tracker_led_model *led_model,
                             struct camera_model *calib,
                             struct pose_metrics_visible_led_info *visible_led_points,
@@ -277,7 +277,7 @@ get_visible_leds_and_bounds(struct xrt_pose *T_cam_obj,
  */
 
 void
-pose_metrics_match_pose_to_blobs(struct xrt_pose *pose,
+pose_metrics_match_pose_to_blobs(const struct xrt_pose *pose,
                                  struct t_blob *blobs,
                                  int num_blobs,
                                  struct t_constellation_tracker_led_model *led_model,
@@ -349,7 +349,7 @@ pose_metrics_match_pose_to_blobs(struct xrt_pose *pose,
 
 void
 pose_metrics_evaluate_pose(struct pose_metrics *score,
-                           struct xrt_pose *pose,
+                           const struct xrt_pose *pose,
                            struct t_blob *blobs,
                            int num_blobs,
                            struct t_constellation_tracker_led_model *led_model,
@@ -363,7 +363,7 @@ pose_metrics_evaluate_pose(struct pose_metrics *score,
 
 void
 pose_metrics_evaluate_pose_with_prior(struct pose_metrics *score,
-                                      struct xrt_pose *pose,
+                                      const struct xrt_pose *pose,
                                       bool prior_must_match,
                                       struct xrt_pose *pose_prior,
                                       const struct xrt_vec3 *pos_error_thresh,

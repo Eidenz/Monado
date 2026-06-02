@@ -47,6 +47,12 @@
 		IPC_CHK_AND_RET((ICS)->server, xret, "ipc_server_objects_get_xdev_and_validate");                      \
 	} while (0)
 
+#define GET_XSPC_OR_RETURN(ICS, ID, XSPC)                                                                              \
+	do {                                                                                                           \
+		xrt_result_t xret = ipc_server_objects_get_xspc_and_validate((ICS), ID, &(XSPC));                      \
+		IPC_CHK_AND_RET((ICS)->server, xret, "ipc_server_objects_get_xspc_and_validate");                      \
+	} while (0)
+
 
 static xrt_result_t
 validate_reference_space_type(volatile struct ipc_client_state *ics, enum xrt_reference_space_type type)
@@ -66,66 +72,6 @@ validate_device_feature_type(volatile struct ipc_client_state *ics, enum xrt_dev
 		IPC_ERROR(ics->server, "Invalid device feature type %u", type);
 		return XRT_ERROR_FEATURE_NOT_SUPPORTED;
 	}
-
-	return XRT_SUCCESS;
-}
-
-
-static xrt_result_t
-validate_space_id(volatile struct ipc_client_state *ics, int64_t space_id, struct xrt_space **out_xspc)
-{
-	if (space_id < 0) {
-		return XRT_ERROR_IPC_FAILURE;
-	}
-
-	if (space_id >= IPC_MAX_CLIENT_SPACES) {
-		return XRT_ERROR_IPC_FAILURE;
-	}
-
-	if (ics->xspcs[space_id] == NULL) {
-		return XRT_ERROR_IPC_FAILURE;
-	}
-
-	*out_xspc = (struct xrt_space *)ics->xspcs[space_id];
-
-	return XRT_SUCCESS;
-}
-
-static xrt_result_t
-get_new_space_id(volatile struct ipc_client_state *ics, uint32_t *out_id)
-{
-	// Our handle is just the index for now.
-	uint32_t index = 0;
-	for (; index < IPC_MAX_CLIENT_SPACES; index++) {
-		if (ics->xspcs[index] == NULL) {
-			break;
-		}
-	}
-
-	if (index >= IPC_MAX_CLIENT_SPACES) {
-		IPC_ERROR(ics->server, "Too many spaces!");
-		return XRT_ERROR_IPC_FAILURE;
-	}
-
-	*out_id = index;
-
-	return XRT_SUCCESS;
-}
-
-static xrt_result_t
-track_space(volatile struct ipc_client_state *ics, struct xrt_space *xs, uint32_t *out_id)
-{
-	uint32_t id = UINT32_MAX;
-	xrt_result_t xret = get_new_space_id(ics, &id);
-	if (xret != XRT_SUCCESS) {
-		return xret;
-	}
-
-	// Remove volatile
-	struct xrt_space **xs_ptr = (struct xrt_space **)&ics->xspcs[id];
-	xrt_space_reference(xs_ptr, xs);
-
-	*out_id = id;
 
 	return XRT_SUCCESS;
 }
@@ -649,7 +595,7 @@ ipc_handle_space_create_semantic_ids(volatile struct ipc_client_state *ics,
 			break;                                                                                         \
 		}                                                                                                      \
 		uint32_t id = 0;                                                                                       \
-		xrt_result_t xret = track_space(ics, xso->semantic.NAME, &id);                                         \
+		xrt_result_t xret = ipc_server_objects_get_xspc_id_or_add(ics, xso->semantic.NAME, &id);               \
 		if (xret != XRT_SUCCESS) {                                                                             \
 			break;                                                                                         \
 		}                                                                                                      \
@@ -676,20 +622,17 @@ ipc_handle_space_create_offset(volatile struct ipc_client_state *ics,
 	struct xrt_space_overseer *xso = ics->server->xso;
 
 	struct xrt_space *parent = NULL;
-	xrt_result_t xret = validate_space_id(ics, parent_id, &parent);
-	if (xret != XRT_SUCCESS) {
-		return xret;
-	}
+	GET_XSPC_OR_RETURN(ics, parent_id, parent);
 
 
 	struct xrt_space *xs = NULL;
-	xret = xrt_space_overseer_create_offset_space(xso, parent, offset, &xs);
+	xrt_result_t xret = xrt_space_overseer_create_offset_space(xso, parent, offset, &xs);
 	if (xret != XRT_SUCCESS) {
 		return xret;
 	}
 
 	uint32_t space_id = UINT32_MAX;
-	xret = track_space(ics, xs, &space_id);
+	xret = ipc_server_objects_get_xspc_id_or_add(ics, xs, &space_id);
 
 	// Track space grabs a reference, or it errors and we don't want to keep it around.
 	xrt_space_reference(&xs, NULL);
@@ -723,7 +666,7 @@ ipc_handle_space_create_pose(volatile struct ipc_client_state *ics,
 	}
 
 	uint32_t space_id = UINT32_MAX;
-	xret = track_space(ics, xs, &space_id);
+	xret = ipc_server_objects_get_xspc_id_or_add(ics, xs, &space_id);
 
 	// Track space grabs a reference, or it errors and we don't want to keep it around.
 	xrt_space_reference(&xs, NULL);
@@ -751,19 +694,10 @@ ipc_handle_space_locate_space(volatile struct ipc_client_state *ics,
 	struct xrt_space_overseer *xso = ics->server->xso;
 	struct xrt_space *base_space = NULL;
 	struct xrt_space *space = NULL;
-	xrt_result_t xret;
 
-	xret = validate_space_id(ics, base_space_id, &base_space);
-	if (xret != XRT_SUCCESS) {
-		U_LOG_E("Invalid base_space_id!");
-		return xret;
-	}
+	GET_XSPC_OR_RETURN(ics, base_space_id, base_space);
 
-	xret = validate_space_id(ics, space_id, &space);
-	if (xret != XRT_SUCCESS) {
-		U_LOG_E("Invalid space_id!");
-		return xret;
-	}
+	GET_XSPC_OR_RETURN(ics, space_id, space);
 
 	return xrt_space_overseer_locate_space( //
 	    xso,                                //
@@ -784,7 +718,6 @@ ipc_handle_space_locate_spaces(volatile struct ipc_client_state *ics,
 {
 	IPC_TRACE_MARKER();
 	struct ipc_message_channel *imc = (struct ipc_message_channel *)&ics->imc;
-	struct ipc_server *s = ics->server;
 
 	struct xrt_space_overseer *xso = ics->server->xso;
 	struct xrt_space *base_space = NULL;
@@ -793,7 +726,7 @@ ipc_handle_space_locate_spaces(volatile struct ipc_client_state *ics,
 	struct xrt_pose *offsets = U_TYPED_ARRAY_CALLOC(struct xrt_pose, space_count);
 	struct xrt_space_relation *out_relations = U_TYPED_ARRAY_CALLOC(struct xrt_space_relation, space_count);
 
-	xrt_result_t xret;
+	xrt_result_t xret = XRT_SUCCESS;
 
 	os_mutex_lock(&ics->server->global_state.lock);
 
@@ -802,8 +735,6 @@ ipc_handle_space_locate_spaces(volatile struct ipc_client_state *ics,
 	// we need to send back whether allocation succeeded so the client knows whether to send more data
 	if (space_ids == NULL) {
 		xret = XRT_ERROR_ALLOCATION;
-	} else {
-		xret = XRT_SUCCESS;
 	}
 
 	xret = ipc_send(imc, &xret, sizeof(enum xrt_result));
@@ -815,10 +746,11 @@ ipc_handle_space_locate_spaces(volatile struct ipc_client_state *ics,
 
 	// only after sending the allocation result can we skip to the end in the allocation error case
 	if (space_ids == NULL) {
-		IPC_ERROR(s, "Failed to allocate space for receiving spaces ids");
+		IPC_ERROR(ics->server, "Failed to allocate space for receiving spaces ids");
 		xret = XRT_ERROR_ALLOCATION;
 		goto out_locate_spaces;
 	}
+
 
 	xret = ipc_receive(imc, space_ids, space_count * sizeof(uint32_t));
 	if (xret != XRT_SUCCESS) {
@@ -834,23 +766,19 @@ ipc_handle_space_locate_spaces(volatile struct ipc_client_state *ics,
 		goto out_locate_spaces;
 	}
 
-	xret = validate_space_id(ics, base_space_id, &base_space);
-	if (xret != XRT_SUCCESS) {
-		U_LOG_E("Invalid base_space_id %d!", base_space_id);
-		// Client is receiving out_relations now, it will get xret on this receive.
-		goto out_locate_spaces;
-	}
+	xret = ipc_server_objects_get_xspc_and_validate(ics, base_space_id, &base_space);
+	// Client is receiving out_relations now, it will get xret on this receive.
+	IPC_CHK_WITH_GOTO(ics->server, xret, "ipc_server_objects_get_xspc_and_validate(base_space_id)",
+	                  out_locate_spaces);
 
 	for (uint32_t i = 0; i < space_count; i++) {
 		if (space_ids[i] == UINT32_MAX) {
 			xspaces[i] = NULL;
 		} else {
-			xret = validate_space_id(ics, space_ids[i], &xspaces[i]);
-			if (xret != XRT_SUCCESS) {
-				U_LOG_E("Invalid space_id space_ids[%d] = %d!", i, space_ids[i]);
-				// Client is receiving out_relations now, it will get xret on this receive.
-				goto out_locate_spaces;
-			}
+			xret = ipc_server_objects_get_xspc_and_validate(ics, space_ids[i], &xspaces[i]);
+			// Client is receiving xspaces[i] now, it will get xret on this receive.
+			IPC_CHK_WITH_GOTO(ics->server, xret, "ipc_server_objects_get_xspc_and_validate(space_ids[i])",
+			                  out_locate_spaces);
 		}
 	}
 	xret = xrt_space_overseer_locate_spaces( //
@@ -871,6 +799,7 @@ ipc_handle_space_locate_spaces(volatile struct ipc_client_state *ics,
 	}
 
 out_locate_spaces:
+	free(space_ids);
 	free(xspaces);
 	free(offsets);
 	free(out_relations);
@@ -891,13 +820,8 @@ ipc_handle_space_locate_device(volatile struct ipc_client_state *ics,
 	struct xrt_space_overseer *xso = ics->server->xso;
 	struct xrt_space *base_space = NULL;
 	struct xrt_device *xdev = NULL;
-	xrt_result_t xret;
 
-	xret = validate_space_id(ics, base_space_id, &base_space);
-	if (xret != XRT_SUCCESS) {
-		U_LOG_E("Invalid base_space_id!");
-		return xret;
-	}
+	GET_XSPC_OR_RETURN(ics, base_space_id, base_space);
 
 	GET_XDEV_OR_RETURN(ics, xdev_id, xdev);
 
@@ -913,21 +837,8 @@ ipc_handle_space_locate_device(volatile struct ipc_client_state *ics,
 xrt_result_t
 ipc_handle_space_destroy(volatile struct ipc_client_state *ics, uint32_t space_id)
 {
-	struct xrt_space *xs = NULL;
-	xrt_result_t xret;
-
-	xret = validate_space_id(ics, space_id, &xs);
-	if (xret != XRT_SUCCESS) {
-		U_LOG_E("Invalid space_id!");
-		return xret;
-	}
-
-	assert(xs != NULL);
-	xs = NULL;
-
-	// Remove volatile
-	struct xrt_space **xs_ptr = (struct xrt_space **)&ics->xspcs[space_id];
-	xrt_space_reference(xs_ptr, NULL);
+	xrt_result_t xret = ipc_server_objects_destroy_xspc(ics, space_id);
+	IPC_CHK_AND_RET(ics->server, xret, "ipc_server_objects_destroy_xspc");
 
 	if (space_id == ics->local_space_index) {
 		struct xrt_space **xslocal_ptr =

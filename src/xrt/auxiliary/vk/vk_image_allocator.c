@@ -13,6 +13,7 @@
 #include "util/u_handles.h"
 
 #include "vk/vk_image_allocator.h"
+#include "vk/vk_compositor_flags.h"
 
 #include <vulkan/vulkan_core.h>
 #include <xrt/xrt_handles.h>

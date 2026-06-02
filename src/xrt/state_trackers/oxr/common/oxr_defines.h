@@ -46,24 +46,6 @@ extern "C" {
 // clang-format on
 
 /*!
- * State of a handle base, to reduce likelihood of going "boom" on
- * out-of-order destruction or other unsavory behavior.
- *
- * @ingroup oxr_main
- */
-enum oxr_handle_state
-{
-	/*! State during/before oxr_handle_init, or after failure */
-	OXR_HANDLE_STATE_UNINITIALIZED = 0,
-
-	/*! State after successful oxr_handle_init */
-	OXR_HANDLE_STATE_LIVE,
-
-	/*! State after successful oxr_handle_destroy */
-	OXR_HANDLE_STATE_DESTROYED,
-};
-
-/*!
  * Sub action paths.
  *
  * @ingroup oxr_main

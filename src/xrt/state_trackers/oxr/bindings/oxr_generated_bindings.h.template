@@ -63,7 +63,7 @@ struct binding_template
 typedef bool (*path_verify_fn_t)(const struct oxr_extension_status *extensions, XrVersion openxr_version, const char *, size_t);
 typedef void (*ext_verify_fn_t)(const struct oxr_extension_status *extensions, XrVersion openxr_version, bool *out_supported, bool *out_enabled);
 
-struct profile_template
+struct oxr_profile_template
 {
 	enum xrt_device_name name;
 	const char *path;
@@ -88,7 +88,7 @@ struct profile_template
 	const char *extension_name;
 };
 
-extern struct profile_template profile_templates[OXR_BINDINGS_PROFILE_TEMPLATE_COUNT];
+extern struct oxr_profile_template oxr_profile_templates[OXR_BINDINGS_PROFILE_TEMPLATE_COUNT];
 // clang-format on
 #ifdef __cplusplus
 }

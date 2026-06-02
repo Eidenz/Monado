@@ -18,7 +18,7 @@
 
 $verify_functions
 
-struct profile_template profile_templates[$template_count] = { // array of profile_template
+struct oxr_profile_template oxr_profile_templates[$template_count] = { // array of profile_template
 $profile_templates
 }; // /array of profile_template
 

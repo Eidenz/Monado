@@ -10,13 +10,16 @@
  */
 
 #include "util/u_system_helpers.h"
+#include "util/u_system_devices.h"
 #include "util/u_var.h"
 
 #include "b_system_devices.h"
 
 #include "ipc_client.h"
 #include "ipc_client_generated.h"
+#include "ipc_client_hand_tracker.h"
 #include "ipc_client_system_devices.h"
+#include "ipc_client_xdev.h"
 
 
 /*
@@ -80,6 +83,31 @@ ipc_client_system_devices_feature_dec(struct xrt_system_devices *xsysd, enum xrt
 	IPC_CHK_ALWAYS_RET(usysd->ipc_c, xret, "ipc_call_system_devices_end_feature");
 }
 
+static xrt_result_t
+ipc_client_system_devices_create_hand_tracker(struct xrt_system_devices *xsysd,
+                                              const struct xrt_hand_tracker_create_info *info,
+                                              struct xrt_hand_tracker **out_xht)
+{
+	struct ipc_client_system_devices *usysd = ipc_system_devices(xsysd);
+
+	struct ipc_hand_tracker_create_info ipc_info = {
+	    .hand = info->hand,
+	    .requested_sources = {info->requested_sources[0], info->requested_sources[1]},
+	    .requested_source_count = info->requested_source_count,
+	};
+
+	if (info->locked_xdev != NULL) {
+		ipc_info.has_locked_xdev = true;
+		ipc_info.locked_xdev_id = ipc_client_xdev(info->locked_xdev)->device_id;
+	}
+
+	uint32_t id = 0;
+	xrt_result_t xret = ipc_call_hand_tracker_create(usysd->ipc_c, &ipc_info, &id);
+	IPC_CHK_AND_RET(usysd->ipc_c, xret, "ipc_call_hand_tracker_create");
+
+	return ipc_client_hand_tracker_create(usysd->ipc_c, id, out_xht);
+}
+
 
 static void
 ipc_client_system_devices_destroy(struct xrt_system_devices *xsysd)
@@ -105,10 +133,13 @@ xrt_result_t
 ipc_client_system_devices_create(struct ipc_connection *ipc_c, struct ipc_client_system_devices **out_icsd)
 {
 	struct ipc_client_system_devices *icsd = U_TYPED_CALLOC(struct ipc_client_system_devices);
-	icsd->base.base.get_roles = ipc_client_system_devices_get_roles;
-	icsd->base.base.destroy = ipc_client_system_devices_destroy;
+
+	u_system_devices_populate_function_pointers(&icsd->base.base, ipc_client_system_devices_get_roles,
+	                                            ipc_client_system_devices_destroy);
+	icsd->base.base.create_hand_tracker = ipc_client_system_devices_create_hand_tracker;
 	icsd->base.base.feature_inc = ipc_client_system_devices_feature_inc;
 	icsd->base.base.feature_dec = ipc_client_system_devices_feature_dec;
+
 	icsd->ipc_c = ipc_c;
 
 	// Initialize tracking origin manager

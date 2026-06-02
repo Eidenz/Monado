@@ -525,6 +525,13 @@ enum xrt_swapchain_create_flags
 	XRT_SWAPCHAIN_CREATE_PROTECTED_CONTENT = (1u << 0u),
 	//! Signals that the allocator should only allocate one image.
 	XRT_SWAPCHAIN_CREATE_STATIC_IMAGE = (1u << 1u),
+	/*!
+	 * Signals to the compositor to use the equivalent sRGB format of the UNORM swapchain.
+	 *
+	 * The swapchain must have @ref XRT_SWAPCHAIN_USAGE_MUTABLE_FORMAT and must have
+	 * both formats in the format list.
+	 */
+	XRT_SWAPCHAIN_CREATE_SAMPLE_AS_SRGB = (1u << 2u),
 };
 
 /*!

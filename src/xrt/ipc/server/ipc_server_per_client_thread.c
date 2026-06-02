@@ -12,6 +12,8 @@
 #include "util/u_misc.h"
 #include "util/u_trace_marker.h"
 
+#include "xrt/xrt_hand_tracker.h"
+
 #include "shared/ipc_protocol.h"
 #include "shared/ipc_shmem.h"
 #include "shared/ipc_utils.h"
@@ -131,6 +133,11 @@ common_shutdown(volatile struct ipc_client_state *ics)
 
 		xrt_system_devices_feature_dec(ics->server->xsysd, (enum xrt_device_feature_type)i);
 		ics->device_feature_used[i] = false;
+	}
+
+	// Destroy hand trackers owned by this client.
+	for (uint32_t i = 0; i < IPC_MAX_CLIENT_HAND_TRACKERS; i++) {
+		xrt_hand_tracker_destroy((struct xrt_hand_tracker **)&ics->objects.xhts[i]);
 	}
 
 	// Clear the tracking origins array.

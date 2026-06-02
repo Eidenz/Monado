@@ -142,8 +142,8 @@ apply_bias_and_scale_from_layer(const struct xrt_layer_data *data,
 		*out_bias = data->color_bias;
 	} else {
 		// Use identity scale and zero bias when flag is not set
-		*out_scale = (struct xrt_colour_rgba_f32){1.0f, 1.0f, 1.0f, 1.0f};
-		*out_bias = (struct xrt_colour_rgba_f32){0.0f, 0.0f, 0.0f, 0.0f};
+		*out_scale = XRT_C11_COMPOUND(struct xrt_colour_rgba_f32){1.0f, 1.0f, 1.0f, 1.0f};
+		*out_bias = XRT_C11_COMPOUND(struct xrt_colour_rgba_f32){0.0f, 0.0f, 0.0f, 0.0f};
 	}
 }
 

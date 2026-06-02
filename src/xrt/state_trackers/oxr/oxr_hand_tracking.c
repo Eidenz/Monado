@@ -10,10 +10,10 @@
  */
 
 #include "xrt/xrt_compiler.h"
+#include "xrt/xrt_space.h"
 
 #include "math/m_api.h"
 #include "math/m_mathinclude.h"
-#include "math/m_space.h"
 
 #include "util/u_debug.h"
 #include "util/u_trace_marker.h"
@@ -23,7 +23,6 @@
 #include "oxr_logger.h"
 #include "oxr_chain.h"
 #include "oxr_xret.h"
-#include "oxr_roles.h"
 
 
 /*
@@ -57,6 +56,32 @@ xr_hand_to_force_feedback_output(XrHandEXT hand)
 	}
 }
 
+static void
+sort_hand_tracking_sources(struct xrt_hand_tracker_create_info *info)
+{
+	if (info->requested_source_count < 2) {
+		return;
+	}
+
+	if (info->requested_sources[1] < info->requested_sources[0]) {
+		enum xrt_input_name tmp = info->requested_sources[0];
+		info->requested_sources[0] = info->requested_sources[1];
+		info->requested_sources[1] = tmp;
+	}
+}
+
+static void
+swap_hand_tracking_sources(struct xrt_hand_tracker_create_info *info)
+{
+	if (info->requested_source_count < 2) {
+		return;
+	}
+
+	enum xrt_input_name tmp = info->requested_sources[0];
+	info->requested_sources[0] = info->requested_sources[1];
+	info->requested_sources[1] = tmp;
+}
+
 
 /*
  *
@@ -71,6 +96,8 @@ oxr_hand_tracker_destroy_cb(struct oxr_logger *log, struct oxr_handle_base *hb)
 {
 	struct oxr_hand_tracker *hand_tracker = (struct oxr_hand_tracker *)hb;
 
+	xrt_hand_tracker_destroy(&hand_tracker->xht);
+
 	free(hand_tracker);
 
 	return XR_SUCCESS;
@@ -80,12 +107,9 @@ XrResult
 oxr_hand_tracker_create(struct oxr_logger *log,
                         struct oxr_session *sess,
                         const XrHandTrackerCreateInfoEXT *createInfo,
+                        struct xrt_device *override_xdev,
                         struct oxr_hand_tracker **out_hand_tracker)
 {
-	if (!oxr_system_get_hand_tracking_support(log, sess->sys->inst)) {
-		return oxr_error(log, XR_ERROR_FEATURE_UNSUPPORTED, "System does not support hand tracking");
-	}
-
 	struct oxr_hand_tracker *hand_tracker = NULL;
 	OXR_ALLOCATE_HANDLE_OR_RETURN(log, hand_tracker, OXR_XR_DEBUG_HTRACKER, oxr_hand_tracker_destroy_cb,
 	                              &sess->handle);
@@ -94,41 +118,16 @@ oxr_hand_tracker_create(struct oxr_logger *log,
 	hand_tracker->hand = createInfo->hand;
 	hand_tracker->hand_joint_set = createInfo->handJointSet;
 
-#define OXR_SET_HT_DATA_SOURCE(SRC, SRC_TYPE)                                                                          \
-	{                                                                                                              \
-		struct xrt_device *xdev = NULL;                                                                        \
-		if (createInfo->hand == XR_HAND_LEFT_EXT) {                                                            \
-			xdev = GET_STATIC_XDEV_BY_ROLE(sess->sys, hand_tracking_##SRC##_left);                         \
-		} else if (createInfo->hand == XR_HAND_RIGHT_EXT) {                                                    \
-			xdev = GET_STATIC_XDEV_BY_ROLE(sess->sys, hand_tracking_##SRC##_right);                        \
-		}                                                                                                      \
-                                                                                                                       \
-		if (xdev != NULL && xdev->supported.hand_tracking) {                                                   \
-			const enum xrt_input_name ht_input_name = createInfo->hand == XR_HAND_LEFT_EXT                 \
-			                                              ? XRT_INPUT_HT_##SRC_TYPE##_LEFT                 \
-			                                              : XRT_INPUT_HT_##SRC_TYPE##_RIGHT;               \
-			struct xrt_input *input = NULL;                                                                \
-			if (oxr_xdev_find_input(xdev, ht_input_name, &input) && input != NULL) {                       \
-				hand_tracker->SRC = (struct oxr_hand_tracking_data_source){                            \
-				    .xdev = xdev,                                                                      \
-				    .input_name = ht_input_name,                                                       \
-				};                                                                                     \
-			}                                                                                              \
-		}                                                                                                      \
-                                                                                                                       \
-		if (xdev != NULL && hand_tracker->SRC.xdev == NULL)                                                    \
-			oxr_warn(log, "We got hand tracking xdev (%s) but it didn't have a hand tracking input.",      \
-			         #SRC);                                                                                \
-	}
+	struct xrt_hand_tracker_create_info info = {
+	    .hand = createInfo->hand == XR_HAND_LEFT_EXT ? XRT_HAND_LEFT : XRT_HAND_RIGHT,
+	    .locked_xdev = override_xdev,
+	};
 
-	// Find the assigned device.
-	OXR_SET_HT_DATA_SOURCE(unobstructed, UNOBSTRUCTED)
-	OXR_SET_HT_DATA_SOURCE(conforming, CONFORMING)
-#undef OXR_SET_HT_DATA_SOURCE
-
-	hand_tracker->requested_sources_count = ARRAY_SIZE(hand_tracker->requested_sources);
-	hand_tracker->requested_sources[0] = &hand_tracker->unobstructed;
-	hand_tracker->requested_sources[1] = &hand_tracker->conforming;
+	// Fill out default priority.
+	info.requested_sources[info.requested_source_count++] =
+	    xr_hand_tracking_data_source_to_xrt(XR_HAND_TRACKING_DATA_SOURCE_UNOBSTRUCTED_EXT, createInfo->hand);
+	info.requested_sources[info.requested_source_count++] =
+	    xr_hand_tracking_data_source_to_xrt(XR_HAND_TRACKING_DATA_SOURCE_CONTROLLER_EXT, createInfo->hand);
 
 #ifdef OXR_HAVE_EXT_hand_tracking_data_source
 	const XrHandTrackingDataSourceInfoEXT *data_source_info = NULL;
@@ -138,40 +137,41 @@ oxr_hand_tracker_create(struct oxr_logger *log,
 	}
 
 	if (data_source_info != NULL) {
-
 		const uint32_t source_count =
-		    MIN(data_source_info->requestedDataSourceCount, hand_tracker->requested_sources_count);
-		hand_tracker->requested_sources_count = 0;
-		memset(hand_tracker->requested_sources, 0, sizeof(hand_tracker->requested_sources));
+		    MIN(data_source_info->requestedDataSourceCount, ARRAY_SIZE(info.requested_sources));
 
+		// Will overwrite default priority.
+		info.requested_source_count = 0;
 		for (uint32_t i = 0; i < source_count; ++i) {
-			struct oxr_hand_tracking_data_source *requested_source = NULL;
-			switch (data_source_info->requestedDataSources[i]) {
-			case XR_HAND_TRACKING_DATA_SOURCE_UNOBSTRUCTED_EXT:
-				requested_source = &hand_tracker->unobstructed;
-				break;
-			case XR_HAND_TRACKING_DATA_SOURCE_CONTROLLER_EXT:
-				requested_source = &hand_tracker->conforming;
-				break;
-			default: break;
-			}
-			if (requested_source && requested_source->xdev != NULL) {
-				hand_tracker->requested_sources[hand_tracker->requested_sources_count++] =
-				    requested_source;
-			}
+			info.requested_sources[info.requested_source_count++] = xr_hand_tracking_data_source_to_xrt(
+			    data_source_info->requestedDataSources[i], createInfo->hand);
 		}
 
-		if (hand_tracker->requested_sources_count == 0) {
-			return oxr_error(
-			    log, XR_ERROR_FEATURE_UNSUPPORTED,
-			    "None of the requested data sources are supported by the current hand-tracking device(s).");
-		}
-
-		const size_t sort_size = hand_tracker->requested_sources_count;
-		const size_t elem_size = sizeof(const struct oxr_hand_tracking_data_source *);
-		qsort(hand_tracker->requested_sources, sort_size, elem_size, oxr_hand_tracking_data_source_cmp);
+		// For validation in locate joints.
+		hand_tracker->has_requested_sources = info.requested_source_count > 0;
 	}
 #endif
+
+	/*
+	 * Ignore app and default priority, this might get changed in the future
+	 * but for now we keep what we have been doing. The extension doesn't
+	 * specify that the runtime should obey the order from the app.
+	 */
+	sort_hand_tracking_sources(&info);
+	if (debug_get_bool_option_hand_tracking_prioritize_conforming()) {
+		swap_hand_tracking_sources(&info);
+	}
+
+	xrt_result_t xret = xrt_system_devices_create_hand_tracker(sess->sys->xsysd, &info, &hand_tracker->xht);
+	if (xret == XRT_ERROR_FEATURE_NOT_SUPPORTED) {
+		oxr_handle_destroy(log, &hand_tracker->handle);
+		return oxr_error(log, XR_ERROR_FEATURE_UNSUPPORTED,
+		                 "Did not find any hand-tracking inputs that matched the given hand.");
+	}
+	if (xret != XRT_SUCCESS) {
+		oxr_handle_destroy(log, &hand_tracker->handle);
+		OXR_CHECK_XRET(log, sess, xret, xrt_system_devices_create_hand_tracker);
+	}
 
 	*out_hand_tracker = hand_tracker;
 
@@ -207,82 +207,37 @@ oxr_hand_tracker_joints(struct oxr_logger *log,
 	//! Convert at_time to monotonic and give to device.
 	const int64_t at_timestamp_ns = time_state_ts_to_monotonic_ns(inst->timekeeping, at_time);
 
-	struct oxr_hand_tracking_data_source *data_sources[ARRAY_SIZE(hand_tracker->requested_sources)] = {0};
-	memcpy(data_sources, hand_tracker->requested_sources, sizeof(data_sources));
-
-	if (debug_get_bool_option_hand_tracking_prioritize_conforming() && //
-	    hand_tracker->requested_sources_count > 1) {
-		struct oxr_hand_tracking_data_source *tmp = data_sources[0];
-		data_sources[0] = data_sources[1];
-		data_sources[1] = tmp;
+	struct xrt_space *xbase = NULL;
+	ret = oxr_space_get_xrt_space(log, baseSpc, &xbase);
+	if (ret != XR_SUCCESS || xbase == NULL) {
+		goto hand_tracking_inactive;
 	}
 
-	struct xrt_hand_joint_set value;
-	const struct oxr_hand_tracking_data_source *data_source = NULL;
-	for (uint32_t i = 0; i < hand_tracker->requested_sources_count; ++i) {
-		data_source = data_sources[i];
-		if (data_source == NULL || data_source->xdev == NULL)
-			continue;
-		int64_t ignored;
-		value = (struct xrt_hand_joint_set){0};
-		xrt_result_t xret = xrt_device_get_hand_tracking(data_source->xdev, data_source->input_name,
-		                                                 at_timestamp_ns, &value, &ignored);
-		OXR_CHECK_XRET_GOTO(log, sess, xret, xrt_device_get_hand_tracking, ret, hand_tracking_inactive);
-		if (value.is_active) {
-			break;
-		}
-	}
+	struct xrt_hand_tracker_location location = XRT_STRUCT_INIT;
+	xrt_result_t xret = xrt_hand_tracker_locate(hand_tracker->xht, sess->sys->xso, xbase, &baseSpc->pose,
+	                                            at_timestamp_ns, &location);
+	xrt_space_reference(&xbase, NULL);
+	OXR_CHECK_XRET_GOTO(log, sess, xret, xrt_hand_tracker_locate, ret, hand_tracking_inactive);
 
-	if (data_source == NULL || data_source->xdev == NULL) {
+	if (!location.is_active) {
 		goto hand_tracking_inactive;
 	}
 
 #ifdef OXR_HAVE_EXT_hand_tracking_data_source
 	if (data_source_state != NULL) {
 		data_source_state->isActive = XR_TRUE;
-		data_source_state->dataSource = xrt_hand_tracking_data_source_to_xr(data_source->input_name);
+		data_source_state->dataSource = xrt_hand_tracking_data_source_to_xr(location.source);
 	}
 #endif
-
-	// The hand pose is returned in the xdev's space.
-	struct xrt_space_relation T_xdev_hand = value.hand_pose;
-
-	// Get the xdev's pose in the base space.
-	struct xrt_space_relation T_base_xdev = XRT_SPACE_RELATION_ZERO;
-
-	ret = oxr_space_locate_device(log, data_source->xdev, baseSpc, at_time, &T_base_xdev);
-	if (ret != XR_SUCCESS || T_base_xdev.relation_flags == 0) {
-		// Error printed logged oxr_space_locate_device
-		goto hand_tracking_inactive;
-	}
-
-	// Get the hands pose in the base space.
-	struct xrt_space_relation T_base_hand;
-	struct xrt_relation_chain xrc = {0};
-	m_relation_chain_push_relation(&xrc, &T_xdev_hand);
-	m_relation_chain_push_relation(&xrc, &T_base_xdev);
-	m_relation_chain_resolve(&xrc, &T_base_hand);
-
-	// Can we not relate to this space or did we not get values?
-	if (T_base_hand.relation_flags == 0 || !value.is_active) {
-		goto hand_tracking_inactive;
-	}
 
 	// We know we are active.
 	locations->isActive = true;
 
 	for (uint32_t i = 0; i < locations->jointCount; i++) {
-		locations->jointLocations[i].locationFlags =
-		    xrt_to_xr_space_location_flags(value.values.hand_joint_set_default[i].relation.relation_flags);
-		locations->jointLocations[i].radius = value.values.hand_joint_set_default[i].radius;
+		struct xrt_space_relation result = location.hand_joint_set.values.hand_joint_set_default[i].relation;
 
-		struct xrt_space_relation r = value.values.hand_joint_set_default[i].relation;
-
-		struct xrt_space_relation result;
-		struct xrt_relation_chain chain = {0};
-		m_relation_chain_push_relation(&chain, &r);
-		m_relation_chain_push_relation(&chain, &T_base_hand);
-		m_relation_chain_resolve(&chain, &result);
+		locations->jointLocations[i].locationFlags = xrt_to_xr_space_location_flags(result.relation_flags);
+		locations->jointLocations[i].radius = location.hand_joint_set.values.hand_joint_set_default[i].radius;
 
 		xrt_to_xr_pose(&result.pose, &locations->jointLocations[i].pose);
 
@@ -354,19 +309,10 @@ oxr_hand_tracker_apply_force_feedback(struct oxr_logger *log,
 		result.force_feedback.force_feedback[i].value = locations->locations[i].value;
 	}
 
-	const struct oxr_hand_tracking_data_source *data_sources[2] = {
-	    &hand_tracker->unobstructed,
-	    &hand_tracker->conforming,
-	};
-	for (uint32_t i = 0; i < ARRAY_SIZE(data_sources); ++i) {
-		struct xrt_device *xdev = data_sources[i]->xdev;
-		if (xdev) {
-			xrt_result_t xret =
-			    xrt_device_set_output(xdev, xr_hand_to_force_feedback_output(hand_tracker->hand), &result);
-			if (xret != XRT_SUCCESS) {
-				return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "xr_device_set_output failed");
-			}
-		}
+	xrt_result_t xret = xrt_hand_tracker_set_output(hand_tracker->xht,
+	                                                xr_hand_to_force_feedback_output(hand_tracker->hand), &result);
+	if (xret != XRT_SUCCESS) {
+		return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "xrt_hand_tracker_set_output failed");
 	}
 
 	return XR_SUCCESS;

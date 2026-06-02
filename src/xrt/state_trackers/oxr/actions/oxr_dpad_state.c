@@ -60,8 +60,8 @@ oxr_dpad_state_init(struct oxr_dpad_state *state)
 	return true;
 }
 
-struct oxr_dpad_entry *
-oxr_dpad_state_get(struct oxr_dpad_state *state, uint64_t key)
+const struct oxr_dpad_entry *
+oxr_dpad_state_get(const struct oxr_dpad_state *state, uint64_t key)
 {
 	void *ptr = NULL;
 	u_hashmap_int_find(state->uhi, key, &ptr);
@@ -71,7 +71,9 @@ oxr_dpad_state_get(struct oxr_dpad_state *state, uint64_t key)
 struct oxr_dpad_entry *
 oxr_dpad_state_get_or_add(struct oxr_dpad_state *state, uint64_t key)
 {
-	struct oxr_dpad_entry *e = oxr_dpad_state_get(state, key);
+	void *ptr = NULL;
+	u_hashmap_int_find(state->uhi, key, &ptr);
+	struct oxr_dpad_entry *e = (struct oxr_dpad_entry *)ptr;
 	if (e == NULL) {
 		e = U_TYPED_CALLOC(struct oxr_dpad_entry);
 		XRT_MAYBE_UNUSED int ret = u_hashmap_int_insert(state->uhi, key, (void *)e);

@@ -7,10 +7,6 @@
  * @ingroup oxr_api
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 #include "util/u_trace_marker.h"
 
 #include "oxr_objects.h"
@@ -18,7 +14,12 @@
 
 #include "oxr_api_funcs.h"
 #include "oxr_api_verify.h"
-#include "oxr_handle.h"
+#include "oxr_handle_base.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 
 XRAPI_ATTR XrResult XRAPI_CALL
 oxr_xrCreateFaceTrackerANDROID(XrSession session,

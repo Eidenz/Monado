@@ -9,21 +9,21 @@
  * @ingroup comp_client
  */
 
-#include <stdlib.h>
+#include "xrt/xrt_instance.h"
 
 #include "util/u_misc.h"
 
 #include "oxr_objects.h"
 #include "oxr_logger.h"
 #include "oxr_two_call.h"
-#include "oxr_handle.h"
-
-#include "xrt/xrt_instance.h"
+#include "oxr_handle_base.h"
 
 #define EGL_NO_X11              // libglvnd
 #define MESA_EGL_NO_X11_HEADERS // mesa
 #include <EGL/egl.h>
 #include "xrt/xrt_gfx_egl.h"
+
+#include <stdlib.h>
 
 
 #ifndef XR_USE_PLATFORM_EGL

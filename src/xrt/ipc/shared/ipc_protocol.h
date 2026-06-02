@@ -322,6 +322,18 @@ struct ipc_shared_memory
 };
 
 /*!
+ * Pointer-free arguments for creating an @ref xrt_hand_tracker over IPC.
+ */
+struct ipc_hand_tracker_create_info
+{
+	enum xrt_hand hand;
+	enum xrt_input_name requested_sources[2];
+	uint32_t requested_source_count;
+	bool has_locked_xdev;
+	uint32_t locked_xdev_id;
+};
+
+/*!
  * Initial info from a client when it connects.
  */
 struct ipc_client_description
@@ -369,7 +381,6 @@ struct ipc_app_state
 	pid_t pid;
 	struct xrt_application_info info;
 };
-
 
 /*!
  * Arguments for creating swapchains from native images.

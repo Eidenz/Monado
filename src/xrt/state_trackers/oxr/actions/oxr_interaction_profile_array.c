@@ -105,9 +105,9 @@ oxr_interaction_profile_array_find_by_device_name(const struct oxr_interaction_p
 	 * Set *out_p to an oxr_interaction_profile if bindings for that
 	 * interaction profile XrPath have been suggested.
 	 */
-	for (size_t i = 0; i < ARRAY_SIZE(profile_templates); i++) {
+	for (size_t i = 0; i < ARRAY_SIZE(oxr_profile_templates); i++) {
 		// If it's for a different device name, skip.
-		if (name != profile_templates[i].name) {
+		if (name != oxr_profile_templates[i].name) {
 			continue;
 		}
 

@@ -2445,7 +2445,6 @@
 			"type": "tracked_controller",
 			"monado_device": "XRT_DEVICE_VIVE_TRACKER",
 			"extension": "HTCX_vive_tracker_interaction",
-			"extended_by": ["ext/palm_pose", "grip_surface", "ext/hand_interaction_poses"],
 			"subaction_paths": [
 				"/user/hand/left",
 				"/user/hand/right"
@@ -4354,6 +4353,10 @@
 						"touch",
 						"click"
 					],
+					"dpad_emulation": {
+						"position": "position",
+						"center": false
+					},
 					"monado_bindings": {
 						"position": "XRT_INPUT_PSSENSE_THUMBSTICK",
 						"touch": "XRT_INPUT_PSSENSE_THUMBSTICK_TOUCH",

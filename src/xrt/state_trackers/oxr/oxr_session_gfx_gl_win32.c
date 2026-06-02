@@ -9,17 +9,17 @@
  * @ingroup comp_client
  */
 
-#include <stdlib.h>
+#include "xrt/xrt_instance.h"
+#include "xrt/xrt_gfx_win32.h"
 
 #include "util/u_misc.h"
 
 #include "oxr_objects.h"
 #include "oxr_logger.h"
 #include "oxr_two_call.h"
-#include "oxr_handle.h"
+#include "oxr_handle_base.h"
 
-#include "xrt/xrt_instance.h"
-#include "xrt/xrt_gfx_win32.h"
+#include <stdlib.h>
 
 
 #ifndef XR_USE_PLATFORM_WIN32

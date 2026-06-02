@@ -1,22 +1,87 @@
 // Copyright 2019, Collabora, Ltd.
+// Copyright 2026, Beyley Cardellio
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
  * @brief  Contains handle-related functions and defines only required in a few
  * locations.
  * @author Rylie Pavlik <rylie.pavlik@collabora.com>
+ * @author Beyley Cardellio <ep1cm1n10n123@gmail.com>
  * @ingroup oxr_main
  */
 
 #pragma once
 
-#include "oxr_objects.h"
+#include "../oxr_logger.h"
+
+#include "oxr_handle_array.h"
 
 #include <stdlib.h>
+
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// Forward declare
+struct oxr_handle_base;
+
+/*!
+ * Function pointer type for a handle destruction function.
+ *
+ * @relates oxr_handle_base
+ */
+typedef XrResult (*oxr_handle_destroyer)(struct oxr_logger *log, struct oxr_handle_base *hb);
+
+/*!
+ * State of a handle base, to reduce likelihood of going "boom" on
+ * out-of-order destruction or other unsavory behavior.
+ *
+ * @ingroup oxr_main
+ */
+enum oxr_handle_state
+{
+	/*! State during/before oxr_handle_init, or after failure */
+	OXR_HANDLE_STATE_UNINITIALIZED = 0,
+
+	/*! State after successful oxr_handle_init */
+	OXR_HANDLE_STATE_LIVE,
+
+	/*! State after successful oxr_handle_destroy */
+	OXR_HANDLE_STATE_DESTROYED,
+};
+
+/*!
+ * Used to hold diverse child handles and ensure orderly destruction.
+ *
+ * Each object referenced by an OpenXR handle should have one of these as its
+ * first element, thus "extending" this class.
+ */
+struct oxr_handle_base
+{
+	//! Magic (per-handle-type) value for debugging.
+	uint64_t debug;
+
+	/*!
+	 * Pointer to this object's parent handle holder, if any.
+	 */
+	struct oxr_handle_base *parent;
+
+	/*!
+	 * Array of children, if any.
+	 */
+	struct oxr_handle_array children;
+
+	/*!
+	 * Current handle state.
+	 */
+	enum oxr_handle_state state;
+
+	/*!
+	 * Destroy the object this handle refers to.
+	 */
+	oxr_handle_destroyer destroy;
+};
 
 /*
  *
@@ -36,6 +101,18 @@ oxr_handle_init(struct oxr_logger *log,
                 uint64_t debug,
                 oxr_handle_destroyer destroy,
                 struct oxr_handle_base *parent);
+
+/*!
+ * Recursively destroys a handle and all of its children, removing it from its parent if it has one.
+ *
+ * oxr_handle_destroy wraps this to provide some extra output and start `level`
+ * at 0. `level`, which is reported in debug output, is the current depth of
+ * recursion.
+ *
+ * @protected @memberof oxr_handle_base
+ */
+XrResult
+oxr_handle_destroy_internal(struct oxr_logger *log, struct oxr_handle_base *hb, int level);
 
 /*!
  * Allocate some memory for use as a handle, and initialize it as a handle.

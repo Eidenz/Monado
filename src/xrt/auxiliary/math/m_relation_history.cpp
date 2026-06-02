@@ -196,15 +196,25 @@ m_relation_history_estimate_motion(struct xrt_space_relation const &old_relation
 	enum xrt_space_relation_flags shared_flags =
 	    (enum xrt_space_relation_flags)(old_relation.relation_flags & new_relation.relation_flags);
 
+	// Don't do anything if the new relation already has linear velocity
+	if (new_relation.relation_flags & XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT) {
+		out_flags = (enum xrt_space_relation_flags)(out_flags | XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT);
+		out_linear_velocity = new_relation.linear_velocity;
+	}
 	// If both relations have position data, estimate linear velocity
-	if (shared_flags & XRT_SPACE_RELATION_POSITION_VALID_BIT) {
+	else if (shared_flags & XRT_SPACE_RELATION_POSITION_VALID_BIT) {
 		out_flags = (enum xrt_space_relation_flags)(out_flags | XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT);
 
 		out_linear_velocity = (new_relation.pose.position - old_relation.pose.position) / dt;
 	}
 
+	// Don't do anything if the new relation already has angular velocity
+	if (new_relation.relation_flags & XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT) {
+		out_flags = (enum xrt_space_relation_flags)(out_flags | XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT);
+		out_angular_velocity = new_relation.angular_velocity;
+	}
 	// If both relations have orientation data, estimate angular velocity
-	if (shared_flags & XRT_SPACE_RELATION_ORIENTATION_VALID_BIT) {
+	else if (shared_flags & XRT_SPACE_RELATION_ORIENTATION_VALID_BIT) {
 		out_flags = (enum xrt_space_relation_flags)(out_flags | XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT);
 
 		math_quat_finite_difference(&old_relation.pose.orientation, &new_relation.pose.orientation, dt,
@@ -217,9 +227,6 @@ m_relation_history_push_with_motion_estimation(struct m_relation_history *rh,
                                                struct xrt_space_relation const *in_relation,
                                                int64_t timestamp)
 {
-	assert((in_relation->relation_flags & XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT) == 0);
-	assert((in_relation->relation_flags & XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT) == 0);
-
 	struct xrt_space_relation final_relation = *in_relation;
 
 	int64_t last_time_ns;

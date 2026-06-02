@@ -237,6 +237,7 @@ create_compute_distortion_descriptor_set_layout(struct vk_bundle *vk,
                                                 uint32_t distortion_binding,
                                                 uint32_t target_binding,
                                                 uint32_t ubo_binding,
+                                                uint32_t view_count,
                                                 VkDescriptorSetLayout *out_descriptor_set_layout)
 {
 	VkResult ret;
@@ -245,13 +246,13 @@ create_compute_distortion_descriptor_set_layout(struct vk_bundle *vk,
 	    {
 	        .binding = src_binding,
 	        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-	        .descriptorCount = 2,
+	        .descriptorCount = view_count,
 	        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
 	    },
 	    {
 	        .binding = distortion_binding,
 	        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-	        .descriptorCount = 6,
+	        .descriptorCount = 3 * view_count,
 	        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
 	    },
 	    {
@@ -298,6 +299,7 @@ struct compute_distortion_params
 {
 	uint32_t distortion_texel_count;
 	VkBool32 do_timewarp;
+	uint32_t view_count;
 };
 
 XRT_CHECK_RESULT static VkResult
@@ -353,9 +355,10 @@ create_compute_distortion_pipeline(struct vk_bundle *vk,
 	    sizeof(params->FIELD),                                                                                     \
 	}
 
-	VkSpecializationMapEntry entries[2] = {
+	VkSpecializationMapEntry entries[3] = {
 	    ENTRY(0, distortion_texel_count),
 	    ENTRY(1, do_timewarp),
+	    ENTRY(2, view_count),
 	};
 #undef ENTRY
 
@@ -935,6 +938,7 @@ render_resources_init(struct render_resources *r,
 	    r->compute.distortion_binding,                     // distortion_binding,
 	    r->compute.target_binding,                         // target_binding,
 	    r->compute.ubo_binding,                            // ubo_binding,
+	    r->view_count,                                     // view_count
 	    &r->compute.distortion.descriptor_set_layout);     // out_descriptor_set_layout
 	VK_CHK_WITH_RET(ret, "create_compute_distortion_descriptor_set_layout", false);
 
@@ -953,6 +957,7 @@ render_resources_init(struct render_resources *r,
 	struct compute_distortion_params distortion_params = {
 	    .distortion_texel_count = RENDER_DISTORTION_IMAGE_DIMENSIONS,
 	    .do_timewarp = false,
+	    .view_count = r->view_count,
 	};
 
 	ret = create_compute_distortion_pipeline(  //
@@ -969,6 +974,7 @@ render_resources_init(struct render_resources *r,
 	struct compute_distortion_params distortion_timewarp_params = {
 	    .distortion_texel_count = RENDER_DISTORTION_IMAGE_DIMENSIONS,
 	    .do_timewarp = true,
+	    .view_count = r->view_count,
 	};
 
 	ret = create_compute_distortion_pipeline(      //

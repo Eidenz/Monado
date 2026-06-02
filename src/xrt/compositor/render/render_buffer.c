@@ -9,6 +9,8 @@
  */
 
 #include "vk/vk_mini_helpers.h"
+#include "vk/vk_compositor_flags.h"
+
 #include "render/render_interface.h"
 
 #include <stdio.h>

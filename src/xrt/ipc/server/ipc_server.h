@@ -59,12 +59,14 @@ extern "C" {
  *
  */
 
+#define IPC_MAX_CLIENT_HAND_TRACKERS 16
 #define IPC_MAX_CLIENT_SEMAPHORES 8
 #define IPC_MAX_CLIENT_SWAPCHAINS (XRT_MAX_LAYERS * 2)
 #define IPC_MAX_CLIENT_SPACES 128
 #define IPC_MAX_CLIENT_FUTURES 128
 
 struct xrt_instance;
+struct xrt_hand_tracker;
 struct xrt_compositor;
 struct xrt_compositor_native;
 
@@ -117,6 +119,11 @@ struct ipc_client_state
 		 * so we don't need to lock it.
 		 */
 		struct xrt_device *xdevs[XRT_SYSTEM_MAX_DEVICES];
+
+		/*!
+		 * Hand trackers owned by this client.
+		 */
+		struct xrt_hand_tracker *xhts[IPC_MAX_CLIENT_HAND_TRACKERS];
 	} objects;
 
 	//! Session for this client.

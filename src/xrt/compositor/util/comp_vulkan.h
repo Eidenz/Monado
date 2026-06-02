@@ -11,9 +11,12 @@
 #pragma once
 
 #include "xrt/xrt_compositor.h"
+
 #include "util/u_logging.h"
 #include "util/u_extension_list.h"
+
 #include "vk/vk_helpers.h"
+#include "vk/vk_compositor_flags.h"
 
 
 #ifdef __cplusplus

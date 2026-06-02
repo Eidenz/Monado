@@ -1,5 +1,5 @@
 // Copyright 2018-2024, Collabora, Ltd.
-// Copyright 2025, NVIDIA CORPORATION.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -11,8 +11,10 @@
 
 #pragma once
 
+#include "xrt/xrt_hand_tracker.h"
 #include "xrt/xrt_openxr_includes.h"
-#include "oxr_handle.h"
+
+#include "oxr_handle_base.h"
 
 
 /*
@@ -22,28 +24,6 @@
  */
 
 struct oxr_session;
-
-struct oxr_hand_tracking_data_source
-{
-	//! xrt_device backing this hand tracker
-	struct xrt_device *xdev;
-
-	//! the input name associated with this hand tracker
-	enum xrt_input_name input_name;
-};
-
-static inline int
-oxr_hand_tracking_data_source_cmp(const void *p1, const void *p2)
-{
-	const struct oxr_hand_tracking_data_source *lhs = (const struct oxr_hand_tracking_data_source *)p1;
-	const struct oxr_hand_tracking_data_source *rhs = (const struct oxr_hand_tracking_data_source *)p2;
-	assert(lhs && rhs);
-	if (rhs->input_name < lhs->input_name)
-		return -1;
-	if (rhs->input_name > lhs->input_name)
-		return 1;
-	return 0;
-}
 
 /*!
  * A hand tracker.
@@ -62,19 +42,11 @@ struct oxr_hand_tracker
 	//! Owner of this hand tracker.
 	struct oxr_session *sess;
 
-	struct oxr_hand_tracking_data_source unobstructed;
-	struct oxr_hand_tracking_data_source conforming;
+	//! XRT hand tracker backing this OpenXR handle.
+	struct xrt_hand_tracker *xht;
 
-	/*!
-	 * An ordered list of requested data-source from above options (@ref
-	 * oxr_hand_tracker::[unobstructed|conforming]), ordered by
-	 * @ref oxr_hand_tracker::input_name (see @ref oxr_hand_tracking_data_source_cmp)
-	 *
-	 * if OXR_HAVE_EXT_hand_tracking_data_source is not defined the list
-	 * will contain refs to all the above options.
-	 */
-	struct oxr_hand_tracking_data_source *requested_sources[2];
-	uint32_t requested_sources_count;
+	//! Whether any sources were requested by the application.
+	bool has_requested_sources;
 
 	XrHandEXT hand;
 	XrHandJointSetEXT hand_joint_set;
@@ -91,6 +63,7 @@ XrResult
 oxr_hand_tracker_create(struct oxr_logger *log,
                         struct oxr_session *sess,
                         const XrHandTrackerCreateInfoEXT *createInfo,
+                        struct xrt_device *override_xdev,
                         struct oxr_hand_tracker **out_hand_tracker);
 
 XrResult

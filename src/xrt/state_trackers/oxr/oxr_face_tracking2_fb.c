@@ -8,16 +8,17 @@
  * @ingroup oxr_main
  */
 
+#include "oxr_objects.h"
+#include "oxr_logger.h"
+#include "oxr_handle_base.h"
+#include "oxr_roles.h"
+#include "xrt/xrt_defines.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
 
-#include "oxr_objects.h"
-#include "oxr_logger.h"
-#include "oxr_handle.h"
-#include "oxr_roles.h"
-#include "xrt/xrt_defines.h"
 
 static XrResult
 oxr_face_tracker2_fb_destroy_cb(struct oxr_logger *log, struct oxr_handle_base *hb)

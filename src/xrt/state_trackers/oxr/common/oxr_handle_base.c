@@ -1,12 +1,14 @@
 // Copyright 2019-2020, Collabora, Ltd.
+// Copyright 2026, Beyley Cardellio
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
  * @brief  Implementation
  * @author Rylie Pavlik <rylie.pavlik@collabora.com>
+ * @author Beyley Cardellio <ep1cm1n10n123@gmail.com>
  */
 
-#include "oxr_handle.h"
+#include "oxr_handle_base.h"
 
 #include "util/u_debug.h"
 #include "util/u_misc.h"
@@ -74,22 +76,9 @@ oxr_handle_init(struct oxr_logger *log,
 			                 oxr_handle_state_to_string(parent->state));
 		}
 
-		bool placed = false;
-		for (int i = 0; i < XRT_MAX_HANDLE_CHILDREN; ++i) {
-			if (parent->children[i] == NULL) {
-				HANDLE_LIFECYCLE_LOG(log,
-				                     "[init %p] Assigned to "
-				                     "child slot %d in parent",
-				                     (void *)hb, i);
-				parent->children[i] = hb;
-				placed = true;
-				break;
-			}
-		}
-		if (!placed) {
-			return oxr_error(log, XR_ERROR_LIMIT_REACHED,
-			                 "Parent handle has no more room for "
-			                 "child handles");
+		if (!oxr_handle_array_add(&parent->children, hb)) {
+			return oxr_error(log, XR_ERROR_OUT_OF_MEMORY,
+			                 "Failed to add handle to parent's children array.");
 		}
 	}
 	U_ZERO(hb);
@@ -122,15 +111,8 @@ oxr_handle_allocate_and_init(struct oxr_logger *log,
 	return result;
 }
 
-/*!
- * This is the actual recursive call that destroys handles.
- *
- * oxr_handle_destroy wraps this to provide some extra output and start `level`
- * at 0. `level`, which is reported in debug output, is the current depth of
- * recursion.
- */
-static XrResult
-oxr_handle_do_destroy(struct oxr_logger *log, struct oxr_handle_base *hb, int level)
+XrResult
+oxr_handle_destroy_internal(struct oxr_logger *log, struct oxr_handle_base *hb, int level)
 {
 
 	HANDLE_LIFECYCLE_LOG(log,
@@ -143,14 +125,18 @@ oxr_handle_do_destroy(struct oxr_logger *log, struct oxr_handle_base *hb, int le
 		bool found = false;
 		struct oxr_handle_base *parent = hb->parent;
 
-		for (int i = 0; i < XRT_MAX_HANDLE_CHILDREN; ++i) {
-			if (parent->children[i] == hb) {
+		for (uint32_t i = 0; i < parent->children.count; ++i) {
+			if (parent->children.handles[i] == hb) {
 				HANDLE_LIFECYCLE_LOG(log,
 				                     "[%d: destroying %p] Removing handle from "
 				                     "child slot %d in parent %p",
 				                     level, (void *)hb, i, (void *)hb->parent);
 
-				parent->children[i] = NULL;
+				if (!oxr_handle_array_remove(&parent->children, i)) {
+					return oxr_error(log, XR_ERROR_RUNTIME_FAILURE,
+					                 "Failed to remove handle from parent's children array. This "
+					                 "should never happen.");
+				}
 				found = true;
 				break;
 			}
@@ -164,15 +150,9 @@ oxr_handle_do_destroy(struct oxr_logger *log, struct oxr_handle_base *hb, int le
 	}
 
 	/* Destroy child handles */
-	for (size_t i = 0; i < XRT_MAX_HANDLE_CHILDREN; ++i) {
-		struct oxr_handle_base *child = hb->children[i];
-
-		if (child != NULL) {
-			XrResult result = oxr_handle_do_destroy(log, child, level + 1);
-			if (result != XR_SUCCESS) {
-				return result;
-			}
-		}
+	XrResult result = oxr_handle_array_destroy(log, &hb->children, level);
+	if (result != XR_SUCCESS) {
+		return result;
 	}
 
 	/* Might destroy instance, which log needs, so use secured variant */
@@ -182,7 +162,7 @@ oxr_handle_do_destroy(struct oxr_logger *log, struct oxr_handle_base *hb, int le
 		HANDLE_LIFECYCLE_LOG_SCOPED(log, "[%d: destroying %p] Calling handle object destructor", level,
 		                            (void *)hb);
 		hb->state = OXR_HANDLE_STATE_DESTROYED;
-		XrResult result = hb->destroy(log, hb);
+		result = hb->destroy(log, hb);
 		if (result != XR_SUCCESS) {
 			return result;
 		}
@@ -204,7 +184,7 @@ oxr_handle_destroy(struct oxr_logger *log, struct oxr_handle_base *hb)
 	{
 		HANDLE_LIFECYCLE_LOG_SCOPED(log, "[~: destroying %p] oxr_handle_destroy starting", (void *)hb);
 
-		XrResult result = oxr_handle_do_destroy(log, hb, 0);
+		XrResult result = oxr_handle_destroy_internal(log, hb, 0);
 
 		HANDLE_LIFECYCLE_LOG_SCOPED(log, "[~: destroying %p] oxr_handle_destroy finished", (void *)hb);
 

@@ -45,8 +45,6 @@ enum rift_variant
 #define RIFT_DK2_PRODUCT_STRING "Rift DK2"
 #define RIFT_CV1_PRODUCT_STRING "Rift CV1"
 
-#define RIFT_MAX_TIMING_SINKS 4
-
 /*!
  * Checks whether the given device is an Oculus device, by checking the manufacturer string.
  *

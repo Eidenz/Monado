@@ -45,7 +45,17 @@ struct oxr_dpad_settings
  */
 struct oxr_dpad_binding_modification
 {
+	/*!
+	 * Binding path from XrInteractionProfileDpadBindingEXT::binding.
+	 *
+	 * This is set while processing xrSuggestInteractionProfileBindings, when
+	 * oxr_api_action.c copies each dpad binding modification into the
+	 * interaction profile's dpad state. It names the DPAD emulator path that
+	 * the modification applies to, for example
+	 * `/user/hand/left/input/thumbstick`.
+	 */
 	XrPath binding;
+
 	struct oxr_dpad_settings settings;
 };
 
@@ -95,8 +105,8 @@ oxr_dpad_state_init(struct oxr_dpad_state *state);
  *
  * @public @memberof oxr_dpad_state
  */
-struct oxr_dpad_entry *
-oxr_dpad_state_get(struct oxr_dpad_state *state, uint64_t key);
+const struct oxr_dpad_entry *
+oxr_dpad_state_get(const struct oxr_dpad_state *state, uint64_t key);
 
 /*!
  * Look for a entry in the state for the given action set key,

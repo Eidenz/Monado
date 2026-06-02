@@ -43,11 +43,14 @@ add_library(
 	vk_cmd_pool.c
 	vk_cmd_pool.h
 	vk_compositor_flags.c
+	vk_compositor_flags.h
 	vk_debug.c
 	vk_documentation.h
 	vk_enumerate.c
 	vk_extensions_helpers.c
 	vk_extensions_helpers.h
+	vk_format.c
+	vk_format.h
 	vk_function_loaders.c
 	vk_helpers.c
 	vk_helpers.h
@@ -61,6 +64,7 @@ add_library(
 	vk_queue_family.c
 	vk_queue_family.h
 	vk_print.c
+	vk_print.h
 	vk_state_creators.c
 	vk_submit_helpers.c
 	vk_submit_helpers.h

@@ -94,6 +94,8 @@ add_library(
 	client/ipc_client_connection.c
 	client/ipc_client_device.c
 	client/ipc_client_future.c
+	client/ipc_client_hand_tracker.c
+	client/ipc_client_hand_tracker.h
 	client/ipc_client_hmd.c
 	client/ipc_client_instance.c
 	client/ipc_client_session.c
@@ -134,6 +136,7 @@ add_library(
 	${CMAKE_CURRENT_BINARY_DIR}/ipc_server_generated.h
 	server/ipc_server.h
 	server/ipc_server_handler.c
+	server/ipc_server_handler_hand_tracker.c
 	server/ipc_server_handler_swapchain.c
 	server/ipc_server_per_client_thread.c
 	server/ipc_server_process.c

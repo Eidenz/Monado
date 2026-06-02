@@ -19,7 +19,22 @@
 
 #pragma pack(push, 1)
 
-#define NS_PER_IMU_TICK 333
+// @todo Remove when clang-format is updated in CI
+// clang-format off
+// IMU ticks are in thirds of a microsecond, so 1 tick = 333.333... nanoseconds
+#define NS_TO_IMU_TICKS(ns) (((uint64_t)(ns) * 3) / 1000)
+#define IMU_TICKS_TO_NS(ticks) (((uint64_t)(ticks) * 1000) / 3)
+
+#define PERIOD_ID_TO_DURATION_NS(period_id) (time_duration_ns)(IMU_TICKS_TO_NS(150LLU * (uint64_t)period_id + 1250))
+// @note: the +1 is to ensure things round correctly when dealing with converting to and back
+#define DURATION_NS_TO_PERIOD_ID(duration_ns) (uint8_t)(((NS_TO_IMU_TICKS(duration_ns + 1) - 1250) / 150LLU) & 0xFF)
+// clang-format on
+
+#define STABLE_MIN_PERIOD_ID 20
+
+#define MIN_PERIOD_ID 1
+#define MAX_PERIOD_ID 42
+
 #define PCM_SAMPLE_RATE 3000
 #define PCM_HAPTIC_BUF_SIZE 32
 
@@ -74,7 +89,7 @@ struct pssense_input_report
 	uint8_t battery_state; // High bits charge level 0x00-0x0a, low bits battery state
 	uint8_t plug_state;    // Flags for USB data and/or power connected
 	__le32 host_timestamp;
-	__le32 device_timestamp;
+	__le32 device_timestamp_ticks;
 	uint8_t unknown4[4];
 	uint8_t aes_cmac[8];
 	uint8_t unknown5;
@@ -153,6 +168,26 @@ struct pssense_output_adaptive_trigger_settings
 	union {
 		uint8_t raw_parameters[10];
 	};
+};
+
+enum pssense_led_sync_phase
+{
+	// initializing
+	LED_SYNC_PHASE_INIT = 0,
+	// ???
+	LED_SYNC_PHASE_PRESCAN = 1,
+	// ???
+	LED_SYNC_PHASE_BROAD = 2,
+	// ???
+	LED_SYNC_PHASE_BG = 3,
+	// ???
+	LED_SYNC_PHASE_STABLE = 4,
+	// used during passthrough to prevent LEDs from bleeding into it
+	LED_SYNC_PHASE_LED_ALL_OFF = 5,
+	// probably 100% duty cycle?
+	LED_SYNC_PHASE_LED_ALL_ON = 6,
+	// probably also 100% duty cycle?
+	LED_SYNC_PHASE_DEBUG = 7,
 };
 
 struct pssense_led_settings

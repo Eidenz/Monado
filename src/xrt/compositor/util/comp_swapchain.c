@@ -17,11 +17,11 @@
 #include "util/u_trace_marker.h"
 #include "util/u_limited_unique_id.h"
 
-#include "vk/vk_helpers.h"
 #include "vk/vk_cmd_pool.h"
+#include "vk/vk_compositor_flags.h"
+#include "vk/vk_format.h"
+#include "vk/vk_helpers.h"
 #include "vk/vk_mini_helpers.h"
-
-#include "util/comp_swapchain.h"
 
 #include "util/comp_swapchain.h"
 
@@ -323,6 +323,30 @@ do_post_create_vulkan_setup(struct vk_bundle *vk,
 
 	// This is the format for the image view, it's not adjusted.
 	VkFormat image_view_format = (VkFormat)info->format;
+
+	if (info->create & XRT_SWAPCHAIN_CREATE_SAMPLE_AS_SRGB) {
+		VkFormat srgb_format = vk_format_convert_unorm_to_srgb(image_view_format);
+		if (srgb_format == VK_FORMAT_UNDEFINED) {
+			VK_ERROR(vk, "Could not find sRGB format for format %s", vk_format_string(image_view_format));
+			return XRT_ERROR_SWAPCHAIN_FORMAT_UNSUPPORTED;
+		}
+
+		image_view_format = srgb_format;
+
+		VK_DEBUG(vk, "Using sRGB format %s for swapchain image views instead of UNORM format %s",
+		         vk_format_string(image_view_format), vk_format_string((VkFormat)info->format));
+	}
+
+	// These views are only consumed by the compositor as sampled source images, so don't inherit any other bits
+	// which may make sampling this unsupported.
+	enum xrt_swapchain_usage_bits image_view_bits = XRT_SWAPCHAIN_USAGE_SAMPLED;
+	VkImageUsageFlags image_view_usage = vk_csci_get_image_usage_flags(vk, image_view_format, image_view_bits);
+	if (image_view_usage == 0) {
+		VK_ERROR(vk, "Could not derive image view usage flags for format %s",
+		         vk_format_string(image_view_format));
+		return XRT_ERROR_SWAPCHAIN_FORMAT_UNSUPPORTED;
+	}
+
 	VkImageAspectFlagBits image_view_aspect = vk_csci_get_image_view_aspect(image_view_format, info->bits);
 
 	VkImageViewType image_view_type = info->face_count == 6 ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D;
@@ -348,28 +372,32 @@ do_post_create_vulkan_setup(struct vk_bundle *vk,
 			    .layerCount = info->face_count,
 			};
 
-			ret = vk_create_view(                   //
+			// Create view with only the specific usage we need.
+			ret = vk_create_view_usage(             //
 			    vk,                                 // vk
 			    sc->vkic.images[i].handle,          // image
 			    image_view_type,                    // type
 			    image_view_format,                  // format
+			    image_view_usage,                   // image_usage
 			    subresource_range,                  // subresource_range
 			    &sc->images[i].views.alpha[layer]); // out_view
 
-			VK_CHK_WITH_GOTO(ret, "vk_create_view", error);
+			VK_CHK_WITH_GOTO(ret, "vk_create_view_usage", error);
 
 			VK_NAME_IMAGE_VIEW(vk, sc->images[i].views.alpha[layer], "comp_swapchain views alpha layer");
 
-			ret = vk_create_view_swizzle(              //
+			// Create view with only the specific usage we need.
+			ret = vk_create_view_swizzle_usage(        //
 			    vk,                                    // vk
 			    sc->vkic.images[i].handle,             // image
 			    image_view_type,                       // type
 			    image_view_format,                     // format
+			    image_view_usage,                      // image_usage
 			    subresource_range,                     // subresource_range
 			    no_alpha_components,                   // components
 			    &sc->images[i].views.no_alpha[layer]); // out_view
 
-			VK_CHK_WITH_GOTO(ret, "vk_create_view_swizzle", error);
+			VK_CHK_WITH_GOTO(ret, "vk_create_view_swizzle_usage", error);
 
 			VK_NAME_IMAGE_VIEW(vk, sc->images[i].views.no_alpha[layer],
 			                   "comp_swapchain views no alpha layer");

@@ -7,20 +7,21 @@
  * @ingroup oxr_main
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 #include "math/m_api.h"
 #include "math/m_mathinclude.h"
 #include "math/m_space.h"
 
 #include "oxr_objects.h"
 #include "oxr_logger.h"
-#include "oxr_handle.h"
+#include "oxr_handle_base.h"
 #include "oxr_conversions.h"
 #include "oxr_chain.h"
 #include "oxr_roles.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 
 #ifdef OXR_HAVE_BD_body_tracking
 

@@ -9,12 +9,15 @@
  * @ingroup comp_client
  */
 
+#include "vk/vk_compositor_flags.h"
+
 #include "util/u_misc.h"
 #include "util/u_handles.h"
 #include "util/u_trace_marker.h"
 #include "util/u_debug.h"
 
 #include "comp_vk_client.h"
+
 
 // Prefixed with OXR since the only user right now is the OpenXR state tracker.
 DEBUG_GET_ONCE_LOG_OPTION(vulkan_log, "OXR_VULKAN_LOG", U_LOGGING_INFO)
@@ -269,6 +272,19 @@ client_vk_swapchain_destroy(struct xrt_swapchain *xsc)
 	struct client_vk_swapchain *sc = client_vk_swapchain(xsc);
 	struct client_vk_compositor *c = sc->c;
 	struct vk_bundle *vk = &c->vk;
+
+	vk_cmd_pool_lock(&c->pool);
+	for (uint32_t i = 0; i < sc->base.base.image_count; i++) {
+		if (sc->acquire[i] != VK_NULL_HANDLE) {
+			vk->vkFreeCommandBuffers(vk->device, c->pool.pool, 1, &sc->acquire[i]);
+			sc->acquire[i] = VK_NULL_HANDLE;
+		}
+		if (sc->release[i] != VK_NULL_HANDLE) {
+			vk->vkFreeCommandBuffers(vk->device, c->pool.pool, 1, &sc->release[i]);
+			sc->release[i] = VK_NULL_HANDLE;
+		}
+	}
+	vk_cmd_pool_unlock(&c->pool);
 
 	for (uint32_t i = 0; i < sc->base.base.image_count; i++) {
 		if (sc->base.images[i] != VK_NULL_HANDLE) {

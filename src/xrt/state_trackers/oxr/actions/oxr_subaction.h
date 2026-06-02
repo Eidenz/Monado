@@ -48,7 +48,7 @@
 /*!
  * Expansion macro (x-macro) that calls the macro you pass for each valid
  * subaction path, with the shorthand name of each subaction path, the same
- * name capitalized, and the corresponding path string.
+ * name capitalized, the corresponding path string, and the localized name.
  *
  * If you also want the bogus subaction path of just plain `/user`, then see
  * OXR_FOR_EACH_SUBACTION_PATH_DETAILED()
@@ -59,16 +59,17 @@
  * OXR_FOR_EACH_SUBACTION_PATH()
  */
 #define OXR_FOR_EACH_VALID_SUBACTION_PATH_DETAILED(_)                                                                  \
-	_(left, LEFT, "/user/hand/left")                                                                               \
-	_(right, RIGHT, "/user/hand/right")                                                                            \
-	_(head, HEAD, "/user/head")                                                                                    \
-	_(gamepad, GAMEPAD, "/user/gamepad")                                                                           \
-	_(eyes, EYES, "/user/eyes_ext")
+	_(left, LEFT, "/user/hand/left", "Left")                                                                       \
+	_(right, RIGHT, "/user/hand/right", "Right")                                                                   \
+	_(head, HEAD, "/user/head", "Head")                                                                            \
+	_(gamepad, GAMEPAD, "/user/gamepad", "Gamepad")                                                                \
+	_(eyes, EYES, "/user/eyes_ext", "Eyes")
 
 /*!
  * Expansion macro (x-macro) that calls the macro you pass for each subaction
  * path (including the bare `/user`), with the shorthand name of each subaction
- * path, the same name capitalized, and the corresponding path string.
+ * path, the same name capitalized, the corresponding path string, and the
+ * localized name.
  *
  * Use to generate code that checks each subaction path in sequence, etc.
  *
@@ -77,7 +78,7 @@
  */
 #define OXR_FOR_EACH_SUBACTION_PATH_DETAILED(_)                                                                        \
 	OXR_FOR_EACH_VALID_SUBACTION_PATH_DETAILED(_)                                                                  \
-	_(user, USER, "/user")
+	_(user, USER, "/user", "User")
 
 
 #ifdef __cplusplus

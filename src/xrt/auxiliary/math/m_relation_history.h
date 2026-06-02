@@ -63,7 +63,8 @@ bool
 m_relation_history_push(struct m_relation_history *rh, struct xrt_space_relation const *in_relation, int64_t timestamp);
 
 /*!
- * Pushes a new pose to the history, estimating linear and angular velocity based on the previous entry.
+ * Pushes a new pose to the history, estimating linear and angular velocity based on the previous entry if the input
+ * relation does not have valid velocity data.
  *
  * If the history is full, it will also pop a pose out of the other side of the buffer.
  *

@@ -50,7 +50,7 @@ enum xrt_tracking_type
 	//! The device(s) are tracked by RGB camera(s).
 	XRT_TRACKING_TYPE_RGB,
 
-	//! The device(s) are tracked by Ligthhouse
+	//! The device(s) are tracked by Lighthouse.
 	XRT_TRACKING_TYPE_LIGHTHOUSE,
 
 	//! The device(s) are tracked by magnetic fields, eg. Razer Hydra.
@@ -58,6 +58,9 @@ enum xrt_tracking_type
 
 	//! The device(s) are tracked by external SLAM
 	XRT_TRACKING_TYPE_EXTERNAL_SLAM,
+
+	//! The device(s) are tracked through a constellation of lights as seen by cameras.
+	XRT_TRACKING_TYPE_CONSTELLATION,
 
 	//! The device(s) are tracked by other methods.
 	XRT_TRACKING_TYPE_OTHER,

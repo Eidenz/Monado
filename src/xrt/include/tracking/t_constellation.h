@@ -20,6 +20,7 @@ typedef int8_t t_constellation_device_id_t;
 typedef int8_t t_constellation_led_id_it;
 
 #define XRT_CONSTELLATION_MAX_BLOBS_PER_FRAME 250
+#define XRT_CONSTELLATION_MAX_DEVICES 4
 
 #define XRT_CONSTELLATION_INVALID_DEVICE_ID -1
 #define XRT_CONSTELLATION_INVALID_LED_ID -1
@@ -67,6 +68,12 @@ struct t_blob
 
 	//! The size of the blob, in pixels. May be {0,0}, and may be subpixel accurate.
 	struct xrt_vec2 size;
+
+	/*!
+	 * The brightness of the brightest pixel of the blob, on a scale from 0.0 (black) to 1.0 (pure white).
+	 * Set to 1.0 for non-brightness-aware blobwatches.
+	 */
+	float brightness;
 };
 
 struct t_blob_observation
@@ -301,6 +308,12 @@ struct t_constellation_tracker_sample
 	int64_t timestamp_ns;
 	//! The pose of the device at the time of the blobservation.
 	struct xrt_pose pose;
+	//! The mosaic index of the camera that made the blobservation in question.
+	size_t mosaic_index;
+	//! The index of the camera in the mosaic that made the blobservation in question.
+	size_t camera_index;
+	//! Average brightness of the detected blobs, from 0 (black) to 1 (pure white).
+	float average_brightness;
 };
 
 /*!

@@ -8,7 +8,7 @@
  * @author Philipp Zabel <philipp.zabel@gmail.com>
  * @author Jan Schmidt <jan@centricular.com>
  * @author Beyley Cardellio <ep1cm1n10n123@gmail.com>
- * @ingroup aux_tracking
+ * @ingroup tracking
  */
 
 #include "xrt/xrt_defines.h"
@@ -679,6 +679,7 @@ t_rift_blobwatch_push_frame(struct xrt_frame_sink *sink, struct xrt_frame *frame
 		xb->bounding_box.extent.h = b->height;
 		xb->size.x = (float)b->width;
 		xb->size.y = (float)b->height;
+		xb->brightness = b->brightness / 255.0f;
 	}
 
 	struct t_blob_observation xbo = {

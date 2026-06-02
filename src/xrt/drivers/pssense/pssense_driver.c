@@ -15,8 +15,13 @@
 #include "os/os_time.h"
 
 #include "math/m_api.h"
+#include "math/m_vec3.h"
 
 #include "tracking/t_imu.h"
+#include "tracking/t_constellation.h"
+
+#include "constellation/t_constellation_tracker.h"
+#include "constellation/t_led_sync_refinement.h"
 
 #include "util/u_var.h"
 #include "util/u_debug.h"
@@ -29,9 +34,11 @@
 #include "math/m_mathinclude.h"
 #include "math/m_space.h"
 #include "math/m_imu_3dof.h"
+#include "math/m_relation_history.h"
 
 #include "pssense_interface.h"
 #include "pssense_protocol.h"
+#include "pssense_led_model.h"
 
 #include <stdio.h>
 #include <errno.h>
@@ -44,6 +51,7 @@
 
 #define PSSENSE_TRACE(p, ...) U_LOG_XDEV_IFL_T(&p->base, p->log_level, __VA_ARGS__)
 #define PSSENSE_DEBUG(p, ...) U_LOG_XDEV_IFL_D(&p->base, p->log_level, __VA_ARGS__)
+#define PSSENSE_DEBUG_HEX(p, data, data_size) U_LOG_XDEV_IFL_D_HEX(&p->base, p->log_level, data, data_size)
 #define PSSENSE_WARN(p, ...) U_LOG_XDEV_IFL_W(&p->base, p->log_level, __VA_ARGS__)
 #define PSSENSE_ERROR(p, ...) U_LOG_XDEV_IFL_E(&p->base, p->log_level, __VA_ARGS__)
 
@@ -166,9 +174,6 @@ struct pssense_input_state
 	bool thumbstick_touch;
 	struct xrt_vec2 thumbstick;
 
-	uint32_t imu_ticks_last;
-	uint64_t imu_ticks_total;
-
 	struct xrt_vec3_i32 gyro_raw;
 	struct xrt_vec3_i32 accel_raw;
 
@@ -182,13 +187,80 @@ struct pssense_input_state
  * A single PlayStation Sense Controller.
  *
  * @implements xrt_device
+ * @implements xrt_frame_node
+ * @implements t_timing_event_sink
+ * @implements t_constellation_tracker_led_model
+ * @implements t_constellation_tracker_device
  */
 struct pssense_device
 {
 	struct xrt_device base;
+	struct xrt_frame_node node;
+	struct t_timing_event_sink timing_event_sink;
+	struct t_constellation_tracker_led_model led_model;
+	struct t_constellation_tracker_device constellation_device;
+	struct t_constellation_tracker_tracking_source constellation_tracking_source;
 
 	struct os_hid_device *hid;
 	struct os_thread_helper controller_thread;
+
+	struct
+	{
+		// Follows PSVR2TK's known-good clock tracking for sense controllers
+		// See: PSVR2Toolkit/projects/psvr2_openvr_driver_ex/sense_controller.h, SenseController
+
+		//! Raw max-tracked offset: imu_time_ns - host_receive_time_ns
+		double timestamp_offset_ns;
+		//! Smoothed version of timestamp_offset_ns, updated ±2500ns per sample at most.
+		double filtered_offset_ns;
+		bool has_clock_offset;
+		uint64_t last_clock_sample_ns;
+
+		timepoint_ns latest_imu_time_ns;
+
+		uint32_t imu_ticks_last;
+		uint64_t imu_ticks_total;
+
+		timepoint_ns latest_device_time_ns;
+
+		uint32_t device_ticks_last;
+		uint64_t device_ticks_total;
+
+		uint32_t last_sent_host_timestamp_us;
+
+		time_duration_ns smoothed_clock_jitter_ns;
+	} timing;
+
+	struct
+	{
+		struct m_relation_history *imu_relation_history;
+		struct m_imu_3dof fusion;
+		struct xrt_pose pose;
+
+		uint32_t received_frames;
+		uint32_t last_exposure_sequence_id;
+		timepoint_ns last_exposure_local_timestamp_ns;
+		time_duration_ns average_exposure_interval_ns;
+
+		bool increment_sequence_num;
+		uint8_t led_sequence_num;
+
+		int32_t timing_fudge_100us;
+
+		//! Locked by controller_thread.
+		struct pssense_led_settings led_settings;
+
+		bool use_constellation;
+		t_constellation_device_id_t constellation_device_id;
+		struct m_relation_history *constellation_relation_history;
+
+		struct t_led_sync_refinement led_sync_refinement;
+		uint8_t period_id;
+
+		bool led_sync_sample_needs_marking;
+		bool led_sync_sample_needs_sending;
+		struct t_led_sync_sample latest_led_sync_sample;
+	} tracking;
 
 	enum
 	{
@@ -219,16 +291,43 @@ struct pssense_device
 		bool send_trigger_feedback;
 		enum pssense_adaptive_trigger_mode trigger_feedback_mode;
 	} output;
-
-	struct m_imu_3dof fusion;
-	struct xrt_pose pose;
-
 	struct
 	{
 		bool button_states;
+		bool timing;
 		bool tracking;
 	} gui;
 };
+
+static struct pssense_device *
+from_device(struct xrt_device *xdev)
+{
+	return container_of(xdev, struct pssense_device, base);
+}
+
+static struct pssense_device *
+from_node(struct xrt_frame_node *node)
+{
+	return container_of(node, struct pssense_device, node);
+}
+
+static struct pssense_device *
+from_timing_event_sink(struct t_timing_event_sink *sink)
+{
+	return container_of(sink, struct pssense_device, timing_event_sink);
+}
+
+static struct pssense_device *
+from_constellation_device(struct t_constellation_tracker_device *device)
+{
+	return container_of(device, struct pssense_device, constellation_device);
+}
+
+static struct pssense_device *
+from_constellation_tracking_source(struct t_constellation_tracker_tracking_source *tracking_source)
+{
+	return container_of(tracking_source, struct pssense_device, constellation_tracking_source);
+}
 
 const uint32_t CRC_POLYNOMIAL = 0xedb88320;
 
@@ -249,6 +348,59 @@ crc32_le(uint32_t crc, uint8_t const *p, size_t len)
 			crc = (crc >> 1) ^ ((crc & 1) ? CRC_POLYNOMIAL : 0);
 	}
 	return crc ^ 0xffffffff;
+}
+
+/*!
+ * Update the max-tracking clock filter with a new offset sample.
+ * Must be called under the controller_thread lock.
+ *
+ * Corresponds to SenseController::AddTimestampOffsetSample in:
+ * PSVR2Toolkit/projects/psvr2_openvr_driver_ex/sense_controller.h
+ */
+static void
+pssense_add_clock_offset_sample(struct pssense_device *pssense, double offset_ns)
+{
+	if (!pssense->timing.has_clock_offset) {
+		pssense->timing.timestamp_offset_ns = offset_ns;
+		pssense->timing.filtered_offset_ns = offset_ns;
+		pssense->timing.has_clock_offset = true;
+	} else {
+		uint64_t now_ns = os_monotonic_get_ns();
+		double elapsed_ns = (double)(now_ns - pssense->timing.last_clock_sample_ns);
+
+		// Counter drift at 5e-5 per ns elapsed.
+		// See: PSVR2Toolkit/projects/psvr2_openvr_driver_ex/libpad_hooks.cpp
+		pssense->timing.timestamp_offset_ns -= elapsed_ns * 5.0e-5;
+
+		// Max-tracking: keep the largest (least-negative) observed offset.
+		if (pssense->timing.timestamp_offset_ns < offset_ns) {
+			pssense->timing.timestamp_offset_ns = offset_ns;
+		}
+
+		// Smooth: limit rate of change to ±2500ns (±2.5µs) per sample.
+		double delta = pssense->timing.timestamp_offset_ns - pssense->timing.filtered_offset_ns;
+		delta = CLAMP(delta, -2500.0, 2500.0);
+
+		pssense->timing.filtered_offset_ns += delta;
+	}
+	pssense->timing.last_clock_sample_ns = os_monotonic_get_ns();
+}
+
+static bool
+pssense_host_ts_to_device(struct pssense_device *pssense,
+                          timepoint_ns host_timestamp_ns,
+                          timepoint_ns *out_device_timestamp_ns)
+{
+	if (!pssense->timing.has_clock_offset) {
+		return false;
+	}
+
+	// Convert host-domain query time to device IMU time using the PSVR2TK clock offset and the LED sync latency
+	// offset. Corresponds to the inverse of PSVR2TK's libpad_deviceToHostHook conversion. See:
+	// PSVR2Toolkit/projects/psvr2_openvr_driver_ex/libpad_hooks.cpp
+	*out_device_timestamp_ns = host_timestamp_ns + (timepoint_ns)(pssense->timing.filtered_offset_ns) +
+	                           pssense->tracking.latest_led_sync_sample.device_host_latency_ns;
+	return true;
 }
 
 /*!
@@ -295,9 +447,17 @@ pssense_update_fusion(struct pssense_device *pssense)
 
 	// TODO: Apply correction from calibration data
 
-	// Each IMU tick is .33μs
-	m_imu_3dof_update(&pssense->fusion, pssense->state.imu_ticks_total * NS_PER_IMU_TICK, &accel, &gyro);
-	pssense->pose.orientation = pssense->fusion.rot;
+	m_imu_3dof_update(&pssense->tracking.fusion, pssense->timing.latest_imu_time_ns, &accel, &gyro);
+	pssense->tracking.pose.orientation = pssense->tracking.fusion.rot;
+
+	struct xrt_space_relation space_relation = {
+	    .pose = pssense->tracking.pose,
+	    .relation_flags = XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
+	                      XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT,
+	    .angular_velocity = gyro,
+	};
+	m_relation_history_push(pssense->tracking.imu_relation_history, &space_relation,
+	                        pssense->timing.latest_imu_time_ns);
 }
 
 static bool
@@ -308,6 +468,9 @@ pssense_handle_read(struct pssense_device *pssense)
 	// Report data
 	struct pssense_input_report data = {0};
 	ret = pssense_read_packet_data(pssense, (uint8_t *)&data, sizeof(data), true);
+
+	// Get the receive time as close to the packet read as possible
+	timepoint_ns recv_time_ns = os_monotonic_get_ns();
 
 	if (ret == -EAGAIN) {
 		// No data yet, not an error
@@ -321,7 +484,7 @@ pssense_handle_read(struct pssense_device *pssense)
 
 	// Final input state
 	struct pssense_input_state input = {
-	    .timestamp_ns = os_monotonic_get_ns(),
+	    .timestamp_ns = recv_time_ns,
 	};
 
 	if (data.report_id != INPUT_REPORT_ID) {
@@ -377,10 +540,12 @@ pssense_handle_read(struct pssense_device *pssense)
 
 	// Update IMU data
 	uint32_t imu_ticks = __le32_to_cpu(data.imu_ticks);
-	int64_t imu_ticks_delta = imu_ticks - input.imu_ticks_last;
+	int64_t imu_ticks_delta = imu_ticks - pssense->timing.imu_ticks_last;
 	if (imu_ticks_delta >= 0) {
-		input.imu_ticks_total += imu_ticks_delta;
-		input.imu_ticks_last = imu_ticks;
+		pssense->timing.imu_ticks_total += imu_ticks_delta;
+		pssense->timing.imu_ticks_last = imu_ticks;
+
+		pssense->timing.latest_imu_time_ns = IMU_TICKS_TO_NS(pssense->timing.imu_ticks_total);
 
 		input.gyro_raw.x = (int16_t)__le16_to_cpu(data.gyro[0]);
 		input.gyro_raw.y = (int16_t)__le16_to_cpu(data.gyro[1]);
@@ -391,6 +556,17 @@ pssense_handle_read(struct pssense_device *pssense)
 		input.accel_raw.z = (int16_t)__le16_to_cpu(data.accel[2]);
 	} else {
 		PSSENSE_WARN(pssense, "Time went backwards. Check your play area for black holes.");
+	}
+
+	uint32_t device_ticks = __le32_to_cpu(data.device_timestamp_ticks);
+	int64_t device_ticks_delta = device_ticks - pssense->timing.device_ticks_last;
+	if (device_ticks_delta >= 0) {
+		pssense->timing.device_ticks_total += device_ticks_delta;
+		pssense->timing.device_ticks_last = device_ticks;
+
+		pssense->timing.latest_device_time_ns = IMU_TICKS_TO_NS(pssense->timing.device_ticks_total);
+	} else {
+		PSSENSE_WARN(pssense, "Device time went backwards. Check your play area for black holes.");
 	}
 
 	// Battery state is upper 4 bits
@@ -435,6 +611,19 @@ pssense_handle_read(struct pssense_device *pssense)
 	}
 
 	os_thread_helper_lock(&pssense->controller_thread);
+
+	// Mark the LED sync refinement sample as applied
+	uint32_t latest_host_send_time = __le32_to_cpu(data.host_timestamp);
+	if (latest_host_send_time != pssense->timing.last_sent_host_timestamp_us &&
+	    pssense->tracking.led_sync_sample_needs_marking) {
+		t_led_sync_mark_latest_sample_applied(&pssense->tracking.led_sync_refinement, recv_time_ns);
+		pssense->tracking.led_sync_sample_needs_marking = false;
+	}
+
+	// Update the clock offset from accumulated IMU time vs host receive time.
+	// Corresponds to PSVR2TK's libpad_deviceToHostHook + SenseController::AddTimestampOffsetSample.
+	// See: PSVR2Toolkit/projects/psvr2_openvr_driver_ex/libpad_hooks.cpp, sense_controller.h
+	pssense_add_clock_offset_sample(pssense, (double)pssense->timing.latest_device_time_ns - (double)recv_time_ns);
 
 	pssense->state = input;
 	pssense_update_fusion(pssense);
@@ -482,9 +671,29 @@ pssense_send_output_report_locked(struct pssense_device *pssense)
 		pssense->output.send_trigger_feedback = false;
 	}
 
-	report.settings.host_timestamp_send_time_us = __cpu_to_le32(timestamp_ns / U_TIME_1US_IN_NS);
+	// Give it some time to settle
+	if (pssense->tracking.received_frames > 10) {
+		report.settings.led_settings = pssense->tracking.led_settings;
+
+#if 0
+		PSSENSE_DEBUG(pssense, "Full LED settings: cycle length %uns, cycle position %luns, sequence number %u",
+		              report.settings.led_settings.cycle_length / 3,
+		              (timepoint_ns)IMU_TICKS_TO_NS(report.settings.led_settings.cycle_position),
+		              pssense->tracking.led_sequence_num);
+
+		PSSENSE_DEBUG_HEX(pssense, (uint8_t *)&report.settings.led_settings,
+		                  sizeof(report.settings.led_settings));
+#endif
+	} else {
+		report.settings.led_settings.phase = LED_SYNC_PHASE_LED_ALL_OFF;
+	}
 
 	pssense->output.next_seq_no = (pssense->output.next_seq_no + 1) % 16;
+
+	uint32_t host_send_ts = os_monotonic_get_ns() / U_TIME_1US_IN_NS;
+
+	// Set the host timestamp as *close* as possible to us sending the packet
+	report.settings.host_timestamp_send_time_us = __cpu_to_le32(host_send_ts);
 
 	uint32_t crc = crc32_le(0, &OUTPUT_REPORT_CRC32_SEED, 1);
 	crc = crc32_le(crc, (uint8_t *)&report, sizeof(struct pssense_ps5_output_report) - 4);
@@ -501,6 +710,16 @@ pssense_send_output_report_locked(struct pssense_device *pssense)
 		return ret < 0 ? ret : -EIO;
 	}
 
+	if (pssense->tracking.led_sync_sample_needs_sending) {
+		pssense->timing.last_sent_host_timestamp_us = host_send_ts;
+		pssense->tracking.led_sync_sample_needs_sending = false;
+		pssense->tracking.led_sync_sample_needs_marking = true;
+	}
+
+#if 0
+	PSSENSE_DEBUG_HEX(pssense, (uint8_t *)&report, sizeof(report));
+#endif
+
 	return 0;
 }
 
@@ -509,7 +728,7 @@ pssense_run_thread(void *ptr)
 {
 	U_TRACE_SET_THREAD_NAME("PS Sense");
 
-	struct pssense_device *pssense = (struct pssense_device *)ptr;
+	struct pssense_device *pssense = ptr;
 
 #ifdef XRT_OS_LINUX
 	u_linux_try_to_set_realtime_priority_on_thread(pssense->log_level, "PS Sense");
@@ -534,7 +753,7 @@ pssense_run_thread(void *ptr)
 
 	timepoint_ns next_output_ns = os_monotonic_get_ns();
 
-	int result;
+	int result = 0;
 	while (os_thread_helper_is_running_locked(&pssense->controller_thread) && result >= 0) {
 		os_thread_helper_unlock(&pssense->controller_thread);
 
@@ -577,28 +796,31 @@ pssense_run_thread(void *ptr)
 }
 
 static void
-pssense_get_fusion_pose(struct pssense_device *pssense,
-                        enum xrt_input_name name,
-                        int64_t at_timestamp_ns,
-                        struct xrt_space_relation *out_relation)
+pssense_get_imu_fusion_pose(struct pssense_device *pssense,
+                            int64_t at_timestamp_ns,
+                            struct xrt_space_relation *out_relation)
 {
-	out_relation->pose = pssense->pose;
-	out_relation->linear_velocity.x = 0.0f;
-	out_relation->linear_velocity.y = 0.0f;
-	out_relation->linear_velocity.z = 0.0f;
+	timepoint_ns device_ts;
+	if (!pssense_host_ts_to_device(pssense, at_timestamp_ns, &device_ts)) {
+		(*out_relation) = (struct xrt_space_relation){0};
+		return;
+	}
 
-	/*!
-	 * @todo This is hack, fusion reports angvel relative to the device but
-	 * it needs to be in relation to the base space. Rotating it with the
-	 * device orientation is enough to get it into the right space, angular
-	 * velocity is a derivative so needs a special rotation.
-	 */
-	math_quat_rotate_derivative(&pssense->pose.orientation, &pssense->fusion.last.gyro,
-	                            &out_relation->angular_velocity);
+	m_relation_history_get(pssense->tracking.imu_relation_history, device_ts, out_relation);
+}
 
-	out_relation->relation_flags = (enum xrt_space_relation_flags)(
-	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
-	    XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT | XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT);
+static void
+pssense_get_constellation_pose(struct pssense_device *pssense,
+                               int64_t at_timestamp_ns,
+                               struct xrt_space_relation *out_relation)
+{
+	timepoint_ns device_ts;
+	if (!pssense_host_ts_to_device(pssense, at_timestamp_ns, &device_ts)) {
+		(*out_relation) = (struct xrt_space_relation){0};
+		return;
+	}
+
+	m_relation_history_get(pssense->tracking.constellation_relation_history, device_ts, out_relation);
 }
 
 /*!
@@ -676,6 +898,231 @@ saturating_add_uint64(uint64_t a, uint64_t b)
 
 /*
  *
+ * Frame node implementations
+ *
+ */
+
+static void
+pssense_node_break_apart(struct xrt_frame_node *node)
+{
+	// No-op since we don't have any internal structure to break apart.
+	(void)node;
+}
+
+static void
+pssense_node_destroy(struct xrt_frame_node *node)
+{
+	struct pssense_device *pssense = from_node(node);
+
+	// LED sync is used on the frame context lifecycle, so it needs to be destroyed in here.
+	t_led_sync_refinement_destroy(&pssense->tracking.led_sync_refinement);
+
+	// Really free the pointer
+	free(pssense);
+}
+
+/*
+ *
+ * Timing event sink implementation
+ *
+ */
+
+static void
+pssense_timing_event_sink_push(struct t_timing_event_sink *sink, const struct t_timing_event *event)
+{
+	struct pssense_device *pssense = from_timing_event_sink(sink);
+
+	// We only care about exposure start.
+	if (event->type != T_TIMING_EVENT_TYPE_CAMERA_EXPOSURE_START) {
+		return;
+	}
+
+	struct t_timing_event_camera_exposure_start camera_exposure = event->camera_exposure_start;
+
+	PSSENSE_TRACE(pssense, "Received timing event: %d, seq id: %u, timestamp: %" PRId64 "ns", event->type,
+	              camera_exposure.sequence_id, camera_exposure.timestamp_ns);
+
+	if (pssense->tracking.received_frames++ == 0) {
+		pssense->tracking.last_exposure_sequence_id = camera_exposure.sequence_id;
+		pssense->tracking.last_exposure_local_timestamp_ns = camera_exposure.timestamp_ns;
+		return;
+	}
+
+	uint32_t sequence_id_delta = camera_exposure.sequence_id - pssense->tracking.last_exposure_sequence_id;
+
+	time_duration_ns estimated_interval =
+	    (camera_exposure.timestamp_ns - pssense->tracking.last_exposure_local_timestamp_ns) / (sequence_id_delta);
+
+	// If available, use the frame period from the event
+	if (camera_exposure.frame_period_ns > 0) {
+		estimated_interval = camera_exposure.frame_period_ns;
+	}
+
+	// If this is the second frame we've received
+	if (pssense->tracking.received_frames == 2) {
+		pssense->tracking.average_exposure_interval_ns = estimated_interval;
+		PSSENSE_TRACE(pssense, "Initial exposure interval: %" PRId64 "ns", estimated_interval);
+	} else {
+		// Iteratively average out the estimated interval to try to avoid noise
+		pssense->tracking.average_exposure_interval_ns =
+		    (estimated_interval * 0.1f) + (pssense->tracking.average_exposure_interval_ns * 0.9f);
+		PSSENSE_TRACE(pssense, "Updated exposure interval: %" PRId64 "ns",
+		              pssense->tracking.average_exposure_interval_ns);
+	}
+
+	pssense->tracking.last_exposure_sequence_id = camera_exposure.sequence_id;
+	pssense->tracking.last_exposure_local_timestamp_ns = camera_exposure.timestamp_ns;
+
+	if (pssense->tracking.average_exposure_interval_ns > 0) {
+		// Update the frame period to the one we're using internally and push the timing event
+		struct t_timing_event_camera_exposure_start led_sync_event = event->camera_exposure_start;
+		led_sync_event.frame_period_ns = pssense->tracking.average_exposure_interval_ns;
+		t_led_sync_push_timing_event(&pssense->tracking.led_sync_refinement, &led_sync_event);
+	}
+
+	os_thread_helper_lock(&pssense->controller_thread);
+
+	// update the LED settings
+	if (pssense->tracking.received_frames > 10 && pssense->timing.has_clock_offset) {
+		// Update the sample from the LED sync routine
+		if (t_led_sync_get_sample(&pssense->tracking.led_sync_refinement,
+		                          &pssense->tracking.latest_led_sync_sample)) {
+			pssense->tracking.led_sync_sample_needs_sending = true;
+			pssense->tracking.period_id =
+			    DURATION_NS_TO_PERIOD_ID(pssense->tracking.latest_led_sync_sample.blink_duration_ns);
+			pssense->tracking.led_sequence_num += 1;
+		}
+
+		uint8_t period_id = pssense->tracking.period_id;
+
+		// We don't need the = 0 in theory but the assert going away in release confuses the compiler. It will
+		// always be initialized.
+		timepoint_ns next_blink_time = 0;
+		// Convert the timestamp, latency offset will be applied within here
+		bool ts_valid = pssense_host_ts_to_device(pssense, pssense->tracking.last_exposure_local_timestamp_ns,
+		                                          &next_blink_time);
+		// We check if we have a clock offset above, so this will always return true
+		assert(ts_valid);
+		(void)ts_valid; // Silence unused variable in release
+
+		next_blink_time += (int64_t)pssense->tracking.timing_fudge_100us * 100 * U_TIME_1US_IN_NS;
+		// Apply the fudge offset, which will line up the blink center with exposure center'
+		next_blink_time += (int64_t)pssense->tracking.latest_led_sync_sample.fudge_offset_ns;
+
+		// PSSENSE cycle position is the *center* of the exposure, but our LED sync assumes it's the start of
+		// the exposure, so we need to offset
+		next_blink_time += PERIOD_ID_TO_DURATION_NS(period_id) / 2;
+
+		// inside thirds of a nanosecond
+		uint32_t cycle_length = pssense->tracking.average_exposure_interval_ns * 3;
+		// in IMU ticks
+		uint32_t cycle_position = NS_TO_IMU_TICKS(next_blink_time);
+
+		uint32_t last_cycle_position = __le32_to_cpu(pssense->tracking.led_settings.cycle_position);
+		if (cycle_position != last_cycle_position) {
+			int64_t jitter = (IMU_TICKS_TO_NS(((int64_t)cycle_position - last_cycle_position))) -
+			                 (int64_t)pssense->tracking.average_exposure_interval_ns;
+
+			if (jitter < (U_TIME_1MS_IN_NS * 3LL) && jitter > -(U_TIME_1MS_IN_NS * 3LL)) {
+				pssense->timing.smoothed_clock_jitter_ns =
+				    ((pssense->timing.smoothed_clock_jitter_ns * 0.9) + (abs((int)jitter) * 0.1));
+
+				time_duration_ns new_minimum_blink_time =
+				    PERIOD_ID_TO_DURATION_NS(STABLE_MIN_PERIOD_ID) +
+				    (int64_t)(pssense->timing.smoothed_clock_jitter_ns * 2);
+
+				t_led_sync_update_minimum_blink_time(&pssense->tracking.led_sync_refinement,
+				                                     new_minimum_blink_time);
+			}
+		}
+
+#if 0
+		static int64_t jitter_integration = 0;
+
+		PSSENSE_DEBUG(pssense, "(blink length %uus) drift %ldus",
+		              (uint32_t)(IMU_TICKS_TO_NS(150LLU * 32 + 1250) / 1000), jitter_integration / 1000);
+		jitter_integration += jitter;
+
+		if (jitter_integration > U_TIME_1S_IN_NS) {
+			jitter_integration = 0;
+		}
+#endif
+
+		pssense->tracking.led_settings = (struct pssense_led_settings){
+		    .phase = LED_SYNC_PHASE_PRESCAN,
+		    .cycle_length = __cpu_to_le32(cycle_length),
+		    .cycle_position = __cpu_to_le32(cycle_position),
+		    .sequence_number = pssense->tracking.led_sequence_num,
+		    .led_blink = {0xFF, 0xFF, 0xFF, 0xFF},
+		    .period_id = period_id,
+		};
+
+		if (pssense->tracking.increment_sequence_num && (pssense->tracking.received_frames % 50) == 0) {
+			pssense->tracking.led_sequence_num += 1;
+#if 0
+			PSSENSE_DEBUG(pssense, "%lu\t%lu",
+			              (pssense->tracking.last_exposure_local_timestamp_ns %
+			               pssense->tracking.average_exposure_interval_ns) /
+			                  1000,
+			              (next_blink_time % pssense->tracking.average_exposure_interval_ns) / 1000);
+#endif
+		}
+	}
+	os_thread_helper_unlock(&pssense->controller_thread);
+}
+
+/*
+ *
+ * Constellation tracker device implementations
+ *
+ */
+
+static void
+pssense_push_constellation_tracker_sample(struct t_constellation_tracker_device *device,
+                                          struct t_constellation_tracker_sample *sample)
+{
+	struct pssense_device *pssense = from_constellation_device(device);
+
+	t_led_sync_push_constellation_sample(&pssense->tracking.led_sync_refinement, sample);
+
+	os_thread_helper_lock(&pssense->controller_thread);
+	timepoint_ns device_ts;
+	if (!pssense_host_ts_to_device(pssense, sample->timestamp_ns, &device_ts)) {
+		os_thread_helper_unlock(&pssense->controller_thread);
+		return;
+	}
+	os_thread_helper_unlock(&pssense->controller_thread);
+
+	struct xrt_space_relation relation = {
+	    .pose = sample->pose,
+	    .relation_flags = XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
+	                      XRT_SPACE_RELATION_POSITION_VALID_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT,
+	};
+
+	m_relation_history_push_with_motion_estimation(pssense->tracking.constellation_relation_history, &relation,
+	                                               device_ts);
+}
+
+/*
+ *
+ * Constellation tracking source implementations
+ *
+ */
+
+static void
+pssense_get_constellation_tracking_source_pose(struct t_constellation_tracker_tracking_source *tracking_source,
+                                               int64_t when_ns,
+                                               struct xrt_space_relation *out_relation)
+{
+	struct pssense_device *pssense = from_constellation_tracking_source(tracking_source);
+
+	os_thread_helper_lock(&pssense->controller_thread);
+	pssense_get_imu_fusion_pose(pssense, when_ns, out_relation);
+	os_thread_helper_unlock(&pssense->controller_thread);
+}
+
+/*
+ *
  * Driver implementations
  *
  */
@@ -683,7 +1130,10 @@ saturating_add_uint64(uint64_t a, uint64_t b)
 static void
 pssense_device_destroy(struct xrt_device *xdev)
 {
-	struct pssense_device *pssense = (struct pssense_device *)xdev;
+	struct pssense_device *pssense = from_device(xdev);
+
+	// Stop and destroy the controller thread
+	os_thread_helper_destroy(&pssense->controller_thread);
 
 	os_precise_sleeper_deinit(&pssense->sleeper);
 
@@ -692,10 +1142,7 @@ pssense_device_destroy(struct xrt_device *xdev)
 		pssense->output.pcm_haptics_resampler = NULL;
 	}
 
-	// Destroy the thread object.
-	os_thread_helper_destroy(&pssense->controller_thread);
-
-	m_imu_3dof_close(&pssense->fusion);
+	m_imu_3dof_close(&pssense->tracking.fusion);
 
 	// Remove the variable tracking.
 	u_var_remove_root(pssense);
@@ -705,13 +1152,16 @@ pssense_device_destroy(struct xrt_device *xdev)
 		pssense->hid = NULL;
 	}
 
-	free(pssense);
+	m_relation_history_destroy(&pssense->tracking.imu_relation_history);
+	m_relation_history_destroy(&pssense->tracking.constellation_relation_history);
+
+	// Don't free the pointer, since that's handled in @ref pssense_node_destroy
 }
 
 static xrt_result_t
 pssense_device_update_inputs(struct xrt_device *xdev)
 {
-	struct pssense_device *pssense = (struct pssense_device *)xdev;
+	struct pssense_device *pssense = from_device(xdev);
 
 	// Lock the data.
 	os_thread_helper_lock(&pssense->controller_thread);
@@ -799,7 +1249,7 @@ set_vibration_output(struct pssense_device *pssense,
 static xrt_result_t
 pssense_set_output(struct xrt_device *xdev, enum xrt_output_name name, const struct xrt_output_value *value)
 {
-	struct pssense_device *pssense = (struct pssense_device *)xdev;
+	struct pssense_device *pssense = from_device(xdev);
 
 	bool send_vibration = false;
 	uint8_t vibration_amplitude;
@@ -878,7 +1328,7 @@ pssense_get_tracked_pose(struct xrt_device *xdev,
                          int64_t at_timestamp_ns,
                          struct xrt_space_relation *out_relation)
 {
-	struct pssense_device *pssense = (struct pssense_device *)xdev;
+	struct pssense_device *pssense = from_device(xdev);
 
 	if (name != XRT_INPUT_PSSENSE_AIM_POSE && name != XRT_INPUT_PSSENSE_GRIP_POSE) {
 		U_LOG_XDEV_UNSUPPORTED_INPUT(&pssense->base, pssense->log_level, name);
@@ -886,17 +1336,26 @@ pssense_get_tracked_pose(struct xrt_device *xdev,
 	}
 
 	struct xrt_relation_chain xrc = {0};
-	struct xrt_pose pose_correction = {0};
+	struct xrt_pose pose_correction = XRT_POSE_IDENTITY;
 
-	// Rotate the grip/aim pose up by 60 degrees around the X axis
-	struct xrt_vec3 axis = {1.0, 0, 0};
-	math_quat_from_angle_vector(DEG_TO_RAD(60), &axis, &pose_correction.orientation);
+	if (!pssense->tracking.use_constellation) {
+		// Rotate the grip/aim pose up by 60 degrees around the X axis if we're using IMU fusion, since the IMU
+		// is mounted weirdly. We don't presently have an IMU->constellation offset, but this at least makes
+		// both modes usable
+		struct xrt_vec3 axis = XRT_VEC3_UNIT_X;
+		math_quat_from_angle_vector(DEG_TO_RAD(60), &axis, &pose_correction.orientation);
+	}
+
 	m_relation_chain_push_pose(&xrc, &pose_correction);
 
 	struct xrt_space_relation *rel = m_relation_chain_reserve(&xrc);
 
 	os_thread_helper_lock(&pssense->controller_thread);
-	pssense_get_fusion_pose(pssense, name, at_timestamp_ns, rel);
+	if (pssense->tracking.use_constellation) {
+		pssense_get_constellation_pose(pssense, at_timestamp_ns, rel);
+	} else {
+		pssense_get_imu_fusion_pose(pssense, at_timestamp_ns, rel);
+	}
 	os_thread_helper_unlock(&pssense->controller_thread);
 
 	m_relation_chain_resolve(&xrc, out_relation);
@@ -907,7 +1366,8 @@ pssense_get_tracked_pose(struct xrt_device *xdev,
 static xrt_result_t
 pssense_get_battery_status(struct xrt_device *xdev, bool *out_present, bool *out_charging, float *out_charge)
 {
-	struct pssense_device *pssense = (struct pssense_device *)xdev;
+	struct pssense_device *pssense = from_device(xdev);
+
 	if (!pssense->state.battery_state_valid) {
 		*out_present = false;
 		return XRT_SUCCESS;
@@ -929,7 +1389,10 @@ pssense_get_battery_status(struct xrt_device *xdev, bool *out_present, bool *out
 #define SET_INPUT(NAME) (pssense->base.inputs[PSSENSE_INDEX_##NAME].name = XRT_INPUT_PSSENSE_##NAME)
 
 struct xrt_device *
-pssense_create(struct xrt_prober *xp, struct xrt_prober_device *xpdev)
+pssense_create(struct xrt_prober *xp,
+               struct xrt_prober_device *xpdev,
+               struct xrt_frame_context *xfctx,
+               struct t_timing_event_sink **out_timing_sink)
 {
 	struct os_hid_device *hid = NULL;
 	int ret;
@@ -956,6 +1419,15 @@ pssense_create(struct xrt_prober *xp, struct xrt_prober_device *xpdev)
 	struct pssense_device *pssense = U_DEVICE_ALLOCATE(struct pssense_device, flags, PSSENSE_INPUT_COUNT, 2);
 	PSSENSE_DEBUG(pssense, "PlayStation Sense controller found");
 
+	pssense->node.break_apart = pssense_node_break_apart;
+	pssense->node.destroy = pssense_node_destroy;
+
+	pssense->timing_event_sink.push_timing_event = pssense_timing_event_sink_push;
+
+	pssense->constellation_device.push_constellation_tracker_sample = pssense_push_constellation_tracker_sample;
+
+	pssense->constellation_tracking_source.get_tracked_pose = pssense_get_constellation_tracking_source_pose;
+
 	pssense->base.name = XRT_DEVICE_PSSENSE;
 	snprintf(pssense->base.str, XRT_DEVICE_NAME_LEN, "%s", product_name);
 	pssense->base.update_inputs = pssense_device_update_inputs;
@@ -971,7 +1443,13 @@ pssense_create(struct xrt_prober *xp, struct xrt_prober_device *xpdev)
 	pssense->base.binding_profiles = binding_profiles_pssense;
 	pssense->base.binding_profile_count = ARRAY_SIZE(binding_profiles_pssense);
 
-	m_imu_3dof_init(&pssense->fusion, M_IMU_3DOF_USE_GRAVITY_DUR_20MS);
+	m_imu_3dof_init(&pssense->tracking.fusion, M_IMU_3DOF_USE_GRAVITY_DUR_20MS);
+
+	// pssense->tracking.timing_fudge_100us = 20; // 2.0ms fudge
+	pssense->tracking.increment_sequence_num = true;
+
+	m_relation_history_create(&pssense->tracking.imu_relation_history);
+	m_relation_history_create(&pssense->tracking.constellation_relation_history);
 
 	pssense->log_level = debug_get_log_option_pssense_log();
 	pssense->hid = hid;
@@ -979,9 +1457,15 @@ pssense_create(struct xrt_prober *xp, struct xrt_prober_device *xpdev)
 	if (xpdev->product_id == PSSENSE_PID_LEFT) {
 		pssense->base.device_type = XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER;
 		pssense->hand = PSSENSE_HAND_LEFT;
+
+		pssense->led_model.leds = pssense_left_leds;
+		pssense->led_model.led_count = ARRAY_SIZE(pssense_left_leds);
 	} else if (xpdev->product_id == PSSENSE_PID_RIGHT) {
 		pssense->base.device_type = XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER;
 		pssense->hand = PSSENSE_HAND_RIGHT;
+
+		pssense->led_model.leds = pssense_right_leds;
+		pssense->led_model.led_count = ARRAY_SIZE(pssense_right_leds);
 	} else {
 		PSSENSE_ERROR(pssense, "Unable to determine controller type");
 		pssense_device_destroy(&pssense->base);
@@ -1022,6 +1506,23 @@ pssense_create(struct xrt_prober *xp, struct xrt_prober_device *xpdev)
 	pssense->output.pcm_haptics_resampler = u_resampler_create(4000, PCM_SAMPLE_RATE);
 	if (pssense->output.pcm_haptics_resampler == NULL) {
 		PSSENSE_ERROR(pssense, "Failed to create PCM resampler");
+		pssense_device_destroy(&pssense->base);
+		return NULL;
+	}
+
+	pssense->tracking.period_id = 32;
+	struct t_led_sync_refinement_options led_sync_refinement_options = {
+	    .flags = T_LED_SYNC_REFINEMENT_FLAGS_BLINK_DURATION,
+	    .initial_blink_duration_ns = PERIOD_ID_TO_DURATION_NS(pssense->tracking.period_id),
+	    .min_blink_duration_ns = PERIOD_ID_TO_DURATION_NS(STABLE_MIN_PERIOD_ID),
+	    .max_blink_duration_ns = PERIOD_ID_TO_DURATION_NS(MAX_PERIOD_ID),
+	    .time_to_resync_ns = T_LED_SYNC_DEFAULT_RESYNC_TIME,
+	    .settle_frames = 10,
+	};
+	pssense->tracking.period_id = DURATION_NS_TO_PERIOD_ID(led_sync_refinement_options.initial_blink_duration_ns);
+	ret = t_led_sync_refinement_init(&pssense->tracking.led_sync_refinement, &led_sync_refinement_options);
+	if (ret != 0) {
+		PSSENSE_ERROR(pssense, "Failed to init LED sync refinement!");
 		pssense_device_destroy(&pssense->base);
 		return NULL;
 	}
@@ -1076,32 +1577,61 @@ pssense_create(struct xrt_prober *xp, struct xrt_prober_device *xpdev)
 	u_var_add_bool(pssense, &pssense->state.thumbstick_click, "Thumbstick Click");
 	u_var_add_bool(pssense, &pssense->state.thumbstick_touch, "Thumbstick Touch");
 
+	u_var_add_gui_header(pssense, &pssense->gui.timing, "Timing");
+	u_var_add_ro_f64(pssense, &pssense->timing.timestamp_offset_ns, "Clock Timestamp Offset (ns)");
+	u_var_add_ro_f64(pssense, &pssense->timing.filtered_offset_ns, "Clock Filtered Offset (ns)");
+	u_var_add_ro_i64_ns(pssense, &pssense->timing.latest_imu_time_ns, "Latest IMU Time (ns)");
+	u_var_add_ro_u64(pssense, &pssense->timing.imu_ticks_total, "Latest IMU Time (ticks)");
+	u_var_add_ro_i64_ns(pssense, &pssense->timing.latest_device_time_ns, "Latest Device Time (ns)");
+	u_var_add_ro_u64(pssense, &pssense->timing.device_ticks_total, "Latest Device Time (ticks)");
+	u_var_add_ro_i64_ns(pssense, &pssense->timing.smoothed_clock_jitter_ns, "Smoothed Clock Jitter (ns)");
+
 	u_var_add_gui_header(pssense, &pssense->gui.tracking, "Tracking");
 	u_var_add_ro_vec3_i32(pssense, &pssense->state.gyro_raw, "Raw Gyro");
 	u_var_add_ro_vec3_i32(pssense, &pssense->state.accel_raw, "Raw Accel");
-	u_var_add_pose(pssense, &pssense->pose, "Pose");
-	m_imu_3dof_add_vars(&pssense->fusion, pssense, "3dof Fusion");
+	u_var_add_pose(pssense, &pssense->tracking.pose, "Pose");
+	m_imu_3dof_add_vars(&pssense->tracking.fusion, pssense, "3dof Fusion");
+	u_var_add_ro_u32(pssense, &pssense->tracking.received_frames, "Received Frames");
+	u_var_add_ro_u32(pssense, &pssense->tracking.last_exposure_sequence_id, "Last Exposure Sequence ID");
+	u_var_add_ro_i64_ns(pssense, &pssense->tracking.last_exposure_local_timestamp_ns,
+	                    "Last Exposure Timestamp (ns)");
+	u_var_add_ro_i64_ns(pssense, &pssense->tracking.average_exposure_interval_ns, "Average Exposure Interval (ns)");
+	u_var_add_bool(pssense, &pssense->tracking.increment_sequence_num, "Increment LED Sequence Number");
+	u_var_add_u8(pssense, &pssense->tracking.led_sequence_num, "LED Sequence Number");
+	u_var_add_u8(pssense, &pssense->tracking.period_id, "LED Blink Period ID");
+	u_var_add_i32(pssense, &pssense->tracking.timing_fudge_100us, "Timing Fudge (100us)");
+	u_var_add_bool(pssense, &pssense->tracking.use_constellation, "Use Constellation Tracking");
+
+	xrt_frame_context_add(xfctx, &pssense->node);
+
+	if (out_timing_sink != NULL) {
+		*out_timing_sink = &pssense->timing_event_sink;
+	}
 
 	return &pssense->base;
 }
 
 int
-pssense_found(struct xrt_prober *xp,
-              struct xrt_prober_device **devices,
-              size_t device_count,
-              size_t index,
-              cJSON *attached_data,
-              struct xrt_device **out_xdevs)
+pssense_add_to_constellation_tracker(struct xrt_device *xdev, struct t_constellation_tracker *tracker)
 {
-	struct xrt_prober_device *xpdev = devices[index];
+	struct pssense_device *pssense = from_device(xdev);
 
-	struct xrt_device *xdev = pssense_create(xp, xpdev);
-	if (xdev == NULL) {
+	struct t_constellation_tracker_device_params params = {
+	    .led_model = pssense->led_model,
+	    .tracking_source = &pssense->constellation_tracking_source,
+	};
+	int ret = t_constellation_tracker_add_device(tracker, &params, &pssense->constellation_device,
+	                                             &pssense->tracking.constellation_device_id);
+	if (ret < 0) {
+		PSSENSE_ERROR(pssense, "Failed to add device to constellation tracker: %d", ret);
 		return -1;
+	} else {
+		pssense->tracking.use_constellation = true;
 	}
 
-	out_xdevs[0] = xdev;
-	return 1;
+	pssense->base.tracking_origin = t_constellation_tracker_get_tracking_origin(tracker);
+
+	return 0;
 }
 
 /*!

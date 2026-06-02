@@ -93,6 +93,10 @@ add_library(
 	u_extension_list.cpp
 	u_extension_list.h
 	u_extension_list.hpp
+	u_system_devices.c
+	u_system_devices.h
+	u_system_devices_ni.c
+	u_system_devices_ni.h
 	u_system_helpers.c
 	u_system_helpers.h
 	u_template_historybuf.hpp
@@ -251,4 +255,16 @@ target_link_libraries(aux_util_process PUBLIC aux-includes aux_util)
 if(XRT_HAVE_LIBBSD)
 	target_include_directories(aux_util_process SYSTEM PRIVATE ${LIBBSD_INCLUDE_DIRS})
 	target_link_libraries(aux_util_process PUBLIC ${LIBBSD_LIBRARIES})
+endif()
+
+####
+# Scribble library
+#
+
+add_library(aux_util_scribble STATIC u_frame_scribble.cpp u_frame_scribble.h)
+target_link_libraries(aux_util_scribble PUBLIC aux-includes aux_util)
+
+if(XRT_HAVE_OPENCV)
+	target_link_libraries(aux_util_scribble PUBLIC ${OpenCV_LIBRARIES})
+	target_include_directories(aux_util_scribble SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS})
 endif()

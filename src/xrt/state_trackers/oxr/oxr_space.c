@@ -8,7 +8,6 @@
  * @ingroup oxr_main
  */
 
-
 #include "xrt/xrt_space.h"
 
 #include "math/m_api.h"
@@ -19,7 +18,7 @@
 
 #include "oxr_objects.h"
 #include "oxr_logger.h"
-#include "oxr_handle.h"
+#include "oxr_handle_base.h"
 #include "oxr_chain.h"
 #include "oxr_pretty_print.h"
 #include "oxr_conversions.h"

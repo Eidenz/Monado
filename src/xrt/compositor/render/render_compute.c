@@ -370,11 +370,11 @@ dispatch_project_pipeline(struct render_compute *render,
 	calc_dispatch_dims_views(views, render->r->view_count, &w, &h);
 	assert(w != 0 && h != 0);
 
-	vk->vkCmdDispatch( //
-	    r->cmd,        //
-	    w,             // groupCountX
-	    h,             // groupCountY
-	    2);            // groupCountZ
+	vk->vkCmdDispatch(  //
+	    r->cmd,         //
+	    w,              // groupCountX
+	    h,              // groupCountY
+	    r->view_count); // groupCountZ
 
 	VkImageMemoryBarrier memoryBarrier = {
 	    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -790,11 +790,11 @@ render_compute_clear(struct render_compute *render,
 	calc_dispatch_dims_views(views, render->r->view_count, &w, &h);
 	assert(w != 0 && h != 0);
 
-	vk->vkCmdDispatch( //
-	    r->cmd,        //
-	    w,             // groupCountX
-	    h,             // groupCountY
-	    2);            // groupCountZ
+	vk->vkCmdDispatch(  //
+	    r->cmd,         //
+	    w,              // groupCountX
+	    h,              // groupCountY
+	    r->view_count); // groupCountZ
 
 	VkImageMemoryBarrier memoryBarrier = {
 	    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,

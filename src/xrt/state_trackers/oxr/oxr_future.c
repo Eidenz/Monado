@@ -6,10 +6,12 @@
  * @author Korcan Hussein <korcan.hussein@collabora.com>
  * @ingroup oxr_main
  */
+
 #include "oxr_objects.h"
 #include "oxr_logger.h"
-#include "oxr_handle.h"
+#include "oxr_handle_base.h"
 #include "oxr_xret.h"
+
 
 static inline XrFutureStateEXT
 oxr_to_XrFutureStateEXT(const xrt_future_state_t fts)

@@ -22,11 +22,11 @@
 #include "oxr_binding.h"
 #include "oxr_haptic.h"
 #include "oxr_session_action_context.h"
+#include "oxr_handle_base.h"
 
 #include "../oxr_api_verify.h"
 #include "../oxr_objects.h"
 #include "../oxr_logger.h"
-#include "../oxr_handle.h"
 #include "../oxr_chain.h"
 #include "../oxr_roles.h"
 
@@ -239,9 +239,9 @@ oxr_xrSuggestInteractionProfileBindings(XrInstance instance,
 	const bool has_dpad = false;
 #endif
 
-	struct profile_template *interaction_profile_template = NULL;
+	struct oxr_profile_template *interaction_profile_template = NULL;
 
-	static_assert(OXR_BINDINGS_PROFILE_TEMPLATE_COUNT == ARRAY_SIZE(profile_templates), "Must match");
+	static_assert(OXR_BINDINGS_PROFILE_TEMPLATE_COUNT == ARRAY_SIZE(oxr_profile_templates), "Must match");
 	static_assert(OXR_BINDINGS_PROFILE_TEMPLATE_COUNT == ARRAY_SIZE(inst->path_cache.template_paths), "Must match");
 
 	for (size_t i = 0; i < OXR_BINDINGS_PROFILE_TEMPLATE_COUNT; i++) {
@@ -249,11 +249,11 @@ oxr_xrSuggestInteractionProfileBindings(XrInstance instance,
 			continue;
 		}
 
-		subpath_fn = profile_templates[i].subpath_fn;
-		dpad_path_fn = profile_templates[i].dpad_path_fn;
-		dpad_emulator_fn = profile_templates[i].dpad_emulator_fn;
-		ext_verify_fn = profile_templates[i].ext_verify_fn;
-		interaction_profile_template = &profile_templates[i];
+		subpath_fn = oxr_profile_templates[i].subpath_fn;
+		dpad_path_fn = oxr_profile_templates[i].dpad_path_fn;
+		dpad_emulator_fn = oxr_profile_templates[i].dpad_emulator_fn;
+		ext_verify_fn = oxr_profile_templates[i].ext_verify_fn;
+		interaction_profile_template = &oxr_profile_templates[i];
 		break;
 	}
 

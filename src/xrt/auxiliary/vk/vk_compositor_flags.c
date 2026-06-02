@@ -24,6 +24,7 @@
 #include "util/u_debug.h"
 
 #include "vk/vk_helpers.h"
+#include "vk/vk_compositor_flags.h"
 
 #include <stdio.h>
 #include <stdlib.h>

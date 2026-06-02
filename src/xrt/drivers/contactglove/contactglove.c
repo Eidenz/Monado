@@ -92,6 +92,8 @@ contactglove_dongle_destroy(struct contactglove_dongle *dongle)
 {
 	assert(dongle->base.count == 0);
 
+	DONGLE_INFO(dongle, "Destroying ContactGlove dongle device");
+
 	os_thread_helper_destroy(&dongle->thread);
 	os_mutex_destroy(&dongle->data_lock);
 	u_cobs_decoder_destroy(&dongle->cobs_decoder);
@@ -385,7 +387,8 @@ contactglove_dongle_thread_tick(struct contactglove_dongle *dongle)
 	uint8_t buffer[256];
 	ssize_t read_bytes = os_serial_read(dongle->dongle_serial, buffer, sizeof(buffer), 100);
 	if (read_bytes < 0) {
-		DONGLE_ERROR(dongle, "Failed to read from ContactGlove dongle, got %s", strerror(errno));
+		DONGLE_ERROR(dongle, "Failed to read from ContactGlove dongle, got %s (%zd)", strerror(errno),
+		             read_bytes);
 		return -1;
 	} else if (read_bytes == 0) {
 		// No data available
@@ -871,6 +874,8 @@ contactglove_get_hand_tracking(struct xrt_device *xdev,
 	                            desired_timestamp_ns, &root_relation);
 
 	u_hand_sim_simulate_for_valve_index_knuckles(&curl_values, contactglove->hand, &root_relation, out_value);
+
+	*out_timestamp_ns = desired_timestamp_ns;
 
 	os_mutex_unlock(&contactglove->dongle->data_lock);
 

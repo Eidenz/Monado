@@ -4,6 +4,7 @@
 add_library(
 	constellation STATIC
 	camera_model.h
+	constellation_debug_scribble.cpp
 	correspondence_search.c
 	correspondence_search.h
 	image_point_sort.cpp
@@ -15,6 +16,9 @@ add_library(
 	pose_optimize.h
 	t_constellation_tracker.cpp
 	t_constellation_tracker.h
+	t_constellation_tracker_internal.hpp
+	t_led_sync_refinement.c
+	t_led_sync_refinement.h
 	t_rift_blobwatch.c
 	t_rift_blobwatch.h
 	lambdatwist/cubic.h
@@ -32,6 +36,7 @@ target_link_libraries(
 		tracking-includes
 		aux_os
 		aux_util
+		aux_util_scribble
 		aux_math
 	)
 

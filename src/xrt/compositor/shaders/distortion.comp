@@ -14,10 +14,13 @@ layout(constant_id = 0) const int distortion_texel_count = 2;
 // Should we do timewarp.
 layout(constant_id = 1) const bool do_timewarp = false;
 
+// Number of views (1 = mono, 2 = stereo). Sized at pipeline creation.
+layout(constant_id = 2) const int view_count = 2;
+
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-layout(set = 0, binding = 0) uniform sampler2D source[2];
-layout(set = 0, binding = 1) uniform sampler2D distortion[6];
+layout(set = 0, binding = 0) uniform sampler2D source[view_count];
+layout(set = 0, binding = 1) uniform sampler2D distortion[3 * view_count];
 layout(set = 0, binding = 2) uniform writeonly restrict image2D target;
 layout(set = 0, binding = 3, std140) uniform restrict Config
 {
@@ -116,9 +119,9 @@ void main()
 
 	vec2 dist_uv = position_to_uv(extent, ix, iy);
 
-	vec2 r_uv = texture(distortion[iz + 0], dist_uv).xy;
-	vec2 g_uv = texture(distortion[iz + 2], dist_uv).xy;
-	vec2 b_uv = texture(distortion[iz + 4], dist_uv).xy;
+	vec2 r_uv = texture(distortion[view_count * 0 + iz], dist_uv).xy;
+	vec2 g_uv = texture(distortion[view_count * 1 + iz], dist_uv).xy;
+	vec2 b_uv = texture(distortion[view_count * 2 + iz], dist_uv).xy;
 
 	// Do any transformation needed.
 	r_uv = transform_uv(r_uv, iz);

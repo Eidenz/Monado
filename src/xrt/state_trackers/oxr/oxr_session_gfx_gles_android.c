@@ -17,7 +17,7 @@
 #include "oxr_objects.h"
 #include "oxr_logger.h"
 #include "oxr_two_call.h"
-#include "oxr_handle.h"
+#include "oxr_handle_base.h"
 
 #include "xrt/xrt_instance.h"
 

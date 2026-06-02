@@ -207,11 +207,6 @@ struct xrt_prober_entry target_entry_list[] = {
     {PSMV_VID, PSMV_PID_ZCM2, psmv_found, "PS Move Controller (ZCM2)", "psmv"},
 #endif // XRT_BUILD_DRIVER_PSMV
 
-#ifdef XRT_BUILD_DRIVER_PSSENSE
-    {PSSENSE_VID, PSSENSE_PID_LEFT, pssense_found, "PlayStation VR2 Sense Controller (L)", "pssense"},
-    {PSSENSE_VID, PSSENSE_PID_RIGHT, pssense_found, "PlayStation VR2 Sense Controller (R)", "pssense"},
-#endif // XRT_BUILD_DRIVER_PSSENSE
-
 #ifdef XRT_BUILD_DRIVER_RIFT
     {OCULUS_VR_VID, OCULUS_DK2_PID, rift_found, RIFT_DK2_PRODUCT_STRING, "rift"},
     {OCULUS_VR_VID, OCULUS_CV1_PID, rift_found, RIFT_CV1_PRODUCT_STRING, "rift"},

@@ -14,6 +14,7 @@
 #include "xrt/xrt_instance.h"
 
 #include "math/m_mathinclude.h"
+
 #include "util/u_var.h"
 #include "util/u_time.h"
 #include "util/u_misc.h"
@@ -30,7 +31,7 @@
 
 #include "oxr_objects.h"
 #include "oxr_logger.h"
-#include "oxr_handle.h"
+#include "oxr_handle_base.h"
 #include "oxr_extension_support.h"
 #include "oxr_chain.h"
 #include "oxr_roles.h"

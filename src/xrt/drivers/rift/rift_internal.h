@@ -26,12 +26,13 @@
 #include "os/os_hid.h"
 #include "os/os_threading.h"
 
+#include "b_timing_source.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
 
 #include "rift_interface.h"
-#include "rift_timing_source.h"
 
 
 #define HMD_TRACE(hmd, ...) U_LOG_XDEV_IFL_T(&hmd->base, hmd->log_level, __VA_ARGS__)
@@ -927,7 +928,7 @@ struct rift_hmd
 	struct rift_config_report config;
 	struct rift_display_info_report display_info;
 
-	struct rift_timing_source *timing_source;
+	struct b_timing_source *timing_source;
 
 	struct rift_tracking_report tracking;
 
@@ -962,6 +963,7 @@ struct rift_hmd
 	struct m_relation_history *raw_constellation_relation_hist;
 	timepoint_ns last_ff_timestamp_ns;
 	struct m_ff_f64 *gravity_correction;
+	timepoint_ns latest_constellation_ts;
 
 	struct t_constellation_tracker_led_model led_model;
 	struct xrt_pose T_imu_device;
