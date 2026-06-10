@@ -25,7 +25,7 @@ extern "C" {
 /* shm_open() name (lives at /dev/shm/udcap_hands on Linux). */
 #define UDCAP_SHM_NAME "/udcap_hands"
 #define UDCAP_SHM_MAGIC 0x55444331u /* "UDC1" */
-#define UDCAP_SHM_VERSION 9u
+#define UDCAP_SHM_VERSION 10u
 
 enum udcap_hand_index
 {
@@ -75,11 +75,20 @@ enum udcap_calib_state
  * Indexed by udcap_btn_out, valued by udcap_btn_src (see btn_src below). */
 enum udcap_btn_out
 {
-	UDCAP_OUT_A = 0,      /* A click */
-	UDCAP_OUT_B = 1,      /* B click */
-	UDCAP_OUT_SYSTEM = 2, /* system / menu click */
-	UDCAP_OUT_STICK = 3,  /* thumbstick click */
-	UDCAP_OUT_COUNT = 4
+	UDCAP_OUT_A = 0,       /* A click */
+	UDCAP_OUT_B = 1,       /* B click */
+	UDCAP_OUT_SYSTEM = 2,  /* system / menu click */
+	UDCAP_OUT_STICK = 3,   /* thumbstick click */
+	UDCAP_OUT_TRIGGER = 4, /* force trigger to full when source is pressed */
+	UDCAP_OUT_GRIP = 5,    /* force grip to full when source is pressed */
+	UDCAP_OUT_COUNT = 6
+};
+
+/* Which finger drives the analog trigger/grip (index into [thumb,index,middle,
+ * ring,little]); grip also accepts UDCAP_FINGER_GRIP = average of M+R+P. */
+enum udcap_finger_sel
+{
+	UDCAP_FINGER_GRIP = 5
 };
 enum udcap_btn_src
 {
@@ -168,6 +177,15 @@ typedef struct udcap_hand
 	 * hand-tracking pose ignores these. */
 	float grip_pos[3];
 	float grip_rot_deg[3];
+
+	/* Per-hand input mapping. btn_src[udcap_btn_out] = udcap_btn_src; the analog
+	 * trigger/grip are computed from the chosen finger's curl, remapped through
+	 * [min,max]. */
+	uint8_t btn_src[UDCAP_OUT_COUNT];
+	uint8_t trigger_finger; /* 0..4 */
+	uint8_t grip_finger;    /* 0..4, or UDCAP_FINGER_GRIP (avg M+R+P) */
+	float trigger_min, trigger_max;
+	float grip_min, grip_max;
 } udcap_hand;
 
 typedef struct udcap_shm
@@ -191,11 +209,6 @@ typedef struct udcap_shm
 	/* Global finger-curl strength: scales the curl the driver feeds the hand
 	 * sim. 1.5 = full fist (default/max); lower closes the hand less. */
 	float curl_gain;
-
-	/* Button remap (global, both hands): btn_src[udcap_btn_out] = udcap_btn_src.
-	 * Default {A, B, MENU, STICK}. The driver applies this when building inputs. */
-	uint8_t btn_src[UDCAP_OUT_COUNT];
-	uint8_t _pad3[4];
 } udcap_shm;
 
 /*

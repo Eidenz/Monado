@@ -338,17 +338,22 @@ udcap_device_update_inputs(struct xrt_device *xdev)
 
 	int64_t now = os_monotonic_get_ns();
 	struct xrt_input *in = ud->base.inputs;
-	const uint8_t *map = ud->shm->btn_src;
+	const uint8_t *map = ud->shm->hands[ud->hand_index].btn_src;
 	in[UDCAP_INPUT_A_CLICK].value.boolean = udcap_src_value(&snap, map[UDCAP_OUT_A]);
 	in[UDCAP_INPUT_B_CLICK].value.boolean = udcap_src_value(&snap, map[UDCAP_OUT_B]);
 	in[UDCAP_INPUT_SYSTEM_CLICK].value.boolean = udcap_src_value(&snap, map[UDCAP_OUT_SYSTEM]);
-	in[UDCAP_INPUT_TRIGGER_VALUE].value.vec1.x = snap.trigger;
-	in[UDCAP_INPUT_TRIGGER_CLICK].value.boolean = snap.trigger >= UDCAP_TRIGGER_CLICK_THRESHOLD;
-	in[UDCAP_INPUT_SQUEEZE_VALUE].value.vec1.x = snap.grip;
-	in[UDCAP_INPUT_SQUEEZE_FORCE].value.vec1.x = snap.grip; // VRChat grabs with grip/force
+	in[UDCAP_INPUT_THUMBSTICK_CLICK].value.boolean = udcap_src_value(&snap, map[UDCAP_OUT_STICK]);
+
+	// Analog trigger/grip (computed by the server), optionally forced to full by a
+	// remapped button.
+	float trig = udcap_src_value(&snap, map[UDCAP_OUT_TRIGGER]) ? 1.0f : snap.trigger;
+	in[UDCAP_INPUT_TRIGGER_VALUE].value.vec1.x = trig;
+	in[UDCAP_INPUT_TRIGGER_CLICK].value.boolean = trig >= UDCAP_TRIGGER_CLICK_THRESHOLD;
+	float grp = udcap_src_value(&snap, map[UDCAP_OUT_GRIP]) ? 1.0f : snap.grip;
+	in[UDCAP_INPUT_SQUEEZE_VALUE].value.vec1.x = grp;
+	in[UDCAP_INPUT_SQUEEZE_FORCE].value.vec1.x = grp; // VRChat grabs with grip/force
 	in[UDCAP_INPUT_THUMBSTICK].value.vec2.x = snap.joy_x;
 	in[UDCAP_INPUT_THUMBSTICK].value.vec2.y = snap.joy_y;
-	in[UDCAP_INPUT_THUMBSTICK_CLICK].value.boolean = udcap_src_value(&snap, map[UDCAP_OUT_STICK]);
 
 	for (size_t i = 0; i < UDCAP_INPUT_COUNT; i++) {
 		in[i].timestamp = now;
