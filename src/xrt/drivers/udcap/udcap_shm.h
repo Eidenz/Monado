@@ -25,7 +25,7 @@ extern "C" {
 /* shm_open() name (lives at /dev/shm/udcap_hands on Linux). */
 #define UDCAP_SHM_NAME "/udcap_hands"
 #define UDCAP_SHM_MAGIC 0x55444331u /* "UDC1" */
-#define UDCAP_SHM_VERSION 7u
+#define UDCAP_SHM_VERSION 8u
 
 enum udcap_hand_index
 {
@@ -166,6 +166,10 @@ typedef struct udcap_shm
 
 	/* Calibration progress (enum udcap_calib_state), written by the server. */
 	uint32_t calib_state;
+
+	/* Global finger-curl strength: scales the curl the driver feeds the hand
+	 * sim. 1.5 = full fist (default/max); lower closes the hand less. */
+	float curl_gain;
 } udcap_shm;
 
 /*
