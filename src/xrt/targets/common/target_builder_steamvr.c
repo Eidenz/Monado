@@ -30,6 +30,10 @@
 #include "steamvr_lh/steamvr_lh_interface.h"
 #include "xrt/xrt_results.h"
 
+#ifdef XRT_BUILD_DRIVER_UDCAP
+#include "udcap/udcap_interface.h"
+#endif
+
 #include "xrt/xrt_space.h"
 #include "b_space_overseer.h"
 
@@ -126,6 +130,105 @@ steamvr_destroy(struct xrt_builder *xb)
 	free(svrb);
 }
 
+#ifdef XRT_BUILD_DRIVER_UDCAP
+// steamvr_lh installs its own get_roles, which assigns the left/right controller
+// roles from ITS controllers and unsafely casts every static_xdev to its own
+// Device type. We wrap it so that (1) our foreign glove devices are hidden from
+// it during its scan (avoiding the bad cast / set_active_hand), and (2) the
+// gloves are forced into the left/right controller roles afterwards.
+static xrt_result_t (*udcap_orig_get_roles)(struct xrt_system_devices *, struct xrt_system_roles *) = NULL;
+static struct xrt_device *udcap_dev_left = NULL;
+static struct xrt_device *udcap_dev_right = NULL;
+
+static xrt_result_t
+udcap_get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
+{
+	int li = -1, ri = -1;
+	for (size_t i = 0; i < xsysd->static_xdev_count; i++) {
+		if (udcap_dev_left != NULL && xsysd->static_xdevs[i] == udcap_dev_left) {
+			li = (int)i;
+		}
+		if (udcap_dev_right != NULL && xsysd->static_xdevs[i] == udcap_dev_right) {
+			ri = (int)i;
+		}
+	}
+
+	int32_t in_left = out_roles->left, in_right = out_roles->right, in_gamepad = out_roles->gamepad;
+	uint32_t in_gen = out_roles->generation_id;
+
+	// Hide our devices from steamvr_lh's scan, run it, then restore.
+	if (li >= 0) {
+		xsysd->static_xdevs[li] = NULL;
+	}
+	if (ri >= 0) {
+		xsysd->static_xdevs[ri] = NULL;
+	}
+	xrt_result_t r = XRT_SUCCESS;
+	if (udcap_orig_get_roles != NULL) {
+		r = udcap_orig_get_roles(xsysd, out_roles);
+	}
+	if (li >= 0) {
+		xsysd->static_xdevs[li] = udcap_dev_left;
+	}
+	if (ri >= 0) {
+		xsysd->static_xdevs[ri] = udcap_dev_right;
+	}
+
+	// Force gloves into the controller roles.
+	if (li >= 0) {
+		out_roles->left = li;
+		out_roles->left_profile = XRT_DEVICE_INDEX_CONTROLLER;
+	}
+	if (ri >= 0) {
+		out_roles->right = ri;
+		out_roles->right_profile = XRT_DEVICE_INDEX_CONTROLLER;
+	}
+
+	// Bump generation only when the final roles actually changed.
+	if ((out_roles->left != in_left || out_roles->right != in_right || out_roles->gamepad != in_gamepad) &&
+	    out_roles->generation_id == in_gen) {
+		out_roles->generation_id = in_gen + 1;
+	}
+
+	return r;
+}
+#endif
+
+// Create UDCAP glove devices (if udcap-server is running), attach each to a
+// SteamVR-tracked tracker, set them as the hand-tracking sources, and take over
+// controller-role assignment so they become the left/right controllers.
+static void
+try_add_udcap(struct xrt_system_devices *xsysd)
+{
+#ifdef XRT_BUILD_DRIVER_UDCAP
+	struct xrt_device *ud_left = NULL, *ud_right = NULL;
+	udcap_create_devices(xsysd->static_xdevs, xsysd->static_xdev_count, &ud_left, &ud_right);
+	if (ud_left == NULL && ud_right == NULL) {
+		return;
+	}
+
+	if (ud_left != NULL) {
+		if (xsysd->static_xdev_count < XRT_SYSTEM_MAX_DEVICES) {
+			xsysd->static_xdevs[xsysd->static_xdev_count++] = ud_left;
+		}
+		xsysd->static_roles.hand_tracking.unobstructed.left = ud_left;
+	}
+	if (ud_right != NULL) {
+		if (xsysd->static_xdev_count < XRT_SYSTEM_MAX_DEVICES) {
+			xsysd->static_xdevs[xsysd->static_xdev_count++] = ud_right;
+		}
+		xsysd->static_roles.hand_tracking.unobstructed.right = ud_right;
+	}
+
+	udcap_dev_left = ud_left;
+	udcap_dev_right = ud_right;
+	udcap_orig_get_roles = xsysd->get_roles;
+	xsysd->get_roles = udcap_get_roles;
+#else
+	(void)xsysd;
+#endif
+}
+
 static xrt_result_t
 steamvr_open_system(struct xrt_builder *xb,
                     cJSON *config,
@@ -164,6 +267,9 @@ steamvr_open_system(struct xrt_builder *xb,
 	SET_HT_ROLES(unobstructed)
 	SET_HT_ROLES(conforming)
 #undef SET_HT_ROLES
+
+	// UDCAP gloves: override hand-tracking roles + attach to trackers.
+	try_add_udcap(xsysd);
 
 	/*
 	 * Space overseer.

@@ -195,6 +195,19 @@ if(XRT_BUILD_DRIVER_OPENGLOVES)
 
 endif()
 
+if(XRT_BUILD_DRIVER_UDCAP)
+	add_library(
+		drv_udcap STATIC
+		udcap/udcap_interface.h
+		udcap/udcap_device.h
+		udcap/udcap_device.c
+		udcap/udcap_prober.c
+		udcap/udcap_shm.h
+		)
+	target_link_libraries(drv_udcap PRIVATE xrt-interfaces aux_util aux_os)
+	list(APPEND ENABLED_DRIVERS udcap)
+endif()
+
 if(XRT_BUILD_DRIVER_PSMV)
 	add_library(drv_psmv STATIC psmv/psmv_driver.c psmv/psmv_interface.h)
 	target_link_libraries(
