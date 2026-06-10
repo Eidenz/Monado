@@ -139,12 +139,29 @@ remap_curl(float c, float lo, float hi)
 static void
 fill_finger(struct u_hand_tracking_finger_value *dst, const udcap_finger *f, int joint_count, float lo, float hi)
 {
+	float prox = bone_curl(f->proximal);
+	float inter = bone_curl(f->intermediate);
+	float dist = bone_curl(f->distal);
+
+	// The gloves report the proximal (knuckle) bend strongly but the
+	// intermediate/distal joints often read weak, leaving the finger straight
+	// past the first phalanx. Couple the deeper joints to the proximal so the
+	// whole finger curls naturally, while still letting genuine per-joint data
+	// take over whenever it reads larger.
+	if (inter < prox) {
+		inter = prox;
+	}
+	if (dist < prox * 0.75f) {
+		dist = prox * 0.75f;
+	}
+
+	// joint_curls map to: [0] MCP (knuckle), [1] PIP, [2] DIP, [3] tip.
 	dst->splay = 0.0f; // TODO: derive splay from adduction calibration
 	dst->joint_count = joint_count;
-	dst->joint_curls[0] = remap_curl(bone_curl(f->proximal), lo, hi);
-	dst->joint_curls[1] = remap_curl(bone_curl(f->intermediate), lo, hi);
-	dst->joint_curls[2] = remap_curl(bone_curl(f->distal), lo, hi);
-	dst->joint_curls[3] = remap_curl(bone_curl(f->distal), lo, hi);
+	dst->joint_curls[0] = remap_curl(prox, lo, hi);
+	dst->joint_curls[1] = remap_curl(inter, lo, hi);
+	dst->joint_curls[2] = remap_curl(dist, lo, hi);
+	dst->joint_curls[3] = dst->joint_curls[2];
 }
 
 // The per-hand offset, read live from shm. Position is applied directly in the
