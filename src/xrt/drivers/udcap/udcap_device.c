@@ -151,24 +151,28 @@ remap_curl(float c, float lo, float hi)
 // The thumb path is different: [0] metacarpal swing, [1]/[2] the two rotations.
 static void
 fill_finger(struct u_hand_tracking_finger_value *dst, const udcap_finger *f, int joint_count, float lo, float hi,
-            bool is_thumb, float gain)
+            bool is_thumb, float gain, float splay_gain)
 {
 	float prox = bone_curl(f->proximal);
 	float inter = bone_curl(f->intermediate);
 	float dist = bone_curl(f->distal);
 
-	dst->splay = 0.0f; // TODO: derive splay from adduction calibration
 	dst->joint_count = joint_count;
 
 	const float g = gain;
 
 	if (is_thumb) {
+		dst->splay = 0.0f; // thumb splay handled separately (TODO)
 		dst->joint_curls[0] = remap_curl(prox, lo, hi) * g;
 		dst->joint_curls[1] = remap_curl(inter, lo, hi) * g;
 		dst->joint_curls[2] = remap_curl(dist, lo, hi) * g;
 		dst->joint_curls[3] = 0.0f;
 		return;
 	}
+
+	// Finger splay (sideways spread): the proximal bone's rotation about the
+	// hand's up axis (the y component of the bone quaternion).
+	dst->splay = splay_gain * 2.0f * atan2f(f->proximal.y, f->proximal.w);
 
 	// The fingertip (DIP) sensor reads weakest; let it follow the middle joint
 	// a little so the tip doesn't stay rigidly straight.
@@ -283,13 +287,15 @@ udcap_device_get_hand_tracking(struct xrt_device *xdev,
 		gain = UDCAP_CURL_GAIN_MAX;
 	}
 
+	float splay_g = ud->shm->splay_gain;
+
 	// Curl ranges are indexed [thumb, index, middle, ring, little].
 	struct u_hand_tracking_values values = {0};
-	fill_finger(&values.little, &snap.skel.little, 5, snap.curl_min[4], snap.curl_max[4], false, gain);
-	fill_finger(&values.ring, &snap.skel.ring, 5, snap.curl_min[3], snap.curl_max[3], false, gain);
-	fill_finger(&values.middle, &snap.skel.middle, 5, snap.curl_min[2], snap.curl_max[2], false, gain);
-	fill_finger(&values.index, &snap.skel.index, 5, snap.curl_min[1], snap.curl_max[1], false, gain);
-	fill_finger(&values.thumb, &snap.skel.thumb, 4, snap.curl_min[0], snap.curl_max[0], true, gain);
+	fill_finger(&values.little, &snap.skel.little, 5, snap.curl_min[4], snap.curl_max[4], false, gain, splay_g);
+	fill_finger(&values.ring, &snap.skel.ring, 5, snap.curl_min[3], snap.curl_max[3], false, gain, splay_g);
+	fill_finger(&values.middle, &snap.skel.middle, 5, snap.curl_min[2], snap.curl_max[2], false, gain, splay_g);
+	fill_finger(&values.index, &snap.skel.index, 5, snap.curl_min[1], snap.curl_max[1], false, gain, splay_g);
+	fill_finger(&values.thumb, &snap.skel.thumb, 4, snap.curl_min[0], snap.curl_max[0], true, gain, splay_g);
 
 	struct xrt_space_relation ident;
 	m_space_relation_ident(&ident);
