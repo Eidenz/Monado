@@ -136,39 +136,51 @@ remap_curl(float c, float lo, float hi)
 	return r;
 }
 
+// Map the core's three measured bone bends onto Monado's hand-sim joint_curls.
+// The sim's generic finger transform consumes joint_curls as:
+//   [0] metacarpal (palm bone, ~fixed in a curl) | [1] proximal/MCP knuckle |
+//   [2] intermediate/PIP | [3] distal/DIP.
+// The thumb path is different: [0] metacarpal swing, [1]/[2] the two rotations.
 static void
-fill_finger(struct u_hand_tracking_finger_value *dst, const udcap_finger *f, int joint_count, float lo, float hi)
+fill_finger(struct u_hand_tracking_finger_value *dst, const udcap_finger *f, int joint_count, float lo, float hi,
+            bool is_thumb)
 {
 	float prox = bone_curl(f->proximal);
 	float inter = bone_curl(f->intermediate);
 	float dist = bone_curl(f->distal);
 
-	// The gloves report the proximal (knuckle) bend strongly but the
-	// intermediate/distal joints often read weak, leaving the finger straight
-	// past the first phalanx. Couple the deeper joints to the proximal so the
-	// whole finger curls naturally, while still letting genuine per-joint data
-	// take over whenever it reads larger.
-	if (inter < prox) {
-		inter = prox;
-	}
-	if (dist < prox * 0.75f) {
-		dist = prox * 0.75f;
-	}
-
-	// joint_curls map to: [0] MCP (knuckle), [1] PIP, [2] DIP, [3] tip.
 	dst->splay = 0.0f; // TODO: derive splay from adduction calibration
 	dst->joint_count = joint_count;
-	dst->joint_curls[0] = remap_curl(prox, lo, hi);
-	dst->joint_curls[1] = remap_curl(inter, lo, hi);
-	dst->joint_curls[2] = remap_curl(dist, lo, hi);
-	dst->joint_curls[3] = dst->joint_curls[2];
+
+	if (is_thumb) {
+		dst->joint_curls[0] = remap_curl(prox, lo, hi);
+		dst->joint_curls[1] = remap_curl(inter, lo, hi);
+		dst->joint_curls[2] = remap_curl(dist, lo, hi);
+		dst->joint_curls[3] = 0.0f;
+		return;
+	}
+
+	// The fingertip (DIP) sensor reads weakest; let it follow the middle joint
+	// a little so the tip doesn't stay rigidly straight.
+	if (dist < inter * 0.5f) {
+		dist = inter * 0.5f;
+	}
+
+	dst->joint_curls[0] = 0.0f;                      // metacarpal: not measured
+	dst->joint_curls[1] = remap_curl(prox, lo, hi);  // MCP (first phalanx)
+	dst->joint_curls[2] = remap_curl(inter, lo, hi); // PIP (middle phalanx)
+	dst->joint_curls[3] = remap_curl(dist, lo, hi);  // DIP (fingertip)
 }
 
 // The per-hand offset, read live from shm. Position is applied directly in the
 // tracker's frame (intuitive to tune), while the rotation uses the inverse of
 // the euler angles — the orientation convention that matched UDCAP's values.
+// The hand-tracking root and the OpenXR grip pose use opposite orientation
+// conventions: the avatar hand looks right with the offset orientation inverted
+// (conjugate), while the grip pose (which VRChat anchors its menu to) wants the
+// offset applied directly, like opengloves-driver does. So `invert` selects.
 static void
-udcap_offset_pose(struct udcap_device *ud, struct xrt_pose *out)
+udcap_offset_pose(struct udcap_device *ud, struct xrt_pose *out, bool invert)
 {
 	const udcap_hand *H = &ud->shm->hands[ud->hand_index];
 	out->position.x = H->offset_pos[0];
@@ -177,16 +189,18 @@ udcap_offset_pose(struct udcap_device *ud, struct xrt_pose *out)
 	struct xrt_vec3 euler = {UDCAP_DEG_TO_RAD(H->offset_rot_deg[0]), UDCAP_DEG_TO_RAD(H->offset_rot_deg[1]),
 	                         UDCAP_DEG_TO_RAD(H->offset_rot_deg[2])};
 	math_quat_from_euler_angles(&euler, &out->orientation);
-	// Invert the orientation only (conjugate of a unit quat).
-	out->orientation.x = -out->orientation.x;
-	out->orientation.y = -out->orientation.y;
-	out->orientation.z = -out->orientation.z;
+	if (invert) {
+		// Conjugate of a unit quat.
+		out->orientation.x = -out->orientation.x;
+		out->orientation.y = -out->orientation.y;
+		out->orientation.z = -out->orientation.z;
+	}
 }
 
 // Controller pose = tracker pose with the live offset applied directly:
 // controller = tracker ∘ offset (offset is the grip pose in the tracker frame).
 static void
-udcap_compose_pose(struct udcap_device *ud, int64_t at_timestamp_ns, struct xrt_space_relation *out_rel)
+udcap_compose_pose(struct udcap_device *ud, int64_t at_timestamp_ns, struct xrt_space_relation *out_rel, bool invert)
 {
 	if (ud->tracker == NULL) {
 		m_space_relation_ident(out_rel);
@@ -205,7 +219,7 @@ udcap_compose_pose(struct udcap_device *ud, int64_t at_timestamp_ns, struct xrt_
 	}
 
 	struct xrt_pose offset;
-	udcap_offset_pose(ud, &offset);
+	udcap_offset_pose(ud, &offset, invert);
 
 	struct xrt_relation_chain xrc = {0};
 	m_relation_chain_push_pose_if_not_identity(&xrc, &offset);
@@ -234,18 +248,18 @@ udcap_device_get_hand_tracking(struct xrt_device *xdev,
 
 	// Curl ranges are indexed [thumb, index, middle, ring, little].
 	struct u_hand_tracking_values values = {0};
-	fill_finger(&values.little, &snap.skel.little, 5, snap.curl_min[4], snap.curl_max[4]);
-	fill_finger(&values.ring, &snap.skel.ring, 5, snap.curl_min[3], snap.curl_max[3]);
-	fill_finger(&values.middle, &snap.skel.middle, 5, snap.curl_min[2], snap.curl_max[2]);
-	fill_finger(&values.index, &snap.skel.index, 5, snap.curl_min[1], snap.curl_max[1]);
-	fill_finger(&values.thumb, &snap.skel.thumb, 4, snap.curl_min[0], snap.curl_max[0]);
+	fill_finger(&values.little, &snap.skel.little, 5, snap.curl_min[4], snap.curl_max[4], false);
+	fill_finger(&values.ring, &snap.skel.ring, 5, snap.curl_min[3], snap.curl_max[3], false);
+	fill_finger(&values.middle, &snap.skel.middle, 5, snap.curl_min[2], snap.curl_max[2], false);
+	fill_finger(&values.index, &snap.skel.index, 5, snap.curl_min[1], snap.curl_max[1], false);
+	fill_finger(&values.thumb, &snap.skel.thumb, 4, snap.curl_min[0], snap.curl_max[0], true);
 
 	struct xrt_space_relation ident;
 	m_space_relation_ident(&ident);
 	u_hand_sim_simulate_generic(&values, ud->hand, &ident, out_joint_set);
 
 	// Place the hand at the tracker pose (+ live offset).
-	udcap_compose_pose(ud, requested_timestamp_ns, &out_joint_set->hand_pose);
+	udcap_compose_pose(ud, requested_timestamp_ns, &out_joint_set->hand_pose, true);
 
 	out_joint_set->is_active = true;
 	return XRT_SUCCESS;
@@ -257,8 +271,10 @@ udcap_device_get_tracked_pose(struct xrt_device *xdev,
                               int64_t at_timestamp_ns,
                               struct xrt_space_relation *out_relation)
 {
-	(void)name; // grip and aim share the tracker pose for now
-	udcap_compose_pose(udcap_device(xdev), at_timestamp_ns, out_relation);
+	(void)name; // grip and aim share the same pose
+	// Grip uses the offset applied directly (opengloves convention) so VRChat's
+	// menu anchors to the palm side, not the inverted hand-tracking orientation.
+	udcap_compose_pose(udcap_device(xdev), at_timestamp_ns, out_relation, false);
 	return XRT_SUCCESS;
 }
 
