@@ -61,6 +61,10 @@ read_shm_config(char serial_left[32], char serial_right[32])
 		// is always NUL-terminated; snprintf copies safely without truncation.
 		snprintf(serial_left, 32, "%s", shm->hands[UDCAP_HAND_LEFT].tracker_serial);
 		snprintf(serial_right, 32, "%s", shm->hands[UDCAP_HAND_RIGHT].tracker_serial);
+	} else {
+		UDCAP_WARN("udcap: shm magic/version mismatch (got %08x/%u, want %08x/%u) - reinstall the "
+		           "driver (this Monado build) so it matches udcap-server",
+		           shm->magic, shm->version, UDCAP_SHM_MAGIC, UDCAP_SHM_VERSION);
 	}
 	munmap(shm, sizeof(udcap_shm));
 	return pid;
