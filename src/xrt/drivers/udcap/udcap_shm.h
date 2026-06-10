@@ -25,7 +25,7 @@ extern "C" {
 /* shm_open() name (lives at /dev/shm/udcap_hands on Linux). */
 #define UDCAP_SHM_NAME "/udcap_hands"
 #define UDCAP_SHM_MAGIC 0x55444331u /* "UDC1" */
-#define UDCAP_SHM_VERSION 8u
+#define UDCAP_SHM_VERSION 9u
 
 enum udcap_hand_index
 {
@@ -69,6 +69,25 @@ enum udcap_calib_state
 	UDCAP_CALIB_DONE = 5,
 	UDCAP_CALIB_ERROR = 6,
 	UDCAP_CALIB_READY = 7 /* "get ready" countdown before the first pose */
+};
+
+/* Button remap: which physical glove input drives each controller button.
+ * Indexed by udcap_btn_out, valued by udcap_btn_src (see btn_src below). */
+enum udcap_btn_out
+{
+	UDCAP_OUT_A = 0,      /* A click */
+	UDCAP_OUT_B = 1,      /* B click */
+	UDCAP_OUT_SYSTEM = 2, /* system / menu click */
+	UDCAP_OUT_STICK = 3,  /* thumbstick click */
+	UDCAP_OUT_COUNT = 4
+};
+enum udcap_btn_src
+{
+	UDCAP_SRC_NONE = 0,
+	UDCAP_SRC_A = 1,
+	UDCAP_SRC_B = 2,
+	UDCAP_SRC_MENU = 3, /* A + B pressed together */
+	UDCAP_SRC_STICK = 4 /* thumbstick click */
 };
 
 typedef struct udcap_quat
@@ -172,6 +191,11 @@ typedef struct udcap_shm
 	/* Global finger-curl strength: scales the curl the driver feeds the hand
 	 * sim. 1.5 = full fist (default/max); lower closes the hand less. */
 	float curl_gain;
+
+	/* Button remap (global, both hands): btn_src[udcap_btn_out] = udcap_btn_src.
+	 * Default {A, B, MENU, STICK}. The driver applies this when building inputs. */
+	uint8_t btn_src[UDCAP_OUT_COUNT];
+	uint8_t _pad3[4];
 } udcap_shm;
 
 /*

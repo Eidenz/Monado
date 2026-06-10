@@ -315,6 +315,19 @@ udcap_device_get_tracked_pose(struct xrt_device *xdev,
 	return XRT_SUCCESS;
 }
 
+// Resolve a remapped button output to its live source value.
+static bool
+udcap_src_value(const udcap_hand *snap, uint8_t src)
+{
+	switch (src) {
+	case UDCAP_SRC_A: return snap->btn_a != 0;
+	case UDCAP_SRC_B: return snap->btn_b != 0;
+	case UDCAP_SRC_MENU: return snap->btn_menu != 0;
+	case UDCAP_SRC_STICK: return snap->btn_joy != 0;
+	default: return false;
+	}
+}
+
 static xrt_result_t
 udcap_device_update_inputs(struct xrt_device *xdev)
 {
@@ -325,16 +338,17 @@ udcap_device_update_inputs(struct xrt_device *xdev)
 
 	int64_t now = os_monotonic_get_ns();
 	struct xrt_input *in = ud->base.inputs;
-	in[UDCAP_INPUT_SYSTEM_CLICK].value.boolean = snap.btn_menu != 0;
-	in[UDCAP_INPUT_A_CLICK].value.boolean = snap.btn_a != 0;
-	in[UDCAP_INPUT_B_CLICK].value.boolean = snap.btn_b != 0;
+	const uint8_t *map = ud->shm->btn_src;
+	in[UDCAP_INPUT_A_CLICK].value.boolean = udcap_src_value(&snap, map[UDCAP_OUT_A]);
+	in[UDCAP_INPUT_B_CLICK].value.boolean = udcap_src_value(&snap, map[UDCAP_OUT_B]);
+	in[UDCAP_INPUT_SYSTEM_CLICK].value.boolean = udcap_src_value(&snap, map[UDCAP_OUT_SYSTEM]);
 	in[UDCAP_INPUT_TRIGGER_VALUE].value.vec1.x = snap.trigger;
 	in[UDCAP_INPUT_TRIGGER_CLICK].value.boolean = snap.trigger >= UDCAP_TRIGGER_CLICK_THRESHOLD;
 	in[UDCAP_INPUT_SQUEEZE_VALUE].value.vec1.x = snap.grip;
 	in[UDCAP_INPUT_SQUEEZE_FORCE].value.vec1.x = snap.grip; // VRChat grabs with grip/force
 	in[UDCAP_INPUT_THUMBSTICK].value.vec2.x = snap.joy_x;
 	in[UDCAP_INPUT_THUMBSTICK].value.vec2.y = snap.joy_y;
-	in[UDCAP_INPUT_THUMBSTICK_CLICK].value.boolean = snap.btn_joy != 0;
+	in[UDCAP_INPUT_THUMBSTICK_CLICK].value.boolean = udcap_src_value(&snap, map[UDCAP_OUT_STICK]);
 
 	for (size_t i = 0; i < UDCAP_INPUT_COUNT; i++) {
 		in[i].timestamp = now;
