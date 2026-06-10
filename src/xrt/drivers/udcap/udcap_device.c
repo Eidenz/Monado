@@ -48,8 +48,8 @@ DEBUG_GET_ONCE_LOG_OPTION(udcap_log, "UDCAP_LOG", U_LOGGING_INFO)
 
 // The hand-sim turns a unit curl into ~1 rad (~57deg) of joint swing, which is
 // well short of a closed fist. Scale the curl up so a full curl actually closes
-// the hand (~1.6 rad ~= 92deg per joint).
-#define UDCAP_CURL_GAIN 1.6f
+// the hand (~1.5 rad ~= 86deg per joint).
+#define UDCAP_CURL_GAIN 1.5f
 // Analog trigger value above which the trigger "click" boolean is asserted.
 #define UDCAP_TRIGGER_CLICK_THRESHOLD 0.7f
 
