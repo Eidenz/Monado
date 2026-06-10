@@ -25,7 +25,7 @@ extern "C" {
 /* shm_open() name (lives at /dev/shm/udcap_hands on Linux). */
 #define UDCAP_SHM_NAME "/udcap_hands"
 #define UDCAP_SHM_MAGIC 0x55444331u /* "UDC1" */
-#define UDCAP_SHM_VERSION 4u
+#define UDCAP_SHM_VERSION 5u
 
 enum udcap_hand_index
 {
@@ -134,6 +134,12 @@ typedef struct udcap_hand
 	 * Orientation" offsets). */
 	float offset_pos[3];     /* meters: x, y, z */
 	float offset_rot_deg[3]; /* euler degrees: x, y, z */
+
+	/* Per-finger curl remap, applied by the driver after the core's curl:
+	 * out = clamp((curl - min) / (max - min), 0, 1). Index order is
+	 * [thumb, index, middle, ring, little]. Defaults: min 0, max 1 (identity). */
+	float curl_min[5];
+	float curl_max[5];
 } udcap_hand;
 
 typedef struct udcap_shm
