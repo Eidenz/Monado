@@ -54,7 +54,8 @@ enum udcap_cmd
 	UDCAP_CMD_CALIB_TOGETHER = 3, /* capture "close five fingers together"*/
 	UDCAP_CMD_CALIB_SPREAD = 4,   /* capture "spread out five fingers"    */
 	UDCAP_CMD_CALIB_COMPLETE = 5, /* finalize calibration                 */
-	UDCAP_CMD_CALIB_CANCEL = 6
+	UDCAP_CMD_CALIB_CANCEL = 6,
+	UDCAP_CMD_CALIB_AUTO = 7 /* run the whole timed fist/together/spread sequence */
 };
 
 /* Calibration progress, reported by the server. */
@@ -66,7 +67,8 @@ enum udcap_calib_state
 	UDCAP_CALIB_GOT_TOGETHER = 3,
 	UDCAP_CALIB_GOT_SPREAD = 4,
 	UDCAP_CALIB_DONE = 5,
-	UDCAP_CALIB_ERROR = 6
+	UDCAP_CALIB_ERROR = 6,
+	UDCAP_CALIB_READY = 7 /* "get ready" countdown before the first pose */
 };
 
 typedef struct udcap_quat
