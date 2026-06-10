@@ -43,7 +43,13 @@
 DEBUG_GET_ONCE_LOG_OPTION(udcap_log, "UDCAP_LOG", U_LOGGING_INFO)
 
 // Bone bend angle (rad) mapped to curl=1.0. Tunable; refined against VR feel.
-#define UDCAP_MAX_BEND_RAD 1.5f
+// Bend angle (radians) that maps to a fully-curled finger (the 0..1 input range).
+#define UDCAP_MAX_BEND_RAD 1.35f
+
+// The hand-sim turns a unit curl into ~1 rad (~57deg) of joint swing, which is
+// well short of a closed fist. Scale the curl up so a full curl actually closes
+// the hand (~1.6 rad ~= 92deg per joint).
+#define UDCAP_CURL_GAIN 1.6f
 // Analog trigger value above which the trigger "click" boolean is asserted.
 #define UDCAP_TRIGGER_CLICK_THRESHOLD 0.7f
 
@@ -58,6 +64,7 @@ enum udcap_input_index
 	UDCAP_INPUT_TRIGGER_VALUE,
 	UDCAP_INPUT_TRIGGER_CLICK,
 	UDCAP_INPUT_SQUEEZE_VALUE,
+	UDCAP_INPUT_SQUEEZE_FORCE,
 	UDCAP_INPUT_THUMBSTICK,
 	UDCAP_INPUT_THUMBSTICK_CLICK,
 	UDCAP_INPUT_COUNT
@@ -152,10 +159,12 @@ fill_finger(struct u_hand_tracking_finger_value *dst, const udcap_finger *f, int
 	dst->splay = 0.0f; // TODO: derive splay from adduction calibration
 	dst->joint_count = joint_count;
 
+	const float g = UDCAP_CURL_GAIN;
+
 	if (is_thumb) {
-		dst->joint_curls[0] = remap_curl(prox, lo, hi);
-		dst->joint_curls[1] = remap_curl(inter, lo, hi);
-		dst->joint_curls[2] = remap_curl(dist, lo, hi);
+		dst->joint_curls[0] = remap_curl(prox, lo, hi) * g;
+		dst->joint_curls[1] = remap_curl(inter, lo, hi) * g;
+		dst->joint_curls[2] = remap_curl(dist, lo, hi) * g;
 		dst->joint_curls[3] = 0.0f;
 		return;
 	}
@@ -166,41 +175,59 @@ fill_finger(struct u_hand_tracking_finger_value *dst, const udcap_finger *f, int
 		dist = inter * 0.5f;
 	}
 
-	dst->joint_curls[0] = 0.0f;                      // metacarpal: not measured
-	dst->joint_curls[1] = remap_curl(prox, lo, hi);  // MCP (first phalanx)
-	dst->joint_curls[2] = remap_curl(inter, lo, hi); // PIP (middle phalanx)
-	dst->joint_curls[3] = remap_curl(dist, lo, hi);  // DIP (fingertip)
+	dst->joint_curls[0] = 0.0f;                          // metacarpal: not measured
+	dst->joint_curls[1] = remap_curl(prox, lo, hi) * g;  // MCP (first phalanx)
+	dst->joint_curls[2] = remap_curl(inter, lo, hi) * g; // PIP (middle phalanx)
+	dst->joint_curls[3] = remap_curl(dist, lo, hi) * g;  // DIP (fingertip)
 }
 
 // The per-hand offset, read live from shm. Position is applied directly in the
 // tracker's frame (intuitive to tune), while the rotation uses the inverse of
 // the euler angles — the orientation convention that matched UDCAP's values.
-// The hand-tracking root and the OpenXR grip pose use opposite orientation
-// conventions: the avatar hand looks right with the offset orientation inverted
-// (conjugate), while the grip pose (which VRChat anchors its menu to) wants the
-// offset applied directly, like opengloves-driver does. So `invert` selects.
+// Both the hand-tracking root and the grip pose use the offset orientation
+// inverted (conjugate) — that's what makes the avatar hand look right. The grip
+// pose (which VRChat anchors its menu to) additionally gets grip_rot_deg applied
+// in the hand's local frame, to swing the menu from the back of the hand to the
+// palm/thumb side.
 static void
-udcap_offset_pose(struct udcap_device *ud, struct xrt_pose *out, bool invert)
+udcap_offset_pose(struct udcap_device *ud, struct xrt_pose *out, bool is_grip)
 {
 	const udcap_hand *H = &ud->shm->hands[ud->hand_index];
 	out->position.x = H->offset_pos[0];
 	out->position.y = H->offset_pos[1];
 	out->position.z = H->offset_pos[2];
+	if (is_grip) {
+		// Extra position offset for the grip/menu only (tracker frame).
+		out->position.x += H->grip_pos[0];
+		out->position.y += H->grip_pos[1];
+		out->position.z += H->grip_pos[2];
+	}
+
 	struct xrt_vec3 euler = {UDCAP_DEG_TO_RAD(H->offset_rot_deg[0]), UDCAP_DEG_TO_RAD(H->offset_rot_deg[1]),
 	                         UDCAP_DEG_TO_RAD(H->offset_rot_deg[2])};
-	math_quat_from_euler_angles(&euler, &out->orientation);
-	if (invert) {
-		// Conjugate of a unit quat.
-		out->orientation.x = -out->orientation.x;
-		out->orientation.y = -out->orientation.y;
-		out->orientation.z = -out->orientation.z;
+	struct xrt_quat q;
+	math_quat_from_euler_angles(&euler, &q);
+	// Conjugate of a unit quat.
+	q.x = -q.x;
+	q.y = -q.y;
+	q.z = -q.z;
+
+	if (is_grip) {
+		struct xrt_vec3 geuler = {UDCAP_DEG_TO_RAD(H->grip_rot_deg[0]), UDCAP_DEG_TO_RAD(H->grip_rot_deg[1]),
+		                          UDCAP_DEG_TO_RAD(H->grip_rot_deg[2])};
+		struct xrt_quat r, composed;
+		math_quat_from_euler_angles(&geuler, &r);
+		math_quat_rotate(&q, &r, &composed); // composed = q * r (r in hand-local frame)
+		q = composed;
 	}
+
+	out->orientation = q;
 }
 
 // Controller pose = tracker pose with the live offset applied directly:
 // controller = tracker ∘ offset (offset is the grip pose in the tracker frame).
 static void
-udcap_compose_pose(struct udcap_device *ud, int64_t at_timestamp_ns, struct xrt_space_relation *out_rel, bool invert)
+udcap_compose_pose(struct udcap_device *ud, int64_t at_timestamp_ns, struct xrt_space_relation *out_rel, bool is_grip)
 {
 	if (ud->tracker == NULL) {
 		m_space_relation_ident(out_rel);
@@ -219,7 +246,7 @@ udcap_compose_pose(struct udcap_device *ud, int64_t at_timestamp_ns, struct xrt_
 	}
 
 	struct xrt_pose offset;
-	udcap_offset_pose(ud, &offset, invert);
+	udcap_offset_pose(ud, &offset, is_grip);
 
 	struct xrt_relation_chain xrc = {0};
 	m_relation_chain_push_pose_if_not_identity(&xrc, &offset);
@@ -259,7 +286,7 @@ udcap_device_get_hand_tracking(struct xrt_device *xdev,
 	u_hand_sim_simulate_generic(&values, ud->hand, &ident, out_joint_set);
 
 	// Place the hand at the tracker pose (+ live offset).
-	udcap_compose_pose(ud, requested_timestamp_ns, &out_joint_set->hand_pose, true);
+	udcap_compose_pose(ud, requested_timestamp_ns, &out_joint_set->hand_pose, false); // hand: no grip rotation
 
 	out_joint_set->is_active = true;
 	return XRT_SUCCESS;
@@ -272,9 +299,9 @@ udcap_device_get_tracked_pose(struct xrt_device *xdev,
                               struct xrt_space_relation *out_relation)
 {
 	(void)name; // grip and aim share the same pose
-	// Grip uses the offset applied directly (opengloves convention) so VRChat's
-	// menu anchors to the palm side, not the inverted hand-tracking orientation.
-	udcap_compose_pose(udcap_device(xdev), at_timestamp_ns, out_relation, false);
+	// Grip tracks with the hand but gets the live grip_rot correction applied,
+	// so VRChat's menu can be dialled onto the palm/thumb side.
+	udcap_compose_pose(udcap_device(xdev), at_timestamp_ns, out_relation, true);
 	return XRT_SUCCESS;
 }
 
@@ -294,6 +321,7 @@ udcap_device_update_inputs(struct xrt_device *xdev)
 	in[UDCAP_INPUT_TRIGGER_VALUE].value.vec1.x = snap.trigger;
 	in[UDCAP_INPUT_TRIGGER_CLICK].value.boolean = snap.trigger >= UDCAP_TRIGGER_CLICK_THRESHOLD;
 	in[UDCAP_INPUT_SQUEEZE_VALUE].value.vec1.x = snap.grip;
+	in[UDCAP_INPUT_SQUEEZE_FORCE].value.vec1.x = snap.grip; // VRChat grabs with grip/force
 	in[UDCAP_INPUT_THUMBSTICK].value.vec2.x = snap.joy_x;
 	in[UDCAP_INPUT_THUMBSTICK].value.vec2.y = snap.joy_y;
 	in[UDCAP_INPUT_THUMBSTICK_CLICK].value.boolean = snap.btn_joy != 0;
@@ -408,6 +436,7 @@ udcap_device_create(enum xrt_hand hand)
 	ud->base.inputs[UDCAP_INPUT_TRIGGER_VALUE].name = XRT_INPUT_INDEX_TRIGGER_VALUE;
 	ud->base.inputs[UDCAP_INPUT_TRIGGER_CLICK].name = XRT_INPUT_INDEX_TRIGGER_CLICK;
 	ud->base.inputs[UDCAP_INPUT_SQUEEZE_VALUE].name = XRT_INPUT_INDEX_SQUEEZE_VALUE;
+	ud->base.inputs[UDCAP_INPUT_SQUEEZE_FORCE].name = XRT_INPUT_INDEX_SQUEEZE_FORCE;
 	ud->base.inputs[UDCAP_INPUT_THUMBSTICK].name = XRT_INPUT_INDEX_THUMBSTICK;
 	ud->base.inputs[UDCAP_INPUT_THUMBSTICK_CLICK].name = XRT_INPUT_INDEX_THUMBSTICK_CLICK;
 

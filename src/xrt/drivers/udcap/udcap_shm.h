@@ -25,7 +25,7 @@ extern "C" {
 /* shm_open() name (lives at /dev/shm/udcap_hands on Linux). */
 #define UDCAP_SHM_NAME "/udcap_hands"
 #define UDCAP_SHM_MAGIC 0x55444331u /* "UDC1" */
-#define UDCAP_SHM_VERSION 5u
+#define UDCAP_SHM_VERSION 7u
 
 enum udcap_hand_index
 {
@@ -140,6 +140,13 @@ typedef struct udcap_hand
 	 * [thumb, index, middle, ring, little]. Defaults: min 0, max 1 (identity). */
 	float curl_min[5];
 	float curl_max[5];
+
+	/* Extra position (meters, tracker frame) + rotation (degrees, hand-local)
+	 * applied to the GRIP/aim pose only, on top of the hand offset. Corrects the
+	 * OpenXR grip convention so VRChat's menu sits on the palm side. The
+	 * hand-tracking pose ignores these. */
+	float grip_pos[3];
+	float grip_rot_deg[3];
 } udcap_hand;
 
 typedef struct udcap_shm
