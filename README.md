@@ -16,7 +16,7 @@ sudo cmake --install cbuild
 sudo systemctl start monado.socket
 ```
 
-This fork adds **fake hotplug** for the SteamVR Lighthouse driver: devices from
+This fork adds UDCAP gloves support and **fake hotplug** for the SteamVR Lighthouse driver: devices from
 your `lighthousedb.json` are pre-registered at startup so trackers (and
 controllers) can be powered on after an app is already running — no restart
 needed.
