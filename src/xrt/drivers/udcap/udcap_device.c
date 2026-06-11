@@ -113,12 +113,10 @@ udcap_snapshot(struct udcap_device *ud, udcap_hand *out)
 static float
 bone_curl(udcap_quat q)
 {
-	float w = fabsf(q.w);
-	if (w > 1.0f) {
-		w = 1.0f;
-	}
-	float angle = 2.0f * acosf(w);
-	float c = angle / UDCAP_MAX_BEND_RAD;
+	// Continuous rotation angle (2*atan2(|vec|, w)) so a hard curl stays
+	// monotonic past 180° instead of folding back toward 0 like 2*acos(|w|).
+	float v = sqrtf(q.x * q.x + q.y * q.y + q.z * q.z);
+	float c = 2.0f * atan2f(v, q.w) / UDCAP_MAX_BEND_RAD;
 	if (c < 0.0f) {
 		c = 0.0f;
 	}
