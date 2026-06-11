@@ -68,6 +68,7 @@ enum udcap_input_index
 	UDCAP_INPUT_SQUEEZE_FORCE,
 	UDCAP_INPUT_THUMBSTICK,
 	UDCAP_INPUT_THUMBSTICK_CLICK,
+	UDCAP_INPUT_TRACKPAD_TOUCH,
 	UDCAP_INPUT_COUNT
 };
 
@@ -360,6 +361,7 @@ udcap_device_update_inputs(struct xrt_device *xdev)
 	in[UDCAP_INPUT_SQUEEZE_FORCE].value.vec1.x = grp; // VRChat grabs with grip/force
 	in[UDCAP_INPUT_THUMBSTICK].value.vec2.x = snap.joy_x;
 	in[UDCAP_INPUT_THUMBSTICK].value.vec2.y = snap.joy_y;
+	in[UDCAP_INPUT_TRACKPAD_TOUCH].value.boolean = snap.trackpad > snap.trackpad_threshold;
 
 	for (size_t i = 0; i < UDCAP_INPUT_COUNT; i++) {
 		in[i].timestamp = now;
@@ -474,6 +476,7 @@ udcap_device_create(enum xrt_hand hand)
 	ud->base.inputs[UDCAP_INPUT_SQUEEZE_FORCE].name = XRT_INPUT_INDEX_SQUEEZE_FORCE;
 	ud->base.inputs[UDCAP_INPUT_THUMBSTICK].name = XRT_INPUT_INDEX_THUMBSTICK;
 	ud->base.inputs[UDCAP_INPUT_THUMBSTICK_CLICK].name = XRT_INPUT_INDEX_THUMBSTICK_CLICK;
+	ud->base.inputs[UDCAP_INPUT_TRACKPAD_TOUCH].name = XRT_INPUT_INDEX_TRACKPAD_TOUCH;
 
 	ud->base.outputs[0].name = XRT_OUTPUT_NAME_INDEX_HAPTIC;
 

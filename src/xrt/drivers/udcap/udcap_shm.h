@@ -25,7 +25,7 @@ extern "C" {
 /* shm_open() name (lives at /dev/shm/udcap_hands on Linux). */
 #define UDCAP_SHM_NAME "/udcap_hands"
 #define UDCAP_SHM_MAGIC 0x55444331u /* "UDC1" */
-#define UDCAP_SHM_VERSION 11u
+#define UDCAP_SHM_VERSION 12u
 
 enum udcap_hand_index
 {
@@ -186,6 +186,11 @@ typedef struct udcap_hand
 	uint8_t grip_finger;    /* 0..4, or UDCAP_FINGER_GRIP (avg M+R+P) */
 	float trigger_min, trigger_max;
 	float grip_min, grip_max;
+
+	/* Radial deadzone (0..1) for the thumbstick, and the touch threshold (0..1)
+	 * above which the trackpad reports a resting finger. */
+	float stick_deadzone;
+	float trackpad_threshold;
 } udcap_hand;
 
 typedef struct udcap_shm
