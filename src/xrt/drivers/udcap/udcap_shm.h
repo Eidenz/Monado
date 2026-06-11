@@ -218,6 +218,11 @@ typedef struct udcap_shm
 	/* Global finger-splay (abduction) scale. 1 = measured, negative flips the
 	 * spread direction, 0 = off. */
 	float splay_gain;
+
+	/* DIAGNOSTIC (appended; safe for older readers that stop at splay_gain):
+	 * the 12 raw per-finger sensor channels per hand, before sensor2Angle. Used
+	 * to hunt where finger abduction lives in the raw data. */
+	float raw_sensors[UDCAP_HAND_COUNT][12];
 } udcap_shm;
 
 /*
