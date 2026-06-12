@@ -26,7 +26,7 @@ extern "C" {
 //! Major version of the API.
 #define MND_API_VERSION_MAJOR 1
 //! Minor version of the API.
-#define MND_API_VERSION_MINOR 7
+#define MND_API_VERSION_MINOR 8
 //! Patch version of the API.
 #define MND_API_VERSION_PATCH 0
 
@@ -74,24 +74,34 @@ typedef enum mnd_client_flags
 } mnd_client_flags_t;
 
 /*!
- * A property to get from a thing (currently only devices).
+ * A property to get from an object.
  *
  * Supported in version 1.2 and above.
  */
 typedef enum mnd_property
 {
-	//! Supported in version 1.2 and above.
+	// Devices
+
+	//! Supported in version 1.2 and above. Supported by devices.
 	MND_PROPERTY_NAME_STRING = 0,
-	//! Supported in version 1.2 and above.
+
+	//! Supported in version 1.2 and above. Supported by devices.
 	MND_PROPERTY_SERIAL_STRING = 1,
-	//! Supported in version 1.4.0 and above.
+
+	//! Supported in version 1.4.0 and above. Supported by devices.
 	MND_PROPERTY_TRACKING_ORIGIN_U32 = 2,
-	//! Supported in version 1.4.0 and above.
+
+	//! Supported in version 1.4.0 and above. Supported by devices.
 	MND_PROPERTY_SUPPORTS_POSITION_BOOL = 3,
-	//! Supported in version 1.4.0 and above.
+
+	//! Supported in version 1.4.0 and above. Supported by devices.
 	MND_PROPERTY_SUPPORTS_ORIENTATION_BOOL = 4,
-	//! Supported in version 1.5.0 and above.
+
+	//! Supported in version 1.5.0 and above. Supported by devices.
 	MND_PROPERTY_SUPPORTS_BRIGHTNESS_BOOL = 5,
+
+	//! Supported in version 1.8.0 and above. Supported by clients.
+	MND_PROPERTY_SUPPORTS_VIEW_CONFIGURATION_CHANGE_BOOL = 100,
 } mnd_property_t;
 
 /*!
@@ -163,6 +173,61 @@ typedef enum mnd_io_block_flags
 	MND_IO_BLOCK_INPUTS = (1u << 2u),
 	MND_IO_BLOCK_OUTPUTS = (1u << 3u),
 } mnd_io_block_flags_t;
+
+/*!
+ * Types of view configurations.
+ *
+ * Supported in version 1.8.0 and above.
+ */
+typedef enum mnd_view_type
+{
+	//! Invalid view type, no data is here.
+	MND_VIEW_TYPE_INVALID = 0,
+	//! Mono view type, with a single view.
+	MND_VIEW_TYPE_MONO = 1,
+	//! Stereo view type, with two views.
+	MND_VIEW_TYPE_STEREO = 2,
+	//! Quad view type, with two outer views, and two inset views.
+	MND_VIEW_TYPE_QUAD = 3,
+} mnd_view_type_t;
+
+#define MND_MAX_VIEWS 4
+
+/*!
+ * The state of a client's session.
+ *
+ * Supported in version 1.8.0 and above.
+ */
+typedef struct mnd_session_state
+{
+	//! Whether the session is currently running/has been begun.
+	bool running;
+	//! The active view type of the running session.
+	mnd_view_type_t active_view_type;
+} mnd_session_state_t;
+
+/*!
+ * A view configuration, describing the resolution and sample count of a single view.
+ *
+ * Supported in version 1.8.0 and above.
+ */
+typedef struct mnd_view_config_view
+{
+	uint32_t width_pixels;
+	uint32_t height_pixels;
+	uint32_t sample_count;
+} mnd_view_config_view_t;
+
+/*!
+ * A view configuration, describing the resolution and sample count of multiple views.
+ *
+ * Supported in version 1.8.0 and above.
+ */
+typedef struct mnd_recommended_view_config
+{
+	bool valid;
+	mnd_view_config_view_t view_configs[MND_MAX_VIEWS];
+} mnd_recommended_view_config_t;
 
 /*
  *
@@ -320,6 +385,86 @@ mnd_root_toggle_client_io_active(mnd_root_t *root, uint32_t client_id);
  */
 mnd_result_t
 mnd_root_set_client_io_blocks(mnd_root_t *root, uint32_t client_id, mnd_io_block_flags_t block_flags);
+
+/*!
+ * Get the session state for the client at the given index.
+ *
+ * Supported in version 1.8 and above.
+ *
+ * @param root                   The libmonado state.
+ * @param client_id              ID of client to retrieve active view type from.
+ * @param[out] out_session_state Pointer to populate with the session state.
+ *
+ * @pre Called @ref mnd_root_update_client_list at least once
+ *
+ * @return MND_SUCCESS on success
+ */
+mnd_result_t
+mnd_root_get_client_session_running_state(mnd_root_t *root, uint32_t client_id, mnd_session_state_t *out_session_state);
+
+/*!
+ * Get the view configurations of the client's first system. Returns the default and the recommended view configuration,
+ * if available.
+ *
+ * Supported in version 1.8 and above.
+ *
+ * @param root                             The libmonado state.
+ * @param client_id                        ID of the client to get the view configuration for.
+ * @param view_type                        The type of view configuration to retrieve.
+ * @param[out] out_default_view_config     Pointer to populate with the default view configuration. Must point to at
+ *                                         least the number of views as is contained within the passed view type.
+ * @param[out] recommendation_present      Pointer to populate with whether a recommended view configuration is present.
+ * @param[out] out_recommended_view_config Pointer to populate with the recommended view configuration.
+ *                                         Must point to at least the number of views as is contained within the
+ *                                         passed view type.
+ *
+ * @pre Called @ref mnd_root_update_client_list at least once
+ *
+ * @return MND_SUCCESS on success
+ */
+mnd_result_t
+mnd_root_get_client_system_view_config(mnd_root_t *root,
+                                       uint32_t client_id,
+                                       mnd_view_type_t view_type,
+                                       mnd_view_config_view_t *out_default_view_config,
+                                       mnd_recommended_view_config_t *out_recommended_view_config);
+
+/*!
+ * Set the recommended view configuration for a client's first system.
+ *
+ * Supported in version 1.8 and above.
+ *
+ * @param root                    The libmonado state.
+ * @param client_id               ID of the client to set the recommended view configuration for.
+ * @param view_type               The type of view configuration to set.
+ * @param recommended_view_config The view configuration to set as recommended. Must point to at least the number of
+ *                                views as is contained within the passed view type.
+ *
+ * @pre Called @ref mnd_root_update_client_list at least once
+ *
+ * @return MND_SUCCESS on success, MND_ERROR_UNSUPPORTED_OPERATION if the client doesn't support changing the
+ *         recommended view configuration
+ */
+mnd_result_t
+mnd_root_set_client_recommended_view_config(mnd_root_t *root,
+                                            uint32_t client_id,
+                                            mnd_view_type_t view_type,
+                                            const mnd_recommended_view_config_t *recommended_view_config);
+
+/*!
+ * Get boolean property for the client at the given index.
+ *
+ * Supported in version 1.8.0 and above.
+ *
+ * @param root          The libmonado state.
+ * @param client_index  Index of client to retrieve property from.
+ * @param prop          A boolean property enum.
+ * @param[out] out_bool Pointer to populate with the boolean.
+ *
+ * @return MND_SUCCESS on success
+ */
+mnd_result_t
+mnd_root_get_client_property_bool(mnd_root_t *root, uint32_t client_id, mnd_property_t prop, bool *out_bool);
 
 /*!
  * Get the number of devices

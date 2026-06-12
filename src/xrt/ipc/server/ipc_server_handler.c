@@ -1606,6 +1606,40 @@ ipc_handle_system_set_client_io_blocks(volatile struct ipc_client_state *_ics,
 	return ipc_server_set_client_io_blocks(s, client_id, blocks);
 }
 
+xrt_result_t
+ipc_handle_system_get_client_session_running_state(volatile struct ipc_client_state *_ics,
+                                                   uint32_t client_id,
+                                                   struct xrt_compositor_session_running_state *out_running_state)
+{
+	struct ipc_server *s = _ics->server;
+
+	return ipc_server_get_client_session_running_state(s, client_id, out_running_state);
+}
+
+xrt_result_t
+ipc_handle_system_get_client_view_config(volatile struct ipc_client_state *_ics,
+                                         uint32_t client_id,
+                                         enum xrt_view_type view_type,
+                                         struct xrt_view_config *out_default_view_config,
+                                         struct xrt_recommended_view_config *out_recommended_view_config)
+{
+	struct ipc_server *s = _ics->server;
+
+	return ipc_server_get_client_view_config(s, client_id, view_type, out_default_view_config,
+	                                         out_recommended_view_config);
+}
+
+xrt_result_t
+ipc_handle_system_set_client_recommended_view_config(volatile struct ipc_client_state *_ics,
+                                                     uint32_t client_id,
+                                                     enum xrt_view_type view_type,
+                                                     const struct xrt_recommended_view_config *recommended_view_config)
+{
+	struct ipc_server *s = _ics->server;
+
+	return ipc_server_set_client_recommended_view_config(s, client_id, view_type, recommended_view_config);
+}
+
 
 /*
  *

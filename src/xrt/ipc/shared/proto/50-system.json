@@ -46,6 +46,34 @@
 			{"name": "blocks", "type": "struct ipc_client_io_blocks"}
 		]
 	},
+	
+	"system_get_client_session_running_state": {
+		"in": [
+			{"name": "id", "type": "uint32_t"}
+		],
+		"out": [
+			{"name": "running_state", "type": "struct xrt_compositor_session_running_state"}
+		]
+	},
+
+	"system_get_client_view_config": {
+		"in": [
+			{"name": "id", "type": "uint32_t"},
+			{"name": "view_type", "type": "enum xrt_view_type"}
+		],
+		"out": [
+			{"name": "default_view_config", "type": "struct xrt_view_config"},
+			{"name": "recommended_view_config", "type": "struct xrt_recommended_view_config"}
+		]
+	},
+
+	"system_set_client_recommended_view_config": {
+		"in": [
+			{"name": "id", "type": "uint32_t"},
+			{"name": "view_type", "type": "enum xrt_view_type"},
+			{"name": "recommended_view_config", "type": "struct xrt_recommended_view_config"}
+		]
+	},
 
 	"system_devices_get_list": {
 		"out": [

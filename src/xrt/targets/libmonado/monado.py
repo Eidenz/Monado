@@ -191,12 +191,12 @@ class Monado:
         return self.device_count_ptr[0]
 
     def get_device_at_index(self, index):
-        prop = self.lib.MND_PROPERTY_NAME_STRING
+        prop = self.lib.MND_PROPERTY_DEVICE_NAME_STRING
         ret = self.lib.mnd_root_get_device_info_string(self.root, index, prop, self.device_name_ptr)
         if ret != 0:
             raise Exception(f"Could not get device name at index:{index}")
 
-        prop = self.lib.MND_PROPERTY_SERIAL_STRING
+        prop = self.lib.MND_PROPERTY_DEVICE_SERIAL_STRING
         ret = self.lib.mnd_root_get_device_info_string(self.root, index, prop, self.device_serial_ptr)
         if ret != 0:
             raise Exception(f"Could not get device serial at index:{index}")

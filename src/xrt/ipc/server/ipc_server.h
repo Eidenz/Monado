@@ -514,6 +514,39 @@ xrt_result_t
 ipc_server_set_client_io_blocks(struct ipc_server *s, uint32_t client_id, const struct ipc_client_io_blocks *blocks);
 
 /*!
+ * Get the session running state for this client.
+ *
+ * @ingroup ipc_server
+ */
+xrt_result_t
+ipc_server_get_client_session_running_state(struct ipc_server *s,
+                                            uint32_t client_id,
+                                            struct xrt_compositor_session_running_state *out_running_state);
+
+/*!
+ * Get the view configuration for this client.
+ *
+ * @ingroup ipc_server
+ */
+xrt_result_t
+ipc_server_get_client_view_config(struct ipc_server *s,
+                                  uint32_t client_id,
+                                  enum xrt_view_type view_type,
+                                  struct xrt_view_config *out_default_view_config,
+                                  struct xrt_recommended_view_config *out_recommended_view_config);
+
+/*!
+ * Set the recommended view configuration for this client.
+ *
+ * @ingroup ipc_server
+ */
+xrt_result_t
+ipc_server_set_client_recommended_view_config(struct ipc_server *s,
+                                              uint32_t client_id,
+                                              enum xrt_view_type view_type,
+                                              const struct xrt_recommended_view_config *recommended_view_config);
+
+/*!
  * Called by client threads to set a session to active.
  *
  * @ingroup ipc_server

@@ -768,6 +768,110 @@ set_client_io_blocks_locked(struct ipc_server *s, uint32_t client_id, const stru
 	return XRT_SUCCESS;
 }
 
+static xrt_result_t
+get_client_session_running_state_locked(struct ipc_server *s,
+                                        uint32_t client_id,
+                                        struct xrt_compositor_session_running_state *out_running_state)
+{
+	volatile struct ipc_client_state *ics = find_client_locked(s, client_id);
+	if (ics == NULL) {
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	xrt_result_t xret = xrt_syscomp_session_get_running_state(s->xsysc, ics->xc, out_running_state);
+	if (xret != XRT_SUCCESS) {
+		IPC_ERROR(s, "Failed to get session running state for client '%u', error: '%s'", client_id,
+		          u_str_xrt_result_or_null(xret));
+		return xret;
+	}
+
+	return XRT_SUCCESS;
+}
+
+static xrt_result_t
+get_client_view_config_locked(struct ipc_server *s,
+                              uint32_t client_id,
+                              enum xrt_view_type view_type,
+                              struct xrt_view_config *out_default_view_config,
+                              struct xrt_recommended_view_config *out_recommended_view_config)
+{
+	volatile struct ipc_client_state *ics = find_client_locked(s, client_id);
+	if (ics == NULL) {
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	// The default view config comes from the system compositor, not from the client, so it is always available.
+	xrt_result_t xret = xrt_syscomp_get_view_config(s->xsysc, view_type, out_default_view_config);
+	if (xret != XRT_SUCCESS) {
+		IPC_ERROR(s, "Failed to get default view config for client '%u' and view type '%d', error: '%s'",
+		          client_id, view_type, u_str_xrt_result_or_null(xret));
+		return xret;
+	}
+
+	// A client without any app system has no recommendation.
+	(*out_recommended_view_config) = (struct xrt_recommended_view_config){
+	    .valid = false,
+	};
+
+	for (uint32_t i = 0; i < ARRAY_SIZE(ics->objects.xasys); i++) {
+		struct xrt_app_system *xasys = ics->objects.xasys[i];
+		if (xasys == NULL) {
+			continue;
+		}
+
+		xret = xrt_app_system_get_recommended_view_configuration( //
+		    xasys,                                                //
+		    view_type,                                            //
+		    out_recommended_view_config);
+		if (xret != XRT_SUCCESS) {
+			IPC_ERROR(
+			    s, "Failed to get recommended view config for client '%u' and view type '%d', error: '%s'",
+			    client_id, view_type, u_str_xrt_result_or_null(xret));
+			return xret;
+		}
+
+		// Only return the first system's view config
+		break;
+	}
+
+	return XRT_SUCCESS;
+}
+
+static xrt_result_t
+set_client_recommended_view_config_locked(struct ipc_server *s,
+                                          uint32_t client_id,
+                                          enum xrt_view_type view_type,
+                                          const struct xrt_recommended_view_config *recommended_view_config)
+{
+	volatile struct ipc_client_state *ics = find_client_locked(s, client_id);
+	if (ics == NULL) {
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	for (uint32_t i = 0; i < ARRAY_SIZE(ics->objects.xasys); i++) {
+		struct xrt_app_system *xasys = ics->objects.xasys[i];
+		if (xasys == NULL) {
+			continue;
+		}
+
+		xrt_result_t xret = xrt_app_system_set_recommended_view_configuration( //
+		    xasys,                                                             //
+		    view_type,                                                         //
+		    recommended_view_config);
+		if (xret != XRT_SUCCESS) {
+			IPC_ERROR(
+			    s, "Failed to set recommended view config for client '%u' and view type '%d', error: '%s'",
+			    client_id, view_type, u_str_xrt_result_or_null(xret));
+			return xret;
+		}
+
+		// Only set the first system's view config
+		break;
+	}
+
+	return XRT_SUCCESS;
+}
+
 static uint32_t
 allocate_id_locked(struct ipc_server *s)
 {
@@ -874,6 +978,46 @@ ipc_server_set_client_io_blocks(struct ipc_server *s, uint32_t client_id, const 
 {
 	os_mutex_lock(&s->global_state.lock);
 	xrt_result_t xret = set_client_io_blocks_locked(s, client_id, blocks);
+	os_mutex_unlock(&s->global_state.lock);
+
+	return xret;
+}
+
+xrt_result_t
+ipc_server_get_client_session_running_state(struct ipc_server *s,
+                                            uint32_t client_id,
+                                            struct xrt_compositor_session_running_state *out_running_state)
+{
+	os_mutex_lock(&s->global_state.lock);
+	xrt_result_t xret = get_client_session_running_state_locked(s, client_id, out_running_state);
+	os_mutex_unlock(&s->global_state.lock);
+
+	return xret;
+}
+
+xrt_result_t
+ipc_server_get_client_view_config(struct ipc_server *s,
+                                  uint32_t client_id,
+                                  enum xrt_view_type view_type,
+                                  struct xrt_view_config *out_default_view_config,
+                                  struct xrt_recommended_view_config *out_recommended_view_config)
+{
+	os_mutex_lock(&s->global_state.lock);
+	xrt_result_t xret = get_client_view_config_locked(s, client_id, view_type, out_default_view_config,
+	                                                  out_recommended_view_config);
+	os_mutex_unlock(&s->global_state.lock);
+
+	return xret;
+}
+
+xrt_result_t
+ipc_server_set_client_recommended_view_config(struct ipc_server *s,
+                                              uint32_t client_id,
+                                              enum xrt_view_type view_type,
+                                              const struct xrt_recommended_view_config *recommended_view_config)
+{
+	os_mutex_lock(&s->global_state.lock);
+	xrt_result_t xret = set_client_recommended_view_config_locked(s, client_id, view_type, recommended_view_config);
 	os_mutex_unlock(&s->global_state.lock);
 
 	return xret;
