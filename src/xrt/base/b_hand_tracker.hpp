@@ -79,6 +79,12 @@ private: // Members
 
 
 private: // Methods
+	//! Retry requested sources that had no backing device at init, they
+	//! may have been hotplugged since (e.g. controllers with skeletal
+	//! tracking powered on mid-session).
+	void
+	resolveMissingSources();
+
 	xrt_result_t
 	resolveSource(enum xrt_input_name input_name, Source &out_source);
 

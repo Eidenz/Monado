@@ -237,6 +237,9 @@ HandTracker::locate(xrt_space_overseer *xso,
 
 	*out_location = {};
 
+	// Requested sources with no device at creation may exist by now.
+	resolveMissingSources();
+
 	xrt_hand_joint_set value = {};
 	const Source *active_source = nullptr;
 	for (uint32_t i = 0; i < mInputCount; i++) {
@@ -345,6 +348,45 @@ HandTracker::destroyHandTracker()
  * Private functions.
  *
  */
+
+void
+HandTracker::resolveMissingSources()
+{
+	// Only system mode follows the (possibly updated) hand-tracking roles;
+	// locked and callback modes were fully resolved at creation.
+	if (mMode != HandTrackerMode::System) {
+		return;
+	}
+
+	for (uint32_t i = 0; i < mInfo.requested_source_count; i++) {
+		xrt_input_name input_name = mInfo.requested_sources[i];
+
+		bool have = false;
+		for (uint32_t j = 0; j < mInputCount; j++) {
+			if (mInputs[j].input_name == input_name) {
+				have = true;
+				break;
+			}
+		}
+		if (have) {
+			continue;
+		}
+
+		Source source{};
+		if (resolveSource(input_name, source) != XRT_SUCCESS || source.xdev == nullptr) {
+			continue;
+		}
+
+		// Appended after the creation-time sources, so they keep priority.
+		if (addInput(source) != XRT_SUCCESS) {
+			continue;
+		}
+		addOutput(source.xdev);
+
+		BHT_INFO("Hand tracker (%s) picked up hotplugged source xdev='%s'", hand_to_string(mInfo.hand),
+		         source.xdev->str);
+	}
+}
 
 xrt_result_t
 HandTracker::resolveSource(xrt_input_name input_name, Source &out_source)

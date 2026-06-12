@@ -258,6 +258,41 @@ try_add_udcap(struct xrt_system_devices *xsysd)
 #endif
 }
 
+// For filling hand-tracking roles from the device-added callback.
+static struct xrt_system_devices *steamvr_xsysd = NULL;
+
+/*
+ * The static hand-tracking roles are normally fixed at boot. When a device
+ * with skeletal tracking (e.g. Index controllers) is hotplugged into an empty
+ * conforming slot, fill it in so hand trackers (which re-resolve sources
+ * lazily) can pick it up for finger tracking.
+ */
+static void
+steamvr_fill_ht_roles(struct xrt_device *xdev)
+{
+	if (steamvr_xsysd == NULL) {
+		return;
+	}
+
+	for (uint32_t i = 0; i < xdev->input_count; i++) {
+		const struct xrt_input *input = &xdev->inputs[i];
+		if (!input->active) {
+			continue;
+		}
+
+		if (input->name == XRT_INPUT_HT_CONFORMING_LEFT &&
+		    steamvr_xsysd->static_roles.hand_tracking.conforming.left == NULL) {
+			SVR_INFO("Hotplugged '%s' fills the conforming.left hand-tracking role", xdev->str);
+			steamvr_xsysd->static_roles.hand_tracking.conforming.left = xdev;
+		}
+		if (input->name == XRT_INPUT_HT_CONFORMING_RIGHT &&
+		    steamvr_xsysd->static_roles.hand_tracking.conforming.right == NULL) {
+			SVR_INFO("Hotplugged '%s' fills the conforming.right hand-tracking role", xdev->str);
+			steamvr_xsysd->static_roles.hand_tracking.conforming.right = xdev;
+		}
+	}
+}
+
 // Hotplugged devices need a space before clients can locate poses on them.
 static void
 steamvr_on_device_added(struct xrt_device *xdev, void *userdata)
@@ -268,6 +303,8 @@ steamvr_on_device_added(struct xrt_device *xdev, void *userdata)
 	if (xret != XRT_SUCCESS) {
 		SVR_ERROR("Failed to add hotplugged device '%s' to the space overseer", xdev->str);
 	}
+
+	steamvr_fill_ht_roles(xdev);
 
 #ifdef XRT_BUILD_DRIVER_UDCAP
 	// A glove whose tracker wasn't on at boot can pick it up now.
@@ -338,6 +375,7 @@ steamvr_open_system(struct xrt_builder *xb,
 	*out_xso = (struct xrt_space_overseer *)uso;
 
 	// Wire up hotplug: devices appearing from now on get a space added.
+	steamvr_xsysd = xsysd;
 	steamvr_lh_set_device_added_callback(xsysd, steamvr_on_device_added, *out_xso);
 
 	return result;
