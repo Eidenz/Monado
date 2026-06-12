@@ -162,9 +162,15 @@ fill_finger(struct u_hand_tracking_finger_value *dst, const udcap_finger *f, int
 
 	if (is_thumb) {
 		dst->splay = 0.0f; // thumb splay handled separately (TODO)
-		dst->joint_curls[0] = remap_curl(prox, lo, hi) * g;
-		dst->joint_curls[1] = remap_curl(inter, lo, hi) * g;
-		dst->joint_curls[2] = remap_curl(dist, lo, hi) * g;
+		// The thumb's intermediate/distal bends are unreliable on some units and
+		// saturate the curl scale, which pins the whole thumb fully curled no matter
+		// the configured range (remap_curl clamps them to 1). Drive every thumb joint
+		// from the reliable proximal bend instead -- this is also what the SteamVR
+		// driver does, so the thumb behaves the same across both runtimes.
+		float tc = remap_curl(prox, lo, hi) * g;
+		dst->joint_curls[0] = tc;
+		dst->joint_curls[1] = tc;
+		dst->joint_curls[2] = tc;
 		dst->joint_curls[3] = 0.0f;
 		return;
 	}

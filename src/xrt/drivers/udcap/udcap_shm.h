@@ -55,7 +55,18 @@ enum udcap_cmd
 	UDCAP_CMD_CALIB_SPREAD = 4,   /* capture "spread out five fingers"    */
 	UDCAP_CMD_CALIB_COMPLETE = 5, /* finalize calibration                 */
 	UDCAP_CMD_CALIB_CANCEL = 6,
-	UDCAP_CMD_CALIB_AUTO = 7 /* run the whole timed fist/together/spread sequence */
+	UDCAP_CMD_CALIB_AUTO = 7,  /* run the whole timed fist/together/spread sequence */
+	UDCAP_CMD_PAIR_START = 8,  /* cmd_arg = receiver index: put a receiver in pairing mode */
+	UDCAP_CMD_PAIR_STOP = 9,   /* cmd_arg = receiver index: leave pairing mode            */
+	UDCAP_CMD_SET_CHANNEL = 10 /* cmd_arg = receiver index, cmd_arg2 = RF channel         */
+};
+
+/* Per-receiver pairing progress, reported by the server. */
+enum udcap_pair_state
+{
+	UDCAP_PAIR_IDLE = 0,
+	UDCAP_PAIR_SEARCHING = 1, /* receiver in pairing mode, waiting for a glove */
+	UDCAP_PAIR_SUCCESS = 2    /* a glove bound and linked on this receiver     */
 };
 
 /* Calibration progress, reported by the server. */
@@ -193,6 +204,20 @@ typedef struct udcap_hand
 	float trackpad_threshold;
 } udcap_hand;
 
+/* A wireless receiver (USB dongle). Receivers are hand-agnostic until a glove
+ * binds to them, so they're tracked separately from the hand slots above. The
+ * control app drives pairing + RF channel per receiver; the server fills these. */
+#define UDCAP_RECEIVER_MAX 4
+typedef struct udcap_receiver
+{
+	uint32_t present;    /* 1 if this slot holds a detected receiver         */
+	uint32_t linked;     /* 1 if a glove is bound and linked                 */
+	uint32_t hand;       /* enum udcap_hand_index once linked, else 0xFFFFFFFF */
+	uint32_t pair_state; /* enum udcap_pair_state                            */
+	uint32_t channel;    /* current RF channel (0xFFFFFFFF = unknown)        */
+	char serial[24];     /* receiver serial number                          */
+} udcap_receiver;
+
 typedef struct udcap_shm
 {
 	uint32_t magic;      /* UDCAP_SHM_MAGIC */
@@ -219,10 +244,13 @@ typedef struct udcap_shm
 	 * spread direction, 0 = off. */
 	float splay_gain;
 
-	/* DIAGNOSTIC (appended; safe for older readers that stop at splay_gain):
-	 * the 12 raw per-finger sensor channels per hand, before sensor2Angle. Used
-	 * to hunt where finger abduction lives in the raw data. */
-	float raw_sensors[UDCAP_HAND_COUNT][12];
+	/* Secondary command argument (channel value for UDCAP_CMD_SET_CHANNEL). Kept
+	 * after splay_gain so drivers that stop reading at splay_gain are unaffected. */
+	int32_t cmd_arg2;
+
+	/* Wireless receivers, populated by the server (see udcap_receiver). */
+	uint32_t receiver_count;
+	udcap_receiver receivers[UDCAP_RECEIVER_MAX];
 } udcap_shm;
 
 /*
