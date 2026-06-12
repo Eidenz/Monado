@@ -15,6 +15,8 @@
 #include <chrono>
 #include <deque>
 #include <mutex>
+#include <string>
+#include <vector>
 
 #include "openvr_driver.h"
 
@@ -72,15 +74,22 @@ private:
 	std::deque<Event> events;
 	std::mutex event_queue_mut;
 
-	//! Pending activations queued by TrackedDeviceAdded from background threads.
-	//! Processed during run_frame() to avoid data races on shared maps.
-	struct PendingActivation
+	//! Device additions queued by TrackedDeviceAdded, which may be called
+	//! from the lighthouse driver's background threads. Processed during
+	//! run_frame() to avoid data races on shared maps.
+	struct PendingAddition
 	{
-		size_t slot;
+		std::string serial;
 		vr::ITrackedDeviceServerDriver *driver;
 	};
-	std::vector<PendingActivation> pending_activations;
-	std::mutex pending_activation_mut;
+	std::vector<PendingAddition> pending_additions;
+	std::mutex pending_addition_mut;
+
+	void
+	process_pending_additions();
+
+	void
+	append_to_xsysd(struct xrt_device *xdev);
 
 	Device *
 	prop_container_to_device(vr::PropertyContainerHandle_t handle);
@@ -117,6 +126,10 @@ public:
 	class HmdDevice *hmd{nullptr};
 	class ControllerDevice *controller[16]{nullptr};
 	struct xrt_system_devices *xsysd{nullptr};
+	//! Invoked for devices hotplugged after boot, before they are appended
+	//! to xsysd (the builder uses it to add them to the space overseer).
+	void (*device_added_cb)(struct xrt_device *xdev, void *userdata){nullptr};
+	void *device_added_ud{nullptr};
 	const u_logging_level log_level;
 
 	~Context();

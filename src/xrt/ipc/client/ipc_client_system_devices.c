@@ -46,7 +46,20 @@ ipc_client_system_devices_get_roles(struct xrt_system_devices *xsysd, struct xrt
 {
 	struct ipc_client_system_devices *usysd = ipc_system_devices(xsysd);
 
-	return ipc_call_system_devices_get_roles(usysd->ipc_c, out_roles);
+	uint32_t device_count = 0;
+	xrt_result_t xret = ipc_call_system_devices_get_roles(usysd->ipc_c, out_roles, &device_count);
+	IPC_CHK_AND_RET(usysd->ipc_c, xret, "ipc_call_system_devices_get_roles");
+
+	/*
+	 * The server registered devices hotplugged after we connected, fetch
+	 * them before our caller resolves any role index pointing at them.
+	 */
+	if (device_count > xsysd->static_xdev_count) {
+		xret = ipc_client_system_devices_refresh(usysd);
+		IPC_CHK_ALWAYS_RET(usysd->ipc_c, xret, "ipc_client_system_devices_refresh");
+	}
+
+	return XRT_SUCCESS;
 }
 
 static xrt_result_t
@@ -119,6 +132,8 @@ ipc_client_system_devices_destroy(struct xrt_system_devices *xsysd)
 
 	b_system_devices_close(&usysd->base.base);
 
+	os_mutex_destroy(&usysd->refresh_mutex);
+
 	free(usysd);
 }
 
@@ -128,6 +143,63 @@ ipc_client_system_devices_destroy(struct xrt_system_devices *xsysd)
  * 'Exported' functions.
  *
  */
+
+xrt_result_t
+ipc_client_system_devices_refresh(struct ipc_client_system_devices *icsd)
+{
+	struct xrt_system_devices *xsysd = &icsd->base.base;
+
+	os_mutex_lock(&icsd->refresh_mutex);
+
+	struct ipc_device_list device_list = {0};
+	xrt_result_t xret = ipc_call_system_devices_get_list(icsd->ipc_c, &device_list);
+	if (xret != XRT_SUCCESS) {
+		IPC_ERROR(icsd->ipc_c, "ipc_call_system_devices_get_list failed");
+		os_mutex_unlock(&icsd->refresh_mutex);
+		return xret;
+	}
+
+	uint32_t count = xsysd->static_xdev_count;
+	for (uint32_t i = 0; i < device_list.device_count; i++) {
+		struct ipc_device_list_entry *entry = &device_list.devices[i];
+		uint32_t id = entry->id;
+
+		if (id >= XRT_SYSTEM_MAX_DEVICES) {
+			IPC_ERROR(icsd->ipc_c, "Invalid device ID %u from server", id);
+			continue;
+		}
+
+		// Already created, the list is append-only so nothing to update.
+		if (xsysd->static_xdevs[id] != NULL) {
+			continue;
+		}
+
+		// Create the appropriate device type.
+		struct xrt_device *xdev = NULL;
+		if (entry->device_type == XRT_DEVICE_TYPE_HMD) {
+			xdev = ipc_client_hmd_create(icsd->ipc_c, &icsd->tracking_origin_manager, id);
+		} else {
+			xdev = ipc_client_device_create(icsd->ipc_c, &icsd->tracking_origin_manager, id);
+		}
+
+		if (xdev == NULL) {
+			IPC_ERROR(icsd->ipc_c, "Failed to create device %u", id);
+			continue;
+		}
+
+		// Fill the slot before publishing it via the count below.
+		xsysd->static_xdevs[id] = xdev;
+		if (id + 1 > count) {
+			count = id + 1;
+		}
+	}
+
+	xsysd->static_xdev_count = count;
+
+	os_mutex_unlock(&icsd->refresh_mutex);
+
+	return XRT_SUCCESS;
+}
 
 xrt_result_t
 ipc_client_system_devices_create(struct ipc_connection *ipc_c, struct ipc_client_system_devices **out_icsd)
@@ -142,6 +214,13 @@ ipc_client_system_devices_create(struct ipc_connection *ipc_c, struct ipc_client
 
 	icsd->ipc_c = ipc_c;
 
+	int ret = os_mutex_init(&icsd->refresh_mutex);
+	if (ret != 0) {
+		IPC_ERROR(ipc_c, "Failed to init refresh mutex");
+		free(icsd);
+		return XRT_ERROR_ALLOCATION;
+	}
+
 	// Initialize tracking origin manager
 	xrt_result_t xret = ipc_client_tracking_origin_manager_init(&icsd->tracking_origin_manager, ipc_c);
 	IPC_CHK_WITH_GOTO(ipc_c, xret, "ipc_client_tracking_origin_manager_init", err_free);
@@ -151,6 +230,7 @@ ipc_client_system_devices_create(struct ipc_connection *ipc_c, struct ipc_client
 	return XRT_SUCCESS;
 
 err_free:
+	os_mutex_destroy(&icsd->refresh_mutex);
 	free(icsd);
 
 	return xret;

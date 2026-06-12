@@ -87,6 +87,59 @@ ipc_server_objects_get_xdev_id_or_add(volatile struct ipc_client_state *ics, str
 	return XRT_SUCCESS;
 }
 
+xrt_result_t
+ipc_server_objects_register_xsysd_devices(volatile struct ipc_client_state *ics, uint32_t *out_count)
+{
+	struct xrt_system_devices *xsysd = ics->server->xsysd;
+
+	/*
+	 * Drivers may append devices while we read, but they fill in the
+	 * device slot before bumping the count, so reading the count once
+	 * here is safe; a concurrent append is simply picked up next call.
+	 */
+	uint32_t xsysd_count = xsysd->static_xdev_count;
+	if (xsysd_count > XRT_SYSTEM_MAX_DEVICES) {
+		xsysd_count = XRT_SYSTEM_MAX_DEVICES;
+	}
+
+	for (uint32_t i = 0; i < xsysd_count; i++) {
+		struct xrt_device *xdev = xsysd->static_xdevs[i];
+		if (xdev == NULL) {
+			continue;
+		}
+
+		// Populate the tracking origin.
+		uint32_t tracking_origin_id = 0;
+		xrt_result_t xret =
+		    ipc_server_objects_get_xtrack_id_or_add(ics, xdev->tracking_origin, &tracking_origin_id);
+		if (xret != XRT_SUCCESS) {
+			IPC_ERROR(ics->server, "Failed to get/add tracking origin ID for: '%s'",
+			          xdev->tracking_origin->name);
+			continue;
+		}
+
+		// Populate the device, no-op if already registered.
+		uint32_t device_id = 0;
+		xret = ipc_server_objects_get_xdev_id_or_add(ics, xdev, &device_id);
+		if (xret != XRT_SUCCESS) {
+			IPC_ERROR(ics->server, "Failed to get/add device ID for: '%s'", xdev->str);
+			continue;
+		}
+	}
+
+	if (out_count != NULL) {
+		uint32_t count = 0;
+		for (uint32_t i = 0; i < XRT_SYSTEM_MAX_DEVICES; i++) {
+			if (ics->objects.xdevs[i] != NULL) {
+				count++;
+			}
+		}
+		*out_count = count;
+	}
+
+	return XRT_SUCCESS;
+}
+
 
 /*
  *

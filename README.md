@@ -11,22 +11,23 @@ cmake -B cbuild -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DXRT_BUILD_DRIVER_UDCAP=ON
 cmake --build cbuild -j$(nproc)
 
-# Install (stop Monado services first, restart socket after)
-sudo systemctl stop monado.service monado.socket
+# Install
 sudo cmake --install cbuild
-sudo systemctl start monado.socket
 ```
 
-This fork adds UDCAP gloves support and **fake hotplug** for the SteamVR Lighthouse driver: devices from
-your `lighthousedb.json` are pre-registered at startup so trackers (and
-controllers) can be powered on after an app is already running — no restart
-needed.
+This fork adds UDCAP gloves support and **device hotplug** for the SteamVR
+Lighthouse driver: controllers and trackers are discovered as they are powered
+on — including after apps are already running — and appear to OpenXR clients
+without a restart. Devices that power off stay listed but go inactive and lose
+their controller role (append-only, like SteamVR). When UDCAP gloves are active
+they hold the left/right controller roles until real controllers are powered
+on, and take them back when the controllers are powered off.
 
-> **AI usage:** The UDCAP and fake-hotplug additions in this fork were developed with AI assistance (Anthropic's Claude), under human direction, testing, and review. Upstream Monado is unaffected.
+Note: the HMD must be connected at startup; only controllers, trackers and
+gloves hotplug. Gloves are picked up at startup only (start udcap-server before
+Monado).
 
-Set `LH_PREREGISTER_SERIALS` to limit which devices are pre-registered
-(comma-separated serials, e.g. `LHR-AAA,LHR-BBB`). If unset, all known devices
-are pre-registered.
+> **AI usage:** The UDCAP and hotplug additions in this fork were developed with AI assistance (Anthropic's Claude), under human direction, testing, and review. Upstream Monado is unaffected.
 
 ---
 

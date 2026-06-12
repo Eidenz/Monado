@@ -16,7 +16,6 @@
 #include "b_hand_tracker.h"
 
 #include "util/u_var.h"
-#include "util/u_json.hpp"
 #include "util/u_device.h"
 #include "util/u_misc.h"
 #include "util/u_device.h"
@@ -43,8 +42,6 @@
 #include <filesystem>
 #include <istream>
 #include <thread>
-#include <algorithm>
-#include <cctype>
 
 namespace {
 
@@ -91,7 +88,6 @@ namespace {
 DEBUG_GET_ONCE_LOG_OPTION(lh_log, "LIGHTHOUSE_LOG", U_LOGGING_INFO)
 DEBUG_GET_ONCE_BOOL_OPTION(lh_load_slimevr, "LH_LOAD_SLIMEVR", false)
 DEBUG_GET_ONCE_NUM_OPTION(lh_discover_wait_ms, "LH_DISCOVER_WAIT_MS", 3000)
-DEBUG_GET_ONCE_BOOL_OPTION(lh_preregister, "LH_PREREGISTER", true)
 
 static constexpr size_t MAX_CONTROLLERS = 16;
 
@@ -106,6 +102,12 @@ struct steamvr_lh_system
 };
 
 struct steamvr_lh_system *svrs = U_TYPED_CALLOC(struct steamvr_lh_system);
+
+// Cached role state, get_roles is called with a fresh zeroed struct every
+// time (the IPC handler does not carry previous state), so change detection
+// and the generation counter must live here.
+std::mutex roles_mutex;
+xrt_system_roles cached_roles = XRT_SYSTEM_ROLES_INIT;
 
 
 // ~/.steam/root is a symlink to where the Steam root is
@@ -313,117 +315,128 @@ Context::setup_hmd(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 bool
 Context::setup_controller(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 {
-	// Check for a pre-registered device with matching serial
-	for (size_t i = 0; i < MAX_CONTROLLERS; ++i) {
-		if (controller[i] && controller[i]->pre_registered && std::strcmp(controller[i]->serial, serial) == 0) {
-			CTX_INFO("Queuing activation for pre-registered device %s at slot %zu", serial, i);
+	// Defer creation to run_frame(): TrackedDeviceAdded may be called from
+	// the lighthouse driver's background threads, and creating/activating
+	// a device touches shared maps (CreateBooleanComponent etc.) that
+	// run_frame/RunFrame accesses.
+	std::lock_guard lk(pending_addition_mut);
+	pending_additions.push_back({serial, driver});
+	return true;
+}
 
-			// Defer activation to run_frame() to avoid data races:
-			// TrackedDeviceAdded may be called from the lighthouse driver's
-			// background thread, while run_frame/RunFrame accesses shared maps.
-			{
-				std::lock_guard lk(pending_activation_mut);
-				pending_activations.push_back({i, driver});
+void
+Context::process_pending_additions()
+{
+	std::vector<PendingAddition> to_add;
+	{
+		std::lock_guard lk(pending_addition_mut);
+		to_add.swap(pending_additions);
+	}
+
+	for (auto &pa : to_add) {
+		// Re-add of a known device (e.g. dongle reconnect): reuse its slot.
+		size_t device_idx = 0;
+		for (; device_idx < MAX_CONTROLLERS; ++device_idx) {
+			if (controller[device_idx] &&
+			    std::strcmp(controller[device_idx]->serial, pa.serial.c_str()) == 0) {
+				break;
 			}
-			return true;
+		}
+		if (device_idx != MAX_CONTROLLERS) {
+			CTX_INFO("Device %s re-added, reactivating at slot %zu", pa.serial.c_str(), device_idx);
+			controller[device_idx]->set_driver(pa.driver);
+			vr::EVRInitError err = pa.driver->Activate(device_idx + 1);
+			if (err != vr::VRInitError_None) {
+				CTX_ERR("Reactivating controller %s failed: error %u", pa.serial.c_str(), err);
+				continue;
+			}
+			controller[device_idx]->connected = true;
+			continue;
+		}
+
+		// Find the first available slot for a new controller.
+		for (device_idx = 0; device_idx < MAX_CONTROLLERS; ++device_idx) {
+			if (!controller[device_idx])
+				break;
+		}
+
+		// Check if we've exceeded the maximum number of controllers.
+		if (device_idx == MAX_CONTROLLERS) {
+			CTX_WARN("Attempted to activate more than %zu controllers - this is unsupported",
+			         MAX_CONTROLLERS);
+			continue;
+		}
+
+		// Create the new controller. It must be in its slot before
+		// Activate(): the driver delivers callbacks for this index
+		// (pose updates, component creation) during Activate() already.
+		auto *dev = new ControllerDevice(device_idx + 1, DeviceBuilder{this->shared_from_this(), pa.driver,
+		                                                               pa.serial.c_str(), STEAM_INSTALL_DIR});
+		controller[device_idx] = dev;
+
+		vr::EVRInitError err = pa.driver->Activate(device_idx + 1);
+		if (err != vr::VRInitError_None) {
+			// Keep the device in its slot (component handles may
+			// point into it already), but never give it a role and
+			// don't expose it to the system.
+			CTX_ERR("Activating controller %s failed: error %u", pa.serial.c_str(), err);
+			dev->connected = false;
+			continue;
+		}
+
+		switch (dev->name) {
+		case XRT_DEVICE_VIVE_WAND:
+			dev->binding_profiles = vive_binding_profiles_wand;
+			dev->binding_profile_count = vive_binding_profiles_wand_count;
+			break;
+		case XRT_DEVICE_INDEX_CONTROLLER:
+			dev->binding_profiles = vive_binding_profiles_index;
+			dev->binding_profile_count = vive_binding_profiles_index_count;
+			break;
+		case XRT_DEVICE_FLIPVR:
+			dev->binding_profiles = vive_binding_profiles_flipvr;
+			dev->binding_profile_count = vive_binding_profiles_flipvr_count;
+			break;
+		default: break;
+		}
+
+		// Before boot assembly finishes xsysd is null and the boot code
+		// picks the device up from controller[]; after that this is a
+		// hotplug and we append it to the system ourselves.
+		if (xsysd != nullptr) {
+			CTX_INFO("Hotplugged device %s at slot %zu", pa.serial.c_str(), device_idx);
+			append_to_xsysd(dev);
 		}
 	}
+}
 
-	// Find the first available slot for a new controller
-	size_t device_idx = 0;
-	for (; device_idx < MAX_CONTROLLERS; ++device_idx) {
-		if (!controller[device_idx])
-			break;
+void
+Context::append_to_xsysd(struct xrt_device *xdev)
+{
+	uint32_t count = xsysd->static_xdev_count;
+	if (count >= XRT_SYSTEM_MAX_DEVICES) {
+		CTX_WARN("Out of device slots, not exposing %s", xdev->str);
+		return;
 	}
 
-	// Check if we've exceeded the maximum number of controllers
-	if (device_idx == MAX_CONTROLLERS) {
-		CTX_WARN("Attempted to activate more than %zu controllers - this is unsupported", MAX_CONTROLLERS);
-		return false;
+	// Let the owner add the device to the space overseer first, so poses
+	// can be located as soon as the device is visible.
+	if (device_added_cb != nullptr) {
+		device_added_cb(xdev, device_added_ud);
 	}
 
-	// Create the new controller
-	controller[device_idx] = new ControllerDevice(
-	    device_idx + 1, DeviceBuilder{this->shared_from_this(), driver, serial, STEAM_INSTALL_DIR});
-
-	vr::EVRInitError err = driver->Activate(device_idx + 1);
-	if (err != vr::VRInitError_None) {
-		CTX_ERR("Activating controller failed: error %u", err);
-		return false;
-	}
-
-	enum xrt_device_name name = controller[device_idx]->name;
-	switch (name) {
-	case XRT_DEVICE_VIVE_WAND:
-		controller[device_idx]->binding_profiles = vive_binding_profiles_wand;
-		controller[device_idx]->binding_profile_count = vive_binding_profiles_wand_count;
-		break;
-
-		break;
-	case XRT_DEVICE_INDEX_CONTROLLER:
-		controller[device_idx]->binding_profiles = vive_binding_profiles_index;
-		controller[device_idx]->binding_profile_count = vive_binding_profiles_index_count;
-		break;
-	case XRT_DEVICE_FLIPVR:
-		controller[device_idx]->binding_profiles = vive_binding_profiles_flipvr;
-		controller[device_idx]->binding_profile_count = vive_binding_profiles_flipvr_count;
-		break;
-	default: break;
-	}
-
-	return true;
+	// Fill the slot, then publish it: IPC per-client threads read the
+	// count before the slots, so they never see an empty published slot.
+	xsysd->static_xdevs[count] = xdev;
+	__atomic_store_n(&xsysd->static_xdev_count, count + 1, __ATOMIC_RELEASE);
 }
 
 void
 Context::run_frame()
 {
-	// Process any pending activations from late-arriving pre-registered devices.
-	// This must happen here (same thread as RunFrame) so that Activate() callbacks
-	// (CreateBooleanComponent, CreateScalarComponent, etc.) don't race with
+	// Same thread as RunFrame() so Activate() callbacks don't race with
 	// Update* callbacks triggered by RunFrame().
-	{
-		std::vector<PendingActivation> to_activate;
-		{
-			std::lock_guard lk(pending_activation_mut);
-			to_activate.swap(pending_activations);
-		}
-		for (auto &pa : to_activate) {
-			size_t activate_slot = pa.slot;
-			xrt_device_type activating_type = controller[pa.slot]->device_type;
-
-			// If there's a pre-registered controller of the same role in an earlier slot,
-			// swap into that slot so we inherit its role assignment without needing
-			// IPC clients to detect a role change (which they don't poll for).
-			for (size_t i = 0; i < activate_slot; ++i) {
-				if (controller[i] && controller[i]->pre_registered &&
-				    controller[i]->device_type == activating_type) {
-					CTX_INFO("Swapping slot %zu (%s) with slot %zu (%s) for role inheritance",
-					         pa.slot, controller[pa.slot]->serial, i, controller[i]->serial);
-
-					// Swap controller pointers
-					std::swap(controller[i], controller[pa.slot]);
-
-					// Also swap in xsysd->static_xdevs (offset by 1 for HMD at index 0)
-					if (xsysd) {
-						std::swap(xsysd->static_xdevs[i + 1], xsysd->static_xdevs[pa.slot + 1]);
-					}
-
-					activate_slot = i;
-					break;
-				}
-			}
-
-			CTX_INFO("Activating pre-registered device at slot %zu (serial: %s)", activate_slot,
-			         controller[activate_slot]->serial);
-			controller[activate_slot]->set_driver(pa.driver);
-			controller[activate_slot]->pre_registered = false;
-			vr::EVRInitError err = pa.driver->Activate(activate_slot + 1);
-			if (err != vr::VRInitError_None) {
-				CTX_ERR("Activating pre-registered controller at slot %zu failed: error %u",
-				        activate_slot, err);
-			}
-			}
-	}
+	process_pending_additions();
 
 	for (vr::IServerTrackedDeviceProvider *const &provider : providers)
 		provider->RunFrame();
@@ -487,7 +500,12 @@ Context::TrackedDevicePoseUpdated(uint32_t unWhichDevice, const vr::DriverPose_t
 		dev = static_cast<Device *>(this->controller[unWhichDevice - 1]);
 	}
 
-	assert(dev);
+	// Pose updates may arrive from driver threads for a device whose slot
+	// hasn't been filled (yet); don't crash on them.
+	if (dev == nullptr) {
+		return;
+	}
+
 	dev->update_pose(newPose);
 }
 
@@ -928,48 +946,85 @@ Context::Log(const char *pchLogMessage)
 xrt_result_t
 get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 {
-	bool update_gen = false;
 	int head, eyes, face, left, right, gamepad;
 
-	// Two-pass role assignment: prefer activated devices over pre-registered placeholders.
-	// This ensures correct roles with duplicate hardware while keeping apps aware of controllers.
+	// Devices can be appended concurrently from run_frame(): the count is
+	// published after the slot is filled, so load it once with acquire.
+	uint32_t count = __atomic_load_n(&xsysd->static_xdev_count, __ATOMIC_ACQUIRE);
+	if (count > XRT_SYSTEM_MAX_DEVICES) {
+		count = XRT_SYSTEM_MAX_DEVICES;
+	}
 
-	// First pass: only consider activated (non-pre-registered) devices.
-	struct xrt_device *filtered[XRT_SYSTEM_MAX_DEVICES] = {};
-	for (size_t i = 0; i < xsysd->static_xdev_count; i++) {
-		if (xsysd->static_xdevs[i] == NULL) {
+	/*
+	 * Only consider devices this driver owns and that are currently
+	 * powered on. The builder may have appended foreign devices (e.g.
+	 * udcap gloves) which must not be cast to Device; those get their
+	 * roles from the builder's get_roles wrapper instead.
+	 */
+	Context *ctx = svrs->ctx.get();
+	struct xrt_device *candidates[XRT_SYSTEM_MAX_DEVICES] = {};
+	for (uint32_t i = 0; i < count; i++) {
+		struct xrt_device *xdev = xsysd->static_xdevs[i];
+		if (xdev == NULL) {
 			continue;
 		}
-		auto *dev = static_cast<Device *>(xsysd->static_xdevs[i]);
-		filtered[i] = dev->pre_registered ? nullptr : xsysd->static_xdevs[i];
-	}
 
-	u_device_assign_xdev_roles(filtered, xsysd->static_xdev_count, &head, &eyes, &face, &left, &right, &gamepad);
-
-	// Second pass: if left/right still unassigned, fall back to pre-registered devices
-	// so apps see controllers from boot even before they power on.
-	if (left == XRT_DEVICE_ROLE_UNASSIGNED || right == XRT_DEVICE_ROLE_UNASSIGNED) {
-		int head2, eyes2, face2, left2, right2, gamepad2;
-		u_device_assign_xdev_roles(xsysd->static_xdevs, xsysd->static_xdev_count, &head2, &eyes2, &face2, &left2, &right2,
-		                           &gamepad2);
-		if (left == XRT_DEVICE_ROLE_UNASSIGNED) {
-			left = left2;
+		Device *dev = nullptr;
+		if (ctx->hmd != nullptr && xdev == ctx->hmd) {
+			dev = ctx->hmd;
+		} else {
+			for (size_t j = 0; j < MAX_CONTROLLERS; j++) {
+				if (ctx->controller[j] != nullptr && xdev == ctx->controller[j]) {
+					dev = ctx->controller[j];
+					break;
+				}
+			}
 		}
-		if (right == XRT_DEVICE_ROLE_UNASSIGNED) {
-			right = right2;
+
+		if (dev == nullptr || !dev->connected.load(std::memory_order_relaxed)) {
+			continue;
 		}
+
+		candidates[i] = xdev;
 	}
 
-	if (left != out_roles->left || right != out_roles->right || gamepad != out_roles->gamepad) {
-		update_gen = true;
+	u_device_assign_xdev_roles(candidates, count, &head, &eyes, &face, &left, &right, &gamepad);
+
+	std::lock_guard lk(roles_mutex);
+
+	/*
+	 * Sticky roles: a powered-off device keeps its role until some
+	 * connected device can actually take it over. In-game hands freeze in
+	 * place instead of snapping back to the body, matching what users of
+	 * this fork are used to. The builder's glove wrapper checks
+	 * connectedness itself so gloves still take over from powered-off
+	 * controllers.
+	 */
+	if (left == XRT_DEVICE_ROLE_UNASSIGNED && cached_roles.left != XRT_DEVICE_ROLE_UNASSIGNED &&
+	    cached_roles.left < (int32_t)count) {
+		left = cached_roles.left;
+	}
+	if (right == XRT_DEVICE_ROLE_UNASSIGNED && cached_roles.right != XRT_DEVICE_ROLE_UNASSIGNED &&
+	    cached_roles.right < (int32_t)count) {
+		right = cached_roles.right;
 	}
 
-	if (update_gen) {
-		out_roles->generation_id++;
+	if (left != cached_roles.left || right != cached_roles.right || gamepad != cached_roles.gamepad) {
+		u_logging_level log_level = ctx->log_level;
+		CTX_INFO("Controller roles changed: left=%d right=%d gamepad=%d", left, right, gamepad);
 
-		out_roles->left = left;
-		out_roles->right = right;
-		out_roles->gamepad = gamepad;
+		cached_roles.generation_id++;
+
+		cached_roles.left = left;
+		cached_roles.right = right;
+		cached_roles.gamepad = gamepad;
+
+		cached_roles.left_profile =
+		    left != XRT_DEVICE_ROLE_UNASSIGNED ? xsysd->static_xdevs[left]->name : XRT_DEVICE_INVALID;
+		cached_roles.right_profile =
+		    right != XRT_DEVICE_ROLE_UNASSIGNED ? xsysd->static_xdevs[right]->name : XRT_DEVICE_INVALID;
+		cached_roles.gamepad_profile =
+		    gamepad != XRT_DEVICE_ROLE_UNASSIGNED ? xsysd->static_xdevs[gamepad]->name : XRT_DEVICE_INVALID;
 
 		if (left != XRT_DEVICE_ROLE_UNASSIGNED) {
 			auto *left_dev = static_cast<ControllerDevice *>(xsysd->static_xdevs[left]);
@@ -981,6 +1036,8 @@ get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 			right_dev->set_active_hand(XRT_HAND_RIGHT);
 		}
 	}
+
+	*out_roles = cached_roles;
 
 	return XRT_SUCCESS;
 }
@@ -996,201 +1053,35 @@ destroy(struct xrt_system_devices *xsysd)
 	free(svrs);
 }
 
-/**
- * Map a model_number from a per-device config.json to an InputClass profile name.
- */
-static const char *
-model_to_profile(const std::string &model, const std::string &device_class)
+extern "C" void
+steamvr_lh_set_device_added_callback(struct xrt_system_devices *xsysd,
+                                     steamvr_lh_device_added_callback callback,
+                                     void *userdata)
 {
-	if (model.find("Knuckles") != std::string::npos)
-		return "index_controller";
-	if (model.find("Vive Controller") != std::string::npos)
-		return "vive_controller";
-	if (model.find("Tundra") != std::string::npos)
-		return "tundra_tracker";
-	// Fallback for generic trackers
-	if (device_class == "generic_tracker")
-		return "vive_tracker";
-	// Fallback for other controllers
-	if (device_class == "controller")
-		return "index_controller";
-	return nullptr;
+	(void)xsysd; // There is only ever one steamvr_lh system.
+	svrs->ctx->device_added_cb = callback;
+	svrs->ctx->device_added_ud = userdata;
 }
 
-/**
- * Pre-register known lighthouse devices from SteamVR config files.
- * Creates placeholder ControllerDevice instances so they appear in xrt_system_devices
- * even before the physical devices power on.
- */
-static void
-preregister_devices(Context *ctx, u_logging_level level)
+extern "C" bool
+steamvr_lh_device_is_connected(struct xrt_device *xdev)
 {
-	using xrt::auxiliary::util::json::JSONNode;
-
-	if (!debug_get_bool_option_lh_preregister()) {
-		return;
+	if (xdev == NULL || svrs == NULL || svrs->ctx == nullptr) {
+		return false;
 	}
 
-	// Parse optional serial whitelist
-	std::vector<std::string> whitelist;
-	const char *whitelist_env = getenv("LH_PREREGISTER_SERIALS");
-	if (whitelist_env && whitelist_env[0] != '\0') {
-		std::string_view wl(whitelist_env);
-		while (!wl.empty()) {
-			size_t comma = wl.find(',');
-			std::string entry(wl.substr(0, comma));
-			// Normalize to uppercase
-			std::transform(entry.begin(), entry.end(), entry.begin(), ::toupper);
-			whitelist.push_back(std::move(entry));
-			wl = (comma == std::string_view::npos) ? "" : wl.substr(comma + 1);
+	Context *ctx = svrs->ctx.get();
+	if (ctx->hmd != nullptr && xdev == ctx->hmd) {
+		return ctx->hmd->connected.load(std::memory_order_relaxed);
+	}
+	for (size_t j = 0; j < MAX_CONTROLLERS; j++) {
+		if (ctx->controller[j] != nullptr && xdev == ctx->controller[j]) {
+			return ctx->controller[j]->connected.load(std::memory_order_relaxed);
 		}
-		U_LOG_IFL_I(level, "Pre-register whitelist: %s", whitelist_env);
 	}
 
-	// Load lighthousedb.json
-	std::string lhdb_path = STEAM_INSTALL_DIR + "/config/lighthouse/lighthousedb.json";
-	auto lhdb = JSONNode::loadFromFile(lhdb_path);
-	if (lhdb.isInvalid()) {
-		U_LOG_IFL_W(level, "Could not load %s for device pre-registration", lhdb_path.c_str());
-		return;
-	}
-
-	auto known_objects_node = lhdb["known_objects"];
-	if (known_objects_node.isInvalid()) {
-		U_LOG_IFL_W(level, "No known_objects in lighthousedb.json");
-		return;
-	}
-
-	auto known_objects = known_objects_node.asArray();
-	for (const auto &obj : known_objects) {
-		std::string device_class = obj["deviceClass"].asString();
-		std::string serial = obj["serialNumber"].asString();
-
-		// Skip HMDs — those aren't controllers/trackers
-		if (device_class == "hmd" || serial.empty()) {
-			continue;
-		}
-
-		// Normalize serial to uppercase
-		std::transform(serial.begin(), serial.end(), serial.begin(), ::toupper);
-
-		// Check whitelist
-		if (!whitelist.empty()) {
-			bool found = false;
-			for (const auto &w : whitelist) {
-				if (w == serial) {
-					found = true;
-					break;
-				}
-			}
-			if (!found) {
-				continue;
-			}
-		}
-
-		// Read per-device config for model info
-		std::string serial_lower = serial;
-		std::transform(serial_lower.begin(), serial_lower.end(), serial_lower.begin(), ::tolower);
-		std::string config_path =
-		    STEAM_INSTALL_DIR + "/config/lighthouse/" + serial_lower + "/config.json";
-		auto dev_config = JSONNode::loadFromFile(config_path);
-
-		std::string model;
-		std::string manufacturer;
-		std::string controller_role;
-		if (!dev_config.isInvalid()) {
-			model = dev_config["model_number"].asString();
-			auto mfr_node = dev_config["manufacturer"];
-			if (!mfr_node.isInvalid()) {
-				manufacturer = mfr_node.asString();
-			}
-			// Only controllers have tracked_controller_role
-			if (device_class != "generic_tracker") {
-				auto role_node = dev_config["tracked_controller_role"];
-				if (!role_node.isInvalid()) {
-					controller_role = role_node.asString();
-				}
-			}
-		}
-
-		// Map model to input profile
-		const char *profile = model_to_profile(model, device_class);
-		if (!profile) {
-			U_LOG_IFL_W(level, "Could not determine profile for %s (model: %s, class: %s)", serial.c_str(),
-			            model.c_str(), device_class.c_str());
-			continue;
-		}
-
-		const InputClass *input_class = find_input_class(profile);
-		if (!input_class) {
-			U_LOG_IFL_W(level, "Unknown input class '%s' for %s", profile, serial.c_str());
-			continue;
-		}
-
-		// Find first free controller slot
-		size_t device_idx = 0;
-		for (; device_idx < MAX_CONTROLLERS; ++device_idx) {
-			if (!ctx->controller[device_idx])
-				break;
-		}
-		if (device_idx == MAX_CONTROLLERS) {
-			U_LOG_IFL_W(level, "No free controller slots for pre-registration");
-			break;
-		}
-
-		// Create placeholder device with null driver
-		auto *dev = new ControllerDevice(device_idx + 1,
-		                                 DeviceBuilder{ctx->shared_from_this(), nullptr, serial.c_str(),
-		                                               STEAM_INSTALL_DIR});
-
-		// Configure input class, output, and binding profiles
-		dev->name = input_class->name;
-		dev->set_input_class(input_class);
-		dev->init_output();
-		dev->pre_registered = true;
-
-		// Set device display name from config (normally set during Activate
-		// from Prop_ManufacturerName + Prop_ModelNumber)
-		if (!manufacturer.empty() && !model.empty()) {
-			std::snprintf(dev->str, std::size(dev->str), "%s %s", manufacturer.c_str(), model.c_str());
-		} else if (!model.empty()) {
-			std::snprintf(dev->str, std::size(dev->str), "%s", model.c_str());
-		}
-
-		// Set device_type from config so IPC clients see proper controller types.
-		// get_roles() prefers activated devices over pre-registered ones,
-		// so duplicate hardware still gets correct role assignment.
-		if (device_class == "generic_tracker") {
-			dev->device_type = XRT_DEVICE_TYPE_GENERIC_TRACKER;
-		} else if (controller_role == "left_hand") {
-			dev->device_type = XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER;
-		} else if (controller_role == "right_hand") {
-			dev->device_type = XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER;
-		} else {
-			dev->device_type = XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER;
-		}
-
-		// Set binding profiles
-		switch (input_class->name) {
-		case XRT_DEVICE_VIVE_WAND:
-			dev->binding_profiles = vive_binding_profiles_wand;
-			dev->binding_profile_count = vive_binding_profiles_wand_count;
-			break;
-		case XRT_DEVICE_INDEX_CONTROLLER:
-			dev->binding_profiles = vive_binding_profiles_index;
-			dev->binding_profile_count = vive_binding_profiles_index_count;
-			break;
-		case XRT_DEVICE_FLIPVR:
-			dev->binding_profiles = vive_binding_profiles_flipvr;
-			dev->binding_profile_count = vive_binding_profiles_flipvr_count;
-			break;
-		default: break;
-		}
-
-		ctx->controller[device_idx] = dev;
-		U_LOG_IFL_I(level, "Pre-registered device %s as %s at slot %zu",
-		            serial.c_str(), profile, device_idx);
-	}
+	// Not one of ours (e.g. a glove device).
+	return false;
 }
 
 extern "C" enum xrt_result
@@ -1258,9 +1149,6 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices **out
 	if (svrs->ctx == nullptr)
 		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
 
-	// Pre-register known devices before discovery so they're included in xrt_system_devices
-	preregister_devices(svrs->ctx.get(), level);
-
 	U_LOG_IFL_I(level, "Lighthouse initialization complete, giving time to setup connected devices...");
 	// RunFrame needs to be called to detect controllers
 	using namespace std::chrono_literals;
@@ -1303,9 +1191,12 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices **out
 		}
 	}
 
-	// Give context a reference to xsysd so run_frame() can update xdevs
-	// when swapping controller slots during late activation.
+	// Give context a reference to xsysd so run_frame() can append devices
+	// that are hotplugged after boot.
 	svrs->ctx->xsysd = xsysd;
+
+	// Valid generations start at 1 (clients cache starting from 0).
+	cached_roles.generation_id = 1;
 
 	*out_xsysd = xsysd;
 

@@ -28,6 +28,7 @@
 #include <array>
 #include <optional>
 
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
 
@@ -80,8 +81,10 @@ class Device : public xrt_device
 public:
 	m_relation_history *relation_hist;
 
-	//! Whether this device was pre-registered and not yet activated by the proprietary driver.
-	bool pre_registered{false};
+	//! Whether the physical device is currently connected (powered on),
+	//! kept up to date from the deviceIsConnected flag of pose updates.
+	//! Disconnected devices stay in the system but lose role assignment.
+	mutable std::atomic<bool> connected{true};
 
 	virtual ~Device();
 
@@ -111,7 +114,7 @@ public:
 	xrt_result_t
 	get_battery_status(bool *out_present, bool *out_charging, float *out_charge);
 
-	//! Set the proprietary driver handle (used for late-activating pre-registered devices).
+	//! Set the proprietary driver handle (used when a known device is re-added by the driver).
 	void
 	set_driver(vr::ITrackedDeviceServerDriver *new_driver);
 

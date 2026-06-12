@@ -52,6 +52,22 @@ ipc_server_objects_get_xdev_and_validate(volatile struct ipc_client_state *ics,
 xrt_result_t
 ipc_server_objects_get_xdev_id_or_add(volatile struct ipc_client_state *ics, struct xrt_device *xdev, uint32_t *out_id);
 
+/*!
+ * Register all devices currently in the system with this client, must only be
+ * called from the per client thread. Devices already registered are left in
+ * place, so calling this repeatedly is cheap; it is used both at client
+ * connect and to pick up devices hotplugged after the client connected.
+ *
+ * @param ics The client state instance.
+ * @param out_count Optional, set to the number of devices registered for this
+ *                  client (matches what the device list call returns).
+ * @return XRT_SUCCESS on success, some other result on failure.
+ *
+ * @ingroup ipc_server
+ */
+xrt_result_t
+ipc_server_objects_register_xsysd_devices(volatile struct ipc_client_state *ics, uint32_t *out_count);
+
 
 /*
  *

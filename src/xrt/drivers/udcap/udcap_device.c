@@ -54,6 +54,10 @@ DEBUG_GET_ONCE_LOG_OPTION(udcap_log, "UDCAP_LOG", U_LOGGING_INFO)
 // Analog trigger value above which the trigger "click" boolean is asserted.
 #define UDCAP_TRIGGER_CLICK_THRESHOLD 0.7f
 
+// Shm data older than this means the server died or stalled (the shm segment
+// outlives it), so the glove must stop acting as a live device.
+#define UDCAP_STALE_NS (1000LL * 1000LL * 1000LL)
+
 enum udcap_input_index
 {
 	UDCAP_INPUT_HAND_TRACKING = 0,
@@ -108,6 +112,30 @@ udcap_snapshot(struct udcap_device *ud, udcap_hand *out)
 		s = udcap_read_begin(H);
 		*out = *H;
 	} while (udcap_read_retry(H, s));
+}
+
+// Whether the snapshot holds fresh data from a live server.
+static bool
+udcap_snap_is_live(const udcap_hand *snap)
+{
+	if (!snap->present || snap->timestamp_ns == 0) {
+		return false;
+	}
+	return os_monotonic_get_ns() - (int64_t)snap->timestamp_ns < UDCAP_STALE_NS;
+}
+
+bool
+udcap_device_is_alive(struct xrt_device *xdev)
+{
+	if (xdev == NULL) {
+		return false;
+	}
+	struct udcap_device *ud = udcap_device(xdev);
+
+	udcap_hand snap;
+	udcap_snapshot(ud, &snap);
+
+	return udcap_snap_is_live(&snap);
 }
 
 static float
@@ -278,7 +306,9 @@ udcap_device_get_hand_tracking(struct xrt_device *xdev,
 
 	*out_timestamp_ns = requested_timestamp_ns;
 
-	if (!snap.present || !snap.calibrated) {
+	// Stale data (dead server) must read as inactive so apps fall back to
+	// whatever device holds the controller roles.
+	if (!udcap_snap_is_live(&snap) || !snap.calibrated) {
 		out_joint_set->is_active = false;
 		return XRT_SUCCESS;
 	}

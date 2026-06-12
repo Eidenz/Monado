@@ -368,8 +368,10 @@ ControllerDevice::set_input_class(const InputClass *input_class)
 
 	// Pre-allocate an inactive hand tracking input slot so that input_count
 	// is stable before IPC clients connect. set_skeleton() will activate it
-	// with the correct hand when the skeleton data arrives.
-	if (debug_get_bool_option_lh_emulate_hand()) {
+	// with the correct hand when the skeleton data arrives. Trackers never
+	// get a skeleton, and the dead slot would make them get picked for the
+	// hand-tracking roles, so skip them.
+	if (debug_get_bool_option_lh_emulate_hand() && input_class->name != XRT_DEVICE_VIVE_TRACKER) {
 		inputs_vec.push_back({false, 0, XRT_INPUT_HT_CONFORMING_LEFT, {}});
 	}
 
@@ -1144,37 +1146,46 @@ operator|=(xrt_space_relation_flags &a, xrt_space_relation_flags b)
 void
 Device::update_pose(const vr::DriverPose_t &newPose) const
 {
+	// Track power state so role assignment can skip powered-off devices.
+	connected.store(newPose.deviceIsConnected, std::memory_order_relaxed);
+
+	/*
+	 * Keep the last good pose in the history when the device powers off or
+	 * the pose goes invalid: with sticky role assignment this makes
+	 * in-game hands freeze in place instead of being reported untracked
+	 * and snapping back to the body ("nap mode").
+	 */
+	if (!newPose.poseIsValid || !newPose.deviceIsConnected) {
+		return;
+	}
+
 	xrt_space_relation relation = {};
 
-	if (newPose.poseIsValid) {
-		// The pose is known to be valid but that alone is not enough to say whether the data comes from
-		// inference or if it represents actively tracked position and orientation data. Furthermore we avoid
-		// assumptions regarding the validity of time-derivatives until we know that they're based on tracked
-		// data. This is a conservative strategy that should reduce concerns regarding drift. see
-		// https://registry.khronos.org/OpenXR/specs/1.1/man/html/XrSpaceLocationFlagBits.html
-		relation.relation_flags |= xrt_space_relation_flags::XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
-		                           xrt_space_relation_flags::XRT_SPACE_RELATION_POSITION_VALID_BIT;
+	// The pose is known to be valid but that alone is not enough to say whether the data comes from
+	// inference or if it represents actively tracked position and orientation data. Furthermore we avoid
+	// assumptions regarding the validity of time-derivatives until we know that they're based on tracked
+	// data. This is a conservative strategy that should reduce concerns regarding drift. see
+	// https://registry.khronos.org/OpenXR/specs/1.1/man/html/XrSpaceLocationFlagBits.html
+	relation.relation_flags |= xrt_space_relation_flags::XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
+	                           xrt_space_relation_flags::XRT_SPACE_RELATION_POSITION_VALID_BIT;
 
-		switch (newPose.result) {
-		// see https://github.com/ValveSoftware/openvr/blob/master/docs/Driver_API_Documentation.md
-		case vr::TrackingResult_Running_OK:
-			// If the tracker is running ok then we have actively tracked 6DoF data
-			relation.relation_flags |=
-			    xrt_space_relation_flags::XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
-			    xrt_space_relation_flags::XRT_SPACE_RELATION_POSITION_TRACKED_BIT |
-			    xrt_space_relation_flags::XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT |
-			    xrt_space_relation_flags::XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT;
-			break;
-		case vr::TrackingResult_Fallback_RotationOnly:
-		case vr::TrackingResult_Running_OutOfRange:
-			// If the tracking is degraded we should still be able to assume that we still have tracked 3DoF
-			// data
-			relation.relation_flags |=
-			    xrt_space_relation_flags::XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
-			    xrt_space_relation_flags::XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT;
-			break;
-		default: break;
-		}
+	switch (newPose.result) {
+	// see https://github.com/ValveSoftware/openvr/blob/master/docs/Driver_API_Documentation.md
+	case vr::TrackingResult_Running_OK:
+		// If the tracker is running ok then we have actively tracked 6DoF data
+		relation.relation_flags |= xrt_space_relation_flags::XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
+		                           xrt_space_relation_flags::XRT_SPACE_RELATION_POSITION_TRACKED_BIT |
+		                           xrt_space_relation_flags::XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT |
+		                           xrt_space_relation_flags::XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT;
+		break;
+	case vr::TrackingResult_Fallback_RotationOnly:
+	case vr::TrackingResult_Running_OutOfRange:
+		// If the tracking is degraded we should still be able to assume that we still have tracked 3DoF
+		// data
+		relation.relation_flags |= xrt_space_relation_flags::XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
+		                           xrt_space_relation_flags::XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT;
+		break;
+	default: break;
 	}
 
 	// The driver still outputs good pose data regardless of the pose results above

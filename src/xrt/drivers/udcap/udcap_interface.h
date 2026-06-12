@@ -44,6 +44,22 @@ udcap_create_devices(struct xrt_device *const *devs,
                      struct xrt_device **out_left,
                      struct xrt_device **out_right);
 
+/*!
+ * Offer a hotplugged device as a pose tracker for a hand that was created
+ * without one (its configured tracker wasn't powered on at boot). No-op if
+ * both hands already have trackers or the device doesn't match.
+ */
+void
+udcap_notify_device_added(struct xrt_device *xdev);
+
+/*!
+ * Whether the glove device is receiving fresh data from a live udcap-server.
+ * False once the server dies or the glove disconnects, so callers can stop
+ * giving the glove the controller roles.
+ */
+bool
+udcap_device_is_alive(struct xrt_device *xdev);
+
 #ifdef __cplusplus
 }
 #endif

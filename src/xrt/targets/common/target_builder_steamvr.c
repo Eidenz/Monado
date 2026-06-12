@@ -16,6 +16,8 @@
 
 #include "tracking/t_tracking.h"
 
+#include "os/os_threading.h"
+
 #include "xrt/xrt_config_drivers.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_prober.h"
@@ -131,66 +133,91 @@ steamvr_destroy(struct xrt_builder *xb)
 }
 
 #ifdef XRT_BUILD_DRIVER_UDCAP
-// steamvr_lh installs its own get_roles, which assigns the left/right controller
-// roles from ITS controllers and unsafely casts every static_xdev to its own
-// Device type. We wrap it so that (1) our foreign glove devices are hidden from
-// it during its scan (avoiding the bad cast / set_active_hand), and (2) the
-// gloves are forced into the left/right controller roles afterwards.
+// steamvr_lh installs its own get_roles, which only assigns the left/right
+// controller roles from its own connected controllers (it ignores our foreign
+// glove devices). We wrap it so any hand it leaves unassigned falls back to
+// the matching glove: with the controllers off the gloves hold the roles, and
+// powering controllers on (or off) mid-session hands the roles over.
+//
+// The wrapper keeps its own cached roles + generation since the final
+// assignment differs from the inner driver's, and callers (the IPC handler)
+// pass in a fresh zeroed struct every call.
 static xrt_result_t (*udcap_orig_get_roles)(struct xrt_system_devices *, struct xrt_system_roles *) = NULL;
 static struct xrt_device *udcap_dev_left = NULL;
 static struct xrt_device *udcap_dev_right = NULL;
+static struct os_mutex udcap_roles_mutex;
+static struct xrt_system_roles udcap_cached_roles = XRT_SYSTEM_ROLES_INIT;
 
 static xrt_result_t
 udcap_get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 {
-	int li = -1, ri = -1;
+	struct xrt_system_roles inner = XRT_SYSTEM_ROLES_INIT;
+	xrt_result_t xret = udcap_orig_get_roles(xsysd, &inner);
+	if (xret != XRT_SUCCESS) {
+		return xret;
+	}
+
+	// Find the glove devices.
+	int32_t li = -1, ri = -1;
 	for (size_t i = 0; i < xsysd->static_xdev_count; i++) {
 		if (udcap_dev_left != NULL && xsysd->static_xdevs[i] == udcap_dev_left) {
-			li = (int)i;
+			li = (int32_t)i;
 		}
 		if (udcap_dev_right != NULL && xsysd->static_xdevs[i] == udcap_dev_right) {
-			ri = (int)i;
+			ri = (int32_t)i;
 		}
 	}
 
-	int32_t in_left = out_roles->left, in_right = out_roles->right, in_gamepad = out_roles->gamepad;
-	uint32_t in_gen = out_roles->generation_id;
+	/*
+	 * A hand goes to the glove unless a *connected* controller holds it.
+	 * The driver keeps roles sticky on powered-off controllers (so hands
+	 * freeze in place when there are no gloves), but with gloves present
+	 * a live glove beats a powered-off controller — this is what makes
+	 * controllers-off hand the roles back to the gloves mid-session.
+	 * A dead glove (udcap-server gone) never takes a role, so killing the
+	 * server hands the roles to the controllers (or freezes them).
+	 */
+	int32_t left = inner.left;
+	int32_t right = inner.right;
+	enum xrt_device_name left_profile = inner.left_profile;
+	enum xrt_device_name right_profile = inner.right_profile;
 
-	// Hide our devices from steamvr_lh's scan, run it, then restore.
-	if (li >= 0) {
-		xsysd->static_xdevs[li] = NULL;
-	}
-	if (ri >= 0) {
-		xsysd->static_xdevs[ri] = NULL;
-	}
-	xrt_result_t r = XRT_SUCCESS;
-	if (udcap_orig_get_roles != NULL) {
-		r = udcap_orig_get_roles(xsysd, out_roles);
-	}
-	if (li >= 0) {
-		xsysd->static_xdevs[li] = udcap_dev_left;
-	}
-	if (ri >= 0) {
-		xsysd->static_xdevs[ri] = udcap_dev_right;
-	}
+	bool left_live = left >= 0 && (size_t)left < xsysd->static_xdev_count &&
+	                 steamvr_lh_device_is_connected(xsysd->static_xdevs[left]);
+	bool right_live = right >= 0 && (size_t)right < xsysd->static_xdev_count &&
+	                  steamvr_lh_device_is_connected(xsysd->static_xdevs[right]);
 
-	// Force gloves into the controller roles.
-	if (li >= 0) {
-		out_roles->left = li;
-		out_roles->left_profile = XRT_DEVICE_INDEX_CONTROLLER;
+	if (li >= 0 && !left_live && udcap_device_is_alive(udcap_dev_left)) {
+		left = li;
+		left_profile = XRT_DEVICE_INDEX_CONTROLLER;
 	}
-	if (ri >= 0) {
-		out_roles->right = ri;
-		out_roles->right_profile = XRT_DEVICE_INDEX_CONTROLLER;
+	if (ri >= 0 && !right_live && udcap_device_is_alive(udcap_dev_right)) {
+		right = ri;
+		right_profile = XRT_DEVICE_INDEX_CONTROLLER;
 	}
 
-	// Bump generation only when the final roles actually changed.
-	if ((out_roles->left != in_left || out_roles->right != in_right || out_roles->gamepad != in_gamepad) &&
-	    out_roles->generation_id == in_gen) {
-		out_roles->generation_id = in_gen + 1;
+	os_mutex_lock(&udcap_roles_mutex);
+
+	if (left != udcap_cached_roles.left || right != udcap_cached_roles.right ||
+	    inner.gamepad != udcap_cached_roles.gamepad) {
+		SVR_INFO("udcap roles changed: left=%d (%s) right=%d (%s)", //
+		         left, left >= 0 ? xsysd->static_xdevs[left]->str : "<none>", right,
+		         right >= 0 ? xsysd->static_xdevs[right]->str : "<none>");
+
+		udcap_cached_roles.generation_id++;
+		udcap_cached_roles.left = left;
+		udcap_cached_roles.right = right;
+		udcap_cached_roles.gamepad = inner.gamepad;
+		udcap_cached_roles.left_profile = left_profile;
+		udcap_cached_roles.right_profile = right_profile;
+		udcap_cached_roles.gamepad_profile = inner.gamepad_profile;
 	}
 
-	return r;
+	*out_roles = udcap_cached_roles;
+
+	os_mutex_unlock(&udcap_roles_mutex);
+
+	return XRT_SUCCESS;
 }
 #endif
 
@@ -223,9 +250,28 @@ try_add_udcap(struct xrt_system_devices *xsysd)
 	udcap_dev_left = ud_left;
 	udcap_dev_right = ud_right;
 	udcap_orig_get_roles = xsysd->get_roles;
+	os_mutex_init(&udcap_roles_mutex);
+	udcap_cached_roles.generation_id = 1; // Valid generations start at 1.
 	xsysd->get_roles = udcap_get_roles;
 #else
 	(void)xsysd;
+#endif
+}
+
+// Hotplugged devices need a space before clients can locate poses on them.
+static void
+steamvr_on_device_added(struct xrt_device *xdev, void *userdata)
+{
+	struct xrt_space_overseer *xso = (struct xrt_space_overseer *)userdata;
+
+	xrt_result_t xret = xrt_space_overseer_add_device(xso, xdev);
+	if (xret != XRT_SUCCESS) {
+		SVR_ERROR("Failed to add hotplugged device '%s' to the space overseer", xdev->str);
+	}
+
+#ifdef XRT_BUILD_DRIVER_UDCAP
+	// A glove whose tracker wasn't on at boot can pick it up now.
+	udcap_notify_device_added(xdev);
 #endif
 }
 
@@ -290,6 +336,9 @@ steamvr_open_system(struct xrt_builder *xb,
 	);
 
 	*out_xso = (struct xrt_space_overseer *)uso;
+
+	// Wire up hotplug: devices appearing from now on get a space added.
+	steamvr_lh_set_device_added_callback(xsysd, steamvr_on_device_added, *out_xso);
 
 	return result;
 }

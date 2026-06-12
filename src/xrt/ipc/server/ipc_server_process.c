@@ -225,27 +225,9 @@ init_system_shm_state(struct ipc_server *s, volatile struct ipc_client_state *ic
 	 * Loop over all of the devices to pre-populate the device IDs,
 	 * this also populates the tracking origins.
 	 */
-	for (size_t i = 0; i < XRT_SYSTEM_MAX_DEVICES; i++) {
-		struct xrt_device *xdev = s->xsysd->static_xdevs[i];
-		if (xdev == NULL) {
-			continue;
-		}
-
-		// Populate the tracking origin.
-		uint32_t tracking_origin_id = 0;
-		xret = ipc_server_objects_get_xtrack_id_or_add(ics, xdev->tracking_origin, &tracking_origin_id);
-		if (xret != XRT_SUCCESS) {
-			IPC_ERROR(s, "Failed to get/add tracking origin ID for: '%s'", xdev->tracking_origin->name);
-			continue;
-		}
-
-		// Populate the device.
-		uint32_t device_id = 0;
-		xret = ipc_server_objects_get_xdev_id_or_add(ics, xdev, &device_id);
-		if (xret != XRT_SUCCESS) {
-			IPC_ERROR(s, "Failed to get/add device ID for: '%s'", xdev->str);
-			continue;
-		}
+	xret = ipc_server_objects_register_xsysd_devices(ics, NULL);
+	if (xret != XRT_SUCCESS) {
+		IPC_ERROR(s, "Failed to register devices for client");
 	}
 
 	// Setup the HMD

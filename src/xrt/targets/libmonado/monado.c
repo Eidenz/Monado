@@ -415,6 +415,13 @@ mnd_root_get_device_count(mnd_root_t *root, uint32_t *out_device_count)
 	CHECK_NOT_NULL(root);
 	CHECK_NOT_NULL(out_device_count);
 
+	// Refresh the cached list and infos so that devices hotplugged after
+	// this client connected show up (callers poll this to list devices).
+	mnd_result_t mret = update_device_list_and_infos(root);
+	if (mret != MND_SUCCESS) {
+		return mret;
+	}
+
 	*out_device_count = root->device_list.device_count;
 
 	return MND_SUCCESS;
@@ -571,7 +578,8 @@ mnd_root_get_device_from_role(mnd_root_t *root, const char *role_name, int32_t *
 	}
 
 	struct xrt_system_roles roles;
-	xrt_result_t xret = ipc_call_system_devices_get_roles(&root->ipc_c, &roles);
+	uint32_t device_count = 0;
+	xrt_result_t xret = ipc_call_system_devices_get_roles(&root->ipc_c, &roles, &device_count);
 	if (xret != XRT_SUCCESS) {
 		PE("Failed to get dynamic roles");
 		return MND_ERROR_OPERATION_FAILED;

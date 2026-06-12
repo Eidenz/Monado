@@ -70,8 +70,18 @@ read_shm_config(char serial_left[32], char serial_right[32])
 	return pid;
 }
 
+// Whether the device is a Lighthouse tracker. The GENERIC_TRACKER device_type
+// is only set by an asynchronous role-hint property from the proprietary
+// driver and is usually not in yet at boot, so also accept the input class
+// (set synchronously during Activate).
+static bool
+is_tracker(struct xrt_device *d)
+{
+	return d->device_type == XRT_DEVICE_TYPE_GENERIC_TRACKER || d->name == XRT_DEVICE_VIVE_TRACKER;
+}
+
 // Pick a tracker from devs: by serial substring if `serial` is set, else the
-// first unused generic tracker. Marks the chosen index in `used`.
+// first unused tracker. Marks the chosen index in `used`.
 static struct xrt_device *
 pick_tracker(struct xrt_device *const *devs, size_t dev_count, const char *serial, bool *used)
 {
@@ -80,16 +90,52 @@ pick_tracker(struct xrt_device *const *devs, size_t dev_count, const char *seria
 		if (d == NULL || used[i]) {
 			continue;
 		}
-		if (d->device_type != XRT_DEVICE_TYPE_GENERIC_TRACKER) {
-			continue;
-		}
-		if (serial != NULL && serial[0] != '\0' && strstr(d->serial, serial) == NULL) {
+		if (serial != NULL && serial[0] != '\0') {
+			// A serial uniquely identifies the device, no need to
+			// also check that it is a tracker.
+			if (strstr(d->serial, serial) == NULL) {
+				continue;
+			}
+		} else if (!is_tracker(d)) {
 			continue;
 		}
 		used[i] = true;
 		return d;
 	}
 	return NULL;
+}
+
+// Late-attach state: hands created without a tracker wait for one to be
+// hotplugged (the steamvr builder forwards new devices here).
+static struct xrt_device *late_hands[2] = {NULL, NULL};
+static char late_serials[2][32] = {{0}, {0}};
+static bool late_attached[2] = {false, false};
+
+void
+udcap_notify_device_added(struct xrt_device *xdev)
+{
+	if (xdev == NULL) {
+		return;
+	}
+
+	for (int h = 0; h < 2; h++) {
+		if (late_hands[h] == NULL || late_attached[h]) {
+			continue;
+		}
+		if (late_serials[h][0] != '\0') {
+			if (strstr(xdev->serial, late_serials[h]) == NULL) {
+				continue;
+			}
+		} else if (!is_tracker(xdev)) {
+			continue;
+		}
+
+		udcap_device_set_tracker(late_hands[h], xdev);
+		late_attached[h] = true;
+		UDCAP_INFO("udcap: late-attached %s hand to hotplugged tracker '%s'", h == 0 ? "LEFT" : "RIGHT",
+		           xdev->serial);
+		return; // One tracker only serves one hand.
+	}
 }
 
 // Attach `hand_dev`'s pose to `tracker` (the device applies the live per-hand
@@ -137,6 +183,8 @@ udcap_create_devices(struct xrt_device *const *devs,
 	// Tracker serial: shm config first, then env var.
 	const char *ser_left = cfg_left[0] ? cfg_left : getenv("UDCAP_TRACKER_LEFT");
 	const char *ser_right = cfg_right[0] ? cfg_right : getenv("UDCAP_TRACKER_RIGHT");
+	UDCAP_INFO("udcap: configured tracker serials: left='%s' right='%s' (empty = first available tracker)",
+	           ser_left != NULL ? ser_left : "", ser_right != NULL ? ser_right : "");
 
 	struct xrt_device *trk_left = NULL, *trk_right = NULL;
 	if (ser_left && ser_left[0]) {
@@ -157,6 +205,19 @@ udcap_create_devices(struct xrt_device *const *devs,
 	}
 	if (right != NULL) {
 		*out_right = attach_pose(right, trk_right, "RIGHT");
+	}
+
+	// Remember unattached hands so a tracker hotplugged later can be
+	// picked up via udcap_notify_device_added().
+	late_hands[0] = left;
+	late_hands[1] = right;
+	late_attached[0] = trk_left != NULL;
+	late_attached[1] = trk_right != NULL;
+	if (ser_left != NULL) {
+		snprintf(late_serials[0], sizeof(late_serials[0]), "%s", ser_left);
+	}
+	if (ser_right != NULL) {
+		snprintf(late_serials[1], sizeof(late_serials[1]), "%s", ser_right);
 	}
 
 	free(used);

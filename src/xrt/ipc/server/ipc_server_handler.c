@@ -2614,6 +2614,10 @@ ipc_handle_device_is_form_factor_available(volatile struct ipc_client_state *ics
 xrt_result_t
 ipc_handle_system_devices_get_list(volatile struct ipc_client_state *ics, struct ipc_device_list *out_list)
 {
+	// Pick up devices hotplugged after this client connected.
+	xrt_result_t xret = ipc_server_objects_register_xsysd_devices(ics, NULL);
+	IPC_CHK_AND_RET(ics->server, xret, "ipc_server_objects_register_xsysd_devices");
+
 	// Count and collect device types
 	uint32_t count = 0;
 	for (uint32_t i = 0; i < XRT_SYSTEM_MAX_DEVICES; i++) {
@@ -2631,8 +2635,18 @@ ipc_handle_system_devices_get_list(volatile struct ipc_client_state *ics, struct
 }
 
 xrt_result_t
-ipc_handle_system_devices_get_roles(volatile struct ipc_client_state *ics, struct xrt_system_roles *out_roles)
+ipc_handle_system_devices_get_roles(volatile struct ipc_client_state *ics,
+                                    struct xrt_system_roles *out_roles,
+                                    uint32_t *out_device_count)
 {
+	/*
+	 * Register any devices hotplugged after this client connected, and
+	 * report the resulting count so the client knows to refresh its
+	 * device list (with a get_list call) before resolving role indices.
+	 */
+	xrt_result_t xret = ipc_server_objects_register_xsysd_devices(ics, out_device_count);
+	IPC_CHK_AND_RET(ics->server, xret, "ipc_server_objects_register_xsysd_devices");
+
 	return xrt_system_devices_get_roles(ics->server->xsysd, out_roles);
 }
 

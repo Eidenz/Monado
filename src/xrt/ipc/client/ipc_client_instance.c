@@ -164,32 +164,9 @@ ipc_client_instance_create_system(struct xrt_instance *xinst,
 
 	struct xrt_system_devices *xsysd = &icsd->base.base;
 
-	// Query the server for the list of devices
-	struct ipc_device_list device_list = {0};
-	xret = ipc_call_system_devices_get_list(&ii->ipc_c, &device_list);
-	IPC_CHK_AND_RET(&ii->ipc_c, xret, "ipc_call_system_devices_get_list");
-
-	// Create client devices for each device in the list
-	uint32_t count = 0;
-	struct ipc_client_tracking_origin_manager *ictom = &icsd->tracking_origin_manager;
-	for (uint32_t i = 0; i < device_list.device_count; i++) {
-		struct ipc_device_list_entry *entry = &device_list.devices[i];
-
-		// Create the appropriate device type
-		if (entry->device_type == XRT_DEVICE_TYPE_HMD) {
-			xsysd->static_xdevs[count] = ipc_client_hmd_create(&ii->ipc_c, ictom, entry->id);
-		} else {
-			xsysd->static_xdevs[count] = ipc_client_device_create(&ii->ipc_c, ictom, entry->id);
-		}
-
-		// Check if device creation succeeded
-		if (xsysd->static_xdevs[count] != NULL) {
-			count++;
-		} else {
-			IPC_ERROR(&ii->ipc_c, "Failed to create device %u", i);
-		}
-	}
-	xsysd->static_xdev_count = count;
+	// Query the server for the list of devices and create client proxies.
+	xret = ipc_client_system_devices_refresh(icsd);
+	IPC_CHK_AND_RET(&ii->ipc_c, xret, "ipc_client_system_devices_refresh");
 
 #define SET_ROLE(ROLE)                                                                                                 \
 	do {                                                                                                           \
