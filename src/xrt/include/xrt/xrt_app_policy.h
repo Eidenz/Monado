@@ -10,6 +10,7 @@
 #pragma once
 
 #include "xrt/xrt_defines.h"
+#include "xrt/xrt_limits.h"
 
 
 #ifdef __cplusplus
@@ -19,6 +20,7 @@ extern "C" {
 
 struct xrt_system;
 struct xrt_app_system;
+struct xrt_view_config;
 
 /*!
  * @interface xrt_app_instance
@@ -106,6 +108,26 @@ xrt_app_instance_destroy(struct xrt_app_instance **xainst_ptr)
 }
 
 
+struct xrt_recommended_view_config_view
+{
+	//! The width of the view.
+	uint32_t width_pixels;
+	//! The height of the view.
+	uint32_t height_pixels;
+	//! The amount of samples for the swapchain.
+	uint32_t sample_count;
+};
+
+struct xrt_recommended_view_config
+{
+	//! Whether the recommendation is valid.
+	bool valid;
+	//! The number of views in the configuration, invariant.
+	uint32_t view_count;
+	//! The views in the configuration.
+	struct xrt_recommended_view_config_view views[XRT_MAX_VIEWS];
+};
+
 /*!
  * @interface xrt_app_system
  *
@@ -128,6 +150,40 @@ struct xrt_app_system
 	 */
 
 	/*!
+	 * Gets the recommended view configuration for the given view type, if available and supported.
+	 * Only the `recommended` field is guaranteed to be provided, and `max` may be left unspecified.
+	 *
+	 * This allows a policy to set a new recommended view configuration for the lifetime of this application.
+	 *
+	 * @param      xasys                       Pointer to self
+	 * @param      view_type                   The view type to get the recommended view configuration for.
+	 * @param[out] out_recommended_view_config The recommendation for the client.
+	 */
+	xrt_result_t (*get_recommended_view_configuration)(
+	    struct xrt_app_system *xasys,
+	    enum xrt_view_type view_type,
+	    struct xrt_recommended_view_config *out_recommended_view_config);
+
+	/*!
+	 * Sets the recommended view configuration for the given view type.
+	 * Only the `recommended` field will be meaningfully read by the xrt_app_system.
+	 *
+	 * The callee should push a session event of type @ref XRT_SESSION_EVENT_RECOMMENDED_VIEW_CONFIGURATION_CHANGE
+	 * when the recommended view configuration changes, so that sessions can react to this change if they want to.
+	 *
+	 * @note The xrt_app_system may not do verification on the passed configuration, it is up to the callee to not
+	 *       pass invalid data into here.
+	 *
+	 * @param     xasys                   Pointer to self
+	 * @param     view_type               The view type to set the recommended view configuration for.
+	 * @param[in] recommended_view_config The recommended view configuration to set for the given view type.
+	 */
+	xrt_result_t (*set_recommended_view_configuration)(
+	    struct xrt_app_system *xasys,
+	    enum xrt_view_type view_type,
+	    const struct xrt_recommended_view_config *recommended_view_config);
+
+	/*!
 	 * Destroy the application system and its owned objects.
 	 *
 	 * @note Code consuming this interface should use xrt_app_system_destroy().
@@ -140,6 +196,36 @@ struct xrt_app_system
 	 * @}
 	 */
 };
+
+/*!
+ * @copydoc xrt_app_system::get_recommended_view_configuration
+ *
+ * Helper for calling through the function pointer.
+ *
+ * @public @memberof xrt_app_system
+ */
+XRT_NONNULL_ALL static inline xrt_result_t
+xrt_app_system_get_recommended_view_configuration(struct xrt_app_system *xasys,
+                                                  enum xrt_view_type view_type,
+                                                  struct xrt_recommended_view_config *out_recommended_view_config)
+{
+	return xasys->get_recommended_view_configuration(xasys, view_type, out_recommended_view_config);
+}
+
+/*!
+ * @copydoc xrt_app_system::set_recommended_view_configuration
+ *
+ * Helper for calling through the function pointer.
+ *
+ * @public @memberof xrt_app_system
+ */
+XRT_NONNULL_ALL static inline xrt_result_t
+xrt_app_system_set_recommended_view_configuration(struct xrt_app_system *xasys,
+                                                  enum xrt_view_type view_type,
+                                                  const struct xrt_recommended_view_config *recommended_view_config)
+{
+	return xasys->set_recommended_view_configuration(xasys, view_type, recommended_view_config);
+}
 
 /*!
  * @copydoc xrt_app_system::destroy

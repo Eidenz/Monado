@@ -10,6 +10,7 @@
 #pragma once
 
 #include "xrt/xrt_app_policy.h"
+#include "xrt/xrt_compositor.h"
 
 #include "os/os_threading.h"
 
@@ -52,6 +53,9 @@ struct b_app_system
 
 	//! The @ref xrt_system this is wrapping
 	struct xrt_system *xsys;
+
+	struct os_mutex view_config_mutex;
+	struct xrt_recommended_view_config view_configs[XRT_VIEW_TYPE_MAX];
 };
 
 

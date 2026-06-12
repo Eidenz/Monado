@@ -29,6 +29,12 @@
 		IPC_CHK_AND_RET((ICS)->server, xret, "ipc_server_objects_get_xainst_and_validate");                    \
 	} while (0)
 
+#define GET_XASYS_OR_RETURN(ICS, ID, XASYS)                                                                            \
+	do {                                                                                                           \
+		xrt_result_t xret = ipc_server_objects_get_xasys_and_validate((ICS), ID, &(XASYS));                    \
+		IPC_CHK_AND_RET((ICS)->server, xret, "ipc_server_objects_get_xasys_and_validate");                     \
+	} while (0)
+
 
 /*
  *
@@ -86,6 +92,40 @@ xrt_result_t
 ipc_handle_app_system_destroy(volatile struct ipc_client_state *ics, uint32_t xasys_id)
 {
 	return ipc_server_objects_destroy_xasys(ics, xasys_id);
+}
+
+xrt_result_t
+ipc_handle_app_system_get_recommended_view_configuration(
+    volatile struct ipc_client_state *ics,
+    uint32_t id,
+    enum xrt_view_type view_type,
+    struct xrt_recommended_view_config *out_recommended_view_config)
+{
+	struct xrt_app_system *xasys = NULL;
+	GET_XASYS_OR_RETURN(ics, id, xasys);
+
+	if (xasys == NULL) {
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	return xrt_app_system_get_recommended_view_configuration(xasys, view_type, out_recommended_view_config);
+}
+
+xrt_result_t
+ipc_handle_app_system_set_recommended_view_configuration(
+    volatile struct ipc_client_state *ics,
+    uint32_t id,
+    enum xrt_view_type view_type,
+    const struct xrt_recommended_view_config *recommended_view_config)
+{
+	struct xrt_app_system *xasys = NULL;
+	GET_XASYS_OR_RETURN(ics, id, xasys);
+
+	if (xasys == NULL) {
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	return xrt_app_system_set_recommended_view_configuration(xasys, view_type, recommended_view_config);
 }
 
 #undef GET_XAINST_OR_RETURN

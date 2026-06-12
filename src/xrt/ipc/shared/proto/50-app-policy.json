@@ -38,5 +38,39 @@
                 "type": "uint32_t"
             }
         ]
+    },
+    "app_system_get_recommended_view_configuration": {
+        "in": [
+            {
+                "name": "id",
+                "type": "uint32_t"
+            },
+            {
+                "name": "view_type",
+                "type": "enum xrt_view_type"
+            }
+        ],
+        "out": [
+            {
+                "name": "view_config",
+                "type": "struct xrt_recommended_view_config"
+            }
+        ]
+    },
+    "app_system_set_recommended_view_configuration": {
+        "in": [
+            {
+                "name": "id",
+                "type": "uint32_t"
+            },
+            {
+                "name": "view_type",
+                "type": "enum xrt_view_type"
+            },
+            {
+                "name": "view_config",
+                "type": "struct xrt_recommended_view_config"
+            }
+        ]
     }
 }

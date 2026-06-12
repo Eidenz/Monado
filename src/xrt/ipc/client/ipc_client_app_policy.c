@@ -85,6 +85,34 @@ app_system_destroy(struct xrt_app_system *xasys)
 }
 
 static xrt_result_t
+app_system_get_recommended_view_configuration(struct xrt_app_system *xasys,
+                                              enum xrt_view_type view_type,
+                                              struct xrt_recommended_view_config *out_view_config)
+{
+	struct ipc_client_app_system *icasys = ipc_client_app_system(xasys);
+
+	xrt_result_t xret = ipc_call_app_system_get_recommended_view_configuration(icasys->ipc_c, icasys->id, view_type,
+	                                                                           out_view_config);
+	IPC_CHK_AND_RET(icasys->ipc_c, xret, "ipc_call_app_system_get_recommended_view_configuration");
+
+	return XRT_SUCCESS;
+}
+
+static xrt_result_t
+app_system_set_recommended_view_configuration(struct xrt_app_system *xasys,
+                                              enum xrt_view_type view_type,
+                                              const struct xrt_recommended_view_config *view_config)
+{
+	struct ipc_client_app_system *icasys = ipc_client_app_system(xasys);
+
+	xrt_result_t xret =
+	    ipc_call_app_system_set_recommended_view_configuration(icasys->ipc_c, icasys->id, view_type, view_config);
+	IPC_CHK_AND_RET(icasys->ipc_c, xret, "ipc_call_app_system_set_recommended_view_configuration");
+
+	return XRT_SUCCESS;
+}
+
+static xrt_result_t
 app_instance_create_app_system(struct xrt_app_instance *xainst,
                                struct xrt_system *xsys,
                                struct xrt_app_system **out_xasys)
@@ -106,6 +134,8 @@ app_instance_create_app_system(struct xrt_app_instance *xainst,
 		return xret;
 	}
 
+	icasys->base.get_recommended_view_configuration = app_system_get_recommended_view_configuration;
+	icasys->base.set_recommended_view_configuration = app_system_set_recommended_view_configuration;
 	icasys->base.destroy = app_system_destroy;
 
 	icasys->ipc_c = icainst->ipc_c;

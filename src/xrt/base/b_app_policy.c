@@ -92,6 +92,43 @@ app_system_destroy(struct xrt_app_system *xasys)
 	os_mutex_unlock(&bainst->app_systems.mutex);
 }
 
+static xrt_result_t
+b_app_system_get_recommended_view_configuration(struct xrt_app_system *xasys,
+                                                enum xrt_view_type view_type,
+                                                struct xrt_recommended_view_config *out_recommended_view_config)
+{
+	struct b_app_system *basys = b_app_system(xasys);
+
+	if (view_type == XRT_VIEW_TYPE_INVALID || view_type >= XRT_VIEW_TYPE_MAX) {
+		return XRT_ERROR_INVALID_ARGUMENT;
+	}
+
+	os_mutex_lock(&basys->view_config_mutex);
+	*out_recommended_view_config = basys->view_configs[view_type];
+	os_mutex_unlock(&basys->view_config_mutex);
+
+	return XRT_SUCCESS;
+}
+
+static xrt_result_t
+b_app_system_set_recommended_view_configuration(struct xrt_app_system *xasys,
+                                                enum xrt_view_type view_type,
+                                                const struct xrt_recommended_view_config *recommended_view_config)
+{
+	struct b_app_system *basys = b_app_system(xasys);
+
+	if (view_type == XRT_VIEW_TYPE_INVALID || view_type >= XRT_VIEW_TYPE_MAX) {
+		return XRT_ERROR_INVALID_ARGUMENT;
+	}
+
+	os_mutex_lock(&basys->view_config_mutex);
+	basys->view_configs[view_type] = *recommended_view_config;
+	os_mutex_unlock(&basys->view_config_mutex);
+
+	return XRT_SUCCESS;
+}
+
+
 static void
 b_app_instance_destroy(struct xrt_app_instance *xainst)
 {
@@ -209,14 +246,20 @@ b_app_system_init(struct xrt_app_instance *xainst,
                   void (*destroy_fn)(struct xrt_app_system *))
 {
 	// xrt_app_system fields.
+	basys->base.get_recommended_view_configuration = b_app_system_get_recommended_view_configuration;
+	basys->base.set_recommended_view_configuration = b_app_system_set_recommended_view_configuration;
 	basys->base.destroy = destroy_fn;
 
 	basys->xainst = xainst;
 	basys->xsys = xsys;
+
+	os_mutex_init(&basys->view_config_mutex);
 
 	return true;
 }
 
 void
 b_app_system_fini(struct b_app_system *basys)
-{}
+{
+	os_mutex_destroy(&basys->view_config_mutex);
+}

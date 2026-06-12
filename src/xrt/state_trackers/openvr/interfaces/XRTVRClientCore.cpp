@@ -69,6 +69,7 @@ XRTVRClientCore_003::Init(vr::EVRApplicationType eApplicationType, const char *p
 	            .meta_body_tracking_calibration_enabled = false,
 	            .meta_body_tracking_fidelity_enabled = false,
 	            .android_face_tracking_enabled = false,
+	            .view_configuration_views_change_supported = false,
 	        },
 	    .platform_info = {0},
 	};
@@ -258,6 +259,7 @@ XRTVRClientCore_003::BIsHmdPresent()
 	            .meta_body_tracking_calibration_enabled = false,
 	            .meta_body_tracking_fidelity_enabled = false,
 	            .android_face_tracking_enabled = false,
+	            .view_configuration_views_change_supported = false,
 	        },
 	    .platform_info = {0},
 	};
