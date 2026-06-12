@@ -22,6 +22,7 @@ oxr_session_action_context_init(struct oxr_session_action_context *action_contex
 {
 	// Initialize dynamic roles generation_id and mutex
 	action_context->dynamic_roles_generation_id = 0;
+	action_context->known_device_count = 0;
 	os_mutex_init(&action_context->sync_actions_mutex);
 
 	// Action system hashmaps.

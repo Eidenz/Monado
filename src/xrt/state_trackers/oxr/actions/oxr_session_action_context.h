@@ -100,6 +100,14 @@ struct oxr_session_action_context
 	//! Cache of the last known system roles generation_id
 	uint64_t dynamic_roles_generation_id;
 
+	/*!
+	 * Device count last seen during sync actions; when it grows (hotplug)
+	 * an interaction profile changed event is sent even when the roles
+	 * did not change, so OpenVR translation layers (xrizer) re-scan the
+	 * device list for trackers.
+	 */
+	uint32_t known_device_count;
+
 	//! Protects access to dynamic_roles_generation_id during sync actions
 	struct os_mutex sync_actions_mutex;
 

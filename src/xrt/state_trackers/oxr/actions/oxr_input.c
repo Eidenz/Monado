@@ -2003,6 +2003,20 @@ oxr_action_sync_data(struct oxr_logger *log,
 			    &roles,                        //
 			    &interaction_profile_changed); //
 		}
+
+		/*
+		 * Device hotplug: send the interaction profile changed event
+		 * even when the roles stayed the same; OpenVR translation
+		 * layers (xrizer) only re-scan the device list for trackers on
+		 * this event, and native apps just re-query their (unchanged)
+		 * profile. The fetch of the roles above already refreshed the
+		 * device list over IPC. The first sync only primes the count.
+		 */
+		uint32_t device_count = sess->sys->xsysd->static_xdev_count;
+		if (sess_context->known_device_count != 0 && device_count > sess_context->known_device_count) {
+			interaction_profile_changed = true;
+		}
+		sess_context->known_device_count = device_count;
 		os_mutex_unlock(&sess_context->sync_actions_mutex);
 
 		if (interaction_profile_changed) {
