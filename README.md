@@ -22,6 +22,8 @@ your `lighthousedb.json` are pre-registered at startup so trackers (and
 controllers) can be powered on after an app is already running — no restart
 needed.
 
+> **AI usage:** The UDCAP and fake-hotplug additions in this fork were developed with AI assistance (Anthropic's Claude), under human direction, testing, and review. Upstream Monado is unaffected.
+
 Set `LH_PREREGISTER_SERIALS` to limit which devices are pre-registered
 (comma-separated serials, e.g. `LHR-AAA,LHR-BBB`). If unset, all known devices
 are pre-registered.
