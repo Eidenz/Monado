@@ -7,7 +7,8 @@
 cmake -B cbuild -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DCMAKE_INSTALL_PREFIX=/usr \
   -DXRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE=ON \
-  -DXRT_BUILD_DRIVER_SURVIVE=OFF
+  -DXRT_BUILD_DRIVER_SURVIVE=OFF \
+  -DXRT_BUILD_DRIVER_UDCAP=ON
 cmake --build cbuild -j$(nproc)
 
 # Install (stop Monado services first, restart socket after)
