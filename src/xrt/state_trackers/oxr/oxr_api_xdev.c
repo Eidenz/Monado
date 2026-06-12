@@ -94,7 +94,11 @@ oxr_xrGetXDevListGenerationNumberMNDX(XrXDevListMNDX xdevList, uint64_t *outGene
 	struct oxr_logger log;
 
 	OXR_VERIFY_XDEVLIST_AND_INIT_LOG(&log, xdevList, xdl, "xrGetXDevListGenerationNumberMNDX");
-	*outGeneration = xdl->generation_number;
+
+	// Live generation (not the snapshot's): when it differs from the value
+	// seen at create time a device was hotplugged and the app should
+	// re-create the list to see it.
+	*outGeneration = oxr_xdev_list_current_generation(xdl);
 
 	return XR_SUCCESS;
 }

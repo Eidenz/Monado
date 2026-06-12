@@ -162,6 +162,24 @@ oxr_xdev_list_destroy(struct oxr_logger *log, struct oxr_handle_base *hb)
 	return XR_SUCCESS;
 }
 
+uint64_t
+oxr_xdev_list_current_generation(struct oxr_xdev_list *xdl)
+{
+	struct xrt_system_devices *xsysd = xdl->sess->sys->xsysd;
+
+	/*
+	 * Getting the roles makes the IPC client pick up any devices that were
+	 * hotplugged after we connected, growing our device list; needed here
+	 * because apps that only track devices may never call xrSyncActions.
+	 */
+	struct xrt_system_roles roles = XRT_SYSTEM_ROLES_INIT;
+	xrt_result_t xret = xrt_system_devices_get_roles(xsysd, &roles);
+	(void)xret; // On failure report what we currently know.
+
+	// The device list is append-only, so the count works as a generation.
+	return xsysd->static_xdev_count;
+}
+
 XrResult
 oxr_xdev_list_create(struct oxr_logger *log,
                      struct oxr_session *sess,
@@ -169,6 +187,12 @@ oxr_xdev_list_create(struct oxr_logger *log,
                      struct oxr_xdev_list **out_xdl)
 {
 	struct xrt_system_devices *xsysd = sess->sys->xsysd;
+
+	// Pick up hotplugged devices before snapshotting, see helper above.
+	struct xrt_system_roles roles = XRT_SYSTEM_ROLES_INIT;
+	xrt_result_t xret = xrt_system_devices_get_roles(xsysd, &roles);
+	(void)xret; // On failure snapshot what we currently know.
+
 	uint32_t count = xsysd->static_xdev_count;
 
 	struct oxr_xdev_list *xdl = NULL;
@@ -201,8 +225,9 @@ oxr_xdev_list_create(struct oxr_logger *log,
 	xdl->device_count = count;
 	xdl->sess = sess;
 
-	//! @todo Always the first generation, Monado doesn't have hotplug (yet).
-	xdl->generation_number = 1;
+	// The generation this snapshot was taken at, the API getter reports
+	// the live generation so apps can tell when to re-create the list.
+	xdl->generation_number = count;
 
 	*out_xdl = xdl;
 

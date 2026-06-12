@@ -824,6 +824,14 @@ oxr_xdev_list_create(struct oxr_logger *log,
                      const XrCreateXDevListInfoMNDX *createInfo,
                      struct oxr_xdev_list **out_xdl);
 
+/*!
+ * Current xdev list generation of the system, advances when devices are
+ * hotplugged so apps know to re-create their (snapshot) xdev lists. Also
+ * refreshes the device list over IPC.
+ */
+uint64_t
+oxr_xdev_list_current_generation(struct oxr_xdev_list *xdl);
+
 XrResult
 oxr_xdev_list_get_properties(struct oxr_logger *log,
                              struct oxr_xdev_list *xdl,
