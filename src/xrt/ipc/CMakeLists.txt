@@ -4,7 +4,7 @@
 
 ###
 # Merge split protocol JSON files into single proto.json
-file(GLOB PROTO_JSON_FILES "${CMAKE_CURRENT_SOURCE_DIR}/shared/proto/*.json")
+file(GLOB PROTO_JSON_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/shared/proto/*.json")
 
 merge_json_files(
 	OUTPUT
