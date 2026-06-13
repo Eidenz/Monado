@@ -99,26 +99,69 @@ play_shutter_sound(void)
 #endif
 }
 
+// Resolve the (optional) crop region into pixel bounds within the frame.
 static void
-write_frame_to_disk(struct comp_screenshot *cs, struct xrt_frame *frame)
+resolve_crop(const struct xrt_frame *frame,
+             const struct u_screenshot_request *req,
+             uint32_t *out_x,
+             uint32_t *out_y,
+             uint32_t *out_w,
+             uint32_t *out_h)
 {
-	// Readback frames are XRT_FORMAT_R8G8B8X8: 4 bytes per pixel, and the row
-	// stride may exceed width*4. PNG wants tightly packed RGB, so repack and
-	// drop the unused 4th channel. The bytes are already sRGB-encoded, which
-	// is exactly what a PNG stores - no colour conversion needed here.
 	uint32_t w = frame->width;
 	uint32_t h = frame->height;
 
-	uint8_t *rgb = malloc((size_t)w * h * 3);
-	if (rgb == NULL) {
-		U_LOG_E("screenshot: out of memory packing %ux%u", w, h);
+	*out_x = 0;
+	*out_y = 0;
+	*out_w = w;
+	*out_h = h;
+
+	if (req == NULL || !req->has_region) {
 		return;
 	}
 
-	for (uint32_t y = 0; y < h; y++) {
-		const uint8_t *src_row = frame->data + (size_t)y * frame->stride;
-		uint8_t *dst_row = rgb + (size_t)y * w * 3;
-		for (uint32_t x = 0; x < w; x++) {
+	float fx0 = req->x0 < 0.0f ? 0.0f : (req->x0 > 1.0f ? 1.0f : req->x0);
+	float fy0 = req->y0 < 0.0f ? 0.0f : (req->y0 > 1.0f ? 1.0f : req->y0);
+	float fx1 = req->x1 < 0.0f ? 0.0f : (req->x1 > 1.0f ? 1.0f : req->x1);
+	float fy1 = req->y1 < 0.0f ? 0.0f : (req->y1 > 1.0f ? 1.0f : req->y1);
+
+	uint32_t px0 = (uint32_t)(fx0 * (float)w);
+	uint32_t py0 = (uint32_t)(fy0 * (float)h);
+	uint32_t px1 = (uint32_t)(fx1 * (float)w);
+	uint32_t py1 = (uint32_t)(fy1 * (float)h);
+
+	// Only honour a sane, non-degenerate rect; otherwise keep the full frame.
+	if (px1 > px0 + 1 && py1 > py0 + 1 && px1 <= w && py1 <= h) {
+		*out_x = px0;
+		*out_y = py0;
+		*out_w = px1 - px0;
+		*out_h = py1 - py0;
+	}
+}
+
+static void
+write_frame_to_disk(struct comp_screenshot *cs, struct xrt_frame *frame, const struct u_screenshot_request *req)
+{
+	uint32_t full_w = frame->width;
+	uint32_t full_h = frame->height;
+
+	uint32_t cx, cy, cw, ch;
+	resolve_crop(frame, req, &cx, &cy, &cw, &ch);
+
+	// Readback frames are XRT_FORMAT_R8G8B8X8: 4 bytes per pixel, and the row
+	// stride may exceed width*4. PNG wants tightly packed RGB, so repack the
+	// (possibly cropped) region and drop the unused 4th channel. The bytes are
+	// already sRGB-encoded, which is exactly what a PNG stores.
+	uint8_t *rgb = malloc((size_t)cw * ch * 3);
+	if (rgb == NULL) {
+		U_LOG_E("screenshot: out of memory packing %ux%u", cw, ch);
+		return;
+	}
+
+	for (uint32_t y = 0; y < ch; y++) {
+		const uint8_t *src_row = frame->data + (size_t)(cy + y) * frame->stride + (size_t)cx * 4;
+		uint8_t *dst_row = rgb + (size_t)y * cw * 3;
+		for (uint32_t x = 0; x < cw; x++) {
 			dst_row[x * 3 + 0] = src_row[x * 4 + 0];
 			dst_row[x * 3 + 1] = src_row[x * 4 + 1];
 			dst_row[x * 3 + 2] = src_row[x * 4 + 2];
@@ -129,13 +172,11 @@ write_frame_to_disk(struct comp_screenshot *cs, struct xrt_frame *frame)
 	(void)snprintf(path, sizeof(path), "%s/monado_screenshot_%ld_%u.png", cs->dir, (long)time(NULL),
 	               cs->counter++);
 
-	// Full frame, no crop: the black frustum border is left in so the user can
-	// crop to taste afterwards.
-	int ok = stbi_write_png(path, (int)w, (int)h, 3, rgb, (int)(w * 3));
+	int ok = stbi_write_png(path, (int)cw, (int)ch, 3, rgb, (int)(cw * 3));
 	free(rgb);
 
 	if (ok) {
-		U_LOG_I("screenshot: saved %s (%ux%u)", path, w, h);
+		U_LOG_I("screenshot: saved %s (%ux%u of %ux%u)", path, cw, ch, full_w, full_h);
 		play_shutter_sound();
 	} else {
 		U_LOG_E("screenshot: failed to write %s", path);
@@ -158,10 +199,11 @@ run_worker(void *ptr)
 		// Take ownership of the pending frame and release the lock for the
 		// (slow) encode + write.
 		struct xrt_frame *frame = cs->pending;
+		struct u_screenshot_request req = cs->pending_req;
 		cs->pending = NULL;
 		os_thread_helper_unlock(&cs->oth);
 
-		write_frame_to_disk(cs, frame);
+		write_frame_to_disk(cs, frame, &req);
 		xrt_frame_reference(&frame, NULL); // returns the frame to the readback pool
 
 		os_thread_helper_lock(&cs->oth);
@@ -260,14 +302,14 @@ comp_screenshot_init(struct comp_screenshot *cs)
 }
 
 bool
-comp_screenshot_consume_request(struct comp_screenshot *cs)
+comp_screenshot_consume_request(struct comp_screenshot *cs, struct u_screenshot_request *out)
 {
 	(void)cs;
-	return u_screenshot_consume_request();
+	return u_screenshot_consume_request(out);
 }
 
 void
-comp_screenshot_submit(struct comp_screenshot *cs, struct xrt_frame *frame)
+comp_screenshot_submit(struct comp_screenshot *cs, struct xrt_frame *frame, const struct u_screenshot_request *req)
 {
 	os_thread_helper_lock(&cs->oth);
 
@@ -278,6 +320,7 @@ comp_screenshot_submit(struct comp_screenshot *cs, struct xrt_frame *frame)
 	}
 
 	cs->pending = frame; // transfer caller's reference
+	cs->pending_req = *req;
 	os_thread_helper_signal_locked(&cs->oth);
 
 	os_thread_helper_unlock(&cs->oth);

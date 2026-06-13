@@ -1181,13 +1181,16 @@ comp_renderer_draw(struct comp_renderer *r)
 	// mirror's GPU readback of the (undistorted) left-eye scratch image, then
 	// hands the frame to a worker thread so the PNG encode + disk write never
 	// stalls the compositor. On-demand only: zero cost when not capturing.
-	if (comp_screenshot_consume_request(&r->screenshot)) {
+	struct u_screenshot_request shot_req;
+	if (comp_screenshot_consume_request(&r->screenshot, &shot_req)) {
 		uint32_t scratch_index = frame_state.scratch_state.views[0].index;
 		struct comp_scratch_single_images *view = &c->scratch.views[0].cssi;
 		struct render_scratch_color_image *rsci = &view->images[scratch_index];
 		VkExtent2D extent = {view->info.width, view->info.height};
 		struct xrt_normalized_rect rect = {0, 0, 1.0f, 1.0f};
 
+		// Always read back the whole left-eye view; the crop (if any) is
+		// applied off-thread when writing the PNG.
 		struct xrt_frame *shot = NULL;
 		xrt_result_t sret = comp_mirror_blit_to_frame( //
 		    &r->mirror_to_debug_gui,                   //
@@ -1201,7 +1204,7 @@ comp_renderer_draw(struct comp_renderer *r)
 		    rect,                                      //
 		    &shot);                                    //
 		if (sret == XRT_SUCCESS && shot != NULL) {
-			comp_screenshot_submit(&r->screenshot, shot); // transfers the reference
+			comp_screenshot_submit(&r->screenshot, shot, &shot_req); // transfers the reference
 		} else {
 			COMP_WARN(c, "screenshot: blit failed (%d)", sret);
 		}

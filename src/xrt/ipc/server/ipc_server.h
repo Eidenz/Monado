@@ -380,6 +380,9 @@ struct ipc_server
 	//! System devices.
 	struct xrt_system_devices *xsysd;
 
+	//! Server-side hand-gesture detector.
+	struct u_gesture *gesture;
+
 	//! Space overseer.
 	struct xrt_space_overseer *xso;
 

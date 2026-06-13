@@ -296,6 +296,7 @@ option_with_deps(XRT_FEATURE_SERVICE_SYSTEMD "Enable systemd socket activation o
 option_with_deps(XRT_FEATURE_SLAM "Enable SLAM tracking support" DEPENDS XRT_HAVE_OPENCV XRT_HAVE_LINUX)
 option(XRT_FEATURE_SSE2 "Build using SSE2 instructions, if building for 32-bit x86" ON)
 option_with_deps(XRT_FEATURE_STEAMVR_PLUGIN "Build SteamVR plugin" DEPENDS "NOT ANDROID")
+option(XRT_FEATURE_GESTURE_DETECTOR "Enable the hand-gesture detector (finger-frame screenshot)" ON)
 option_with_deps(XRT_FEATURE_TRACING "Enable debug tracing on supported platforms" DEFAULT OFF DEPENDS "XRT_HAVE_PERCETTO OR XRT_HAVE_TRACY")
 option_with_deps(XRT_FEATURE_WINDOW_PEEK "Enable a window that displays the content of the HMD on screen" DEPENDS XRT_HAVE_SDL2)
 
@@ -645,6 +646,7 @@ message(STATUS "#    FEATURE_AHARDWARE_BUFFER:                      ${XRT_FEATUR
 message(STATUS "#    FEATURE_CLIENT_DEBUG_GUI:                      ${XRT_FEATURE_CLIENT_DEBUG_GUI}")
 message(STATUS "#    FEATURE_COLOR_LOG:                             ${XRT_FEATURE_COLOR_LOG}")
 message(STATUS "#    FEATURE_DEBUG_GUI:                             ${XRT_FEATURE_DEBUG_GUI}")
+message(STATUS "#    FEATURE_GESTURE_DETECTOR:                      ${XRT_FEATURE_GESTURE_DETECTOR}")
 message(STATUS "#    FEATURE_OPENXR:                                ${XRT_FEATURE_OPENXR}")
 message(STATUS "#    FEATURE_RENDERDOC:                             ${XRT_FEATURE_RENDERDOC}")
 message(STATUS "#    FEATURE_SERVICE:                               ${XRT_FEATURE_SERVICE}")

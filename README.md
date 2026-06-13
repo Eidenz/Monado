@@ -8,7 +8,8 @@ cmake -B cbuild -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DCMAKE_INSTALL_PREFIX=/usr \
   -DXRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE=ON \
   -DXRT_BUILD_DRIVER_SURVIVE=OFF \
-  -DXRT_BUILD_DRIVER_UDCAP=ON
+  -DXRT_BUILD_DRIVER_UDCAP=ON \
+  -DXRT_FEATURE_GESTURE_DETECTOR=ON
 cmake --build cbuild -j$(nproc)
 
 # Install
@@ -27,7 +28,47 @@ Note: the HMD must be connected at startup; only controllers, trackers and
 gloves hotplug. Gloves are picked up at startup only (start udcap-server before
 Monado).
 
-> **AI usage:** The UDCAP and hotplug additions in this fork were developed with AI assistance (Anthropic's Claude), under human direction, testing, and review. Upstream Monado is unaffected.
+### In-headset screenshots
+
+Capture the rendered view to a PNG from inside VR: **hold the trigger and click
+the system button** on either controller. Images are saved to `~/Pictures/Monado`
+(created automatically) and a shutter sound plays on capture.
+
+- Captures the left eye, undistorted and uncropped — crop to taste afterwards.
+- On-demand and encoded off the render thread, so there is no frame-rate cost.
+- A compositor feature: works when Monado is the runtime, not in SteamVR-compositor mode.
+
+Environment overrides (set on whatever launches the Monado service):
+
+- `MONADO_SCREENSHOT_DIR` — output directory (default `~/Pictures/Monado`).
+- `MONADO_SCREENSHOT_SOUND_CMD` — command used to play the shutter sound.
+- `MONADO_SCREENSHOT_NO_SOUND` — set to mute the shutter sound.
+
+(`kill -USR1 <monado-service pid>` also triggers a capture — handy for testing
+without controllers.)
+
+### Finger-frame gesture
+
+Make a "frame" with both hands — thumb and index extended, the other three
+fingers curled, the two hands forming opposite corners of a rectangle — and hold
+it for a couple of seconds. It takes a screenshot **cropped to the framed
+region** (a viewfinder), saved alongside the others in `~/Pictures/Monado`. It's
+driven by hand tracking, so it works with UDCAP gloves or Valve Index
+controllers. Enabled by default; build with `-DXRT_FEATURE_GESTURE_DETECTOR=OFF`
+to leave it out.
+
+Settings live in `~/.config/monado/gestures.json`, hot-reloaded while running
+(built-in defaults are used if the file is absent):
+
+```json
+{
+  "enabled": true,
+  "hold_ms": 2000,
+  "debug": false
+}
+```
+
+> **AI usage:** The UDCAP, hotplug, in-headset screenshot and finger-frame gesture additions in this fork were developed with AI assistance (Anthropic's Claude), under human direction, testing, and review. Upstream Monado is unaffected.
 
 ---
 

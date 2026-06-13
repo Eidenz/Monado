@@ -18,6 +18,7 @@
 #include "xrt/xrt_compositor.h"
 #include "xrt/xrt_config_have.h"
 #include "xrt/xrt_config_os.h"
+#include "xrt/xrt_config_build.h"
 
 #include "os/os_time.h"
 #include "util/u_var.h"
@@ -28,6 +29,7 @@
 #include "util/u_process.h"
 #include "util/u_debug_gui.h"
 #include "util/u_pretty_print.h"
+#include "util/u_gesture.h"
 
 #include "util/u_git_tag.h"
 
@@ -169,6 +171,11 @@ teardown_all(struct ipc_server *s)
 	u_var_remove_root(s);
 
 	xrt_syscomp_destroy(&s->xsysc);
+
+#ifdef XRT_FEATURE_GESTURE_DETECTOR
+	// Stop the detector before the devices it borrows are destroyed.
+	u_gesture_destroy(&s->gesture);
+#endif
 
 	xrt_space_overseer_destroy(&s->xso);
 	xrt_system_devices_destroy(&s->xsysd);
@@ -679,6 +686,14 @@ ipc_server_init_system_if_available_locked(struct ipc_server *s,
 		if (available) {
 			xret = xrt_instance_create_system(s->xinst, &s->xsys, &s->xsysd, &s->xso, &s->xsysc);
 			IPC_CHK_WITH_GOTO(s, xret, "xrt_instance_create_system", error);
+
+#ifdef XRT_FEATURE_GESTURE_DETECTOR
+			// Devices + roles exist now: start the gesture detector
+			// (non-fatal if it fails, it just won't run).
+			if (s->xsysd != NULL && s->gesture == NULL) {
+				(void)u_gesture_create(s->xsysd, &s->gesture);
+			}
+#endif
 		}
 	}
 

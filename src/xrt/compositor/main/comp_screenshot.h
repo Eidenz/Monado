@@ -10,6 +10,7 @@
 #include "xrt/xrt_compiler.h"
 #include "xrt/xrt_frame.h"
 #include "os/os_threading.h"
+#include "util/u_screenshot.h"
 
 
 #ifdef __cplusplus
@@ -30,6 +31,9 @@ struct comp_screenshot
 
 	//! Pending frame to write, protected by @ref oth. Owns one reference.
 	struct xrt_frame *pending;
+
+	//! Crop region for the pending frame, protected by @ref oth.
+	struct u_screenshot_request pending_req;
 
 	//! Directory screenshots are written to.
 	char dir[512];
@@ -54,7 +58,7 @@ comp_screenshot_init(struct comp_screenshot *cs);
  * @public @memberof comp_screenshot
  */
 bool
-comp_screenshot_consume_request(struct comp_screenshot *cs);
+comp_screenshot_consume_request(struct comp_screenshot *cs, struct u_screenshot_request *out);
 
 /*!
  * Hand a captured readback frame to the worker thread to be written to disk.
@@ -63,7 +67,7 @@ comp_screenshot_consume_request(struct comp_screenshot *cs);
  * @public @memberof comp_screenshot
  */
 void
-comp_screenshot_submit(struct comp_screenshot *cs, struct xrt_frame *frame);
+comp_screenshot_submit(struct comp_screenshot *cs, struct xrt_frame *frame, const struct u_screenshot_request *req);
 
 /*!
  * Stop the worker thread and release resources. Must be called before the

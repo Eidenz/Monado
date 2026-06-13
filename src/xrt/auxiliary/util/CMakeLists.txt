@@ -80,6 +80,8 @@ add_library(
 	u_misc.h
 	u_screenshot.c
 	u_screenshot.h
+	u_gesture.c
+	u_gesture.h
 	u_native_images.h
 	u_native_images_debug.h
 	u_pacing.h
