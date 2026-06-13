@@ -23,6 +23,8 @@ add_library(
 	comp_window_debug_image.c
 	comp_mirror_to_debug_gui.c
 	comp_mirror_to_debug_gui.h
+	comp_screenshot.c
+	comp_screenshot.h
 	)
 target_link_libraries(
 	comp_main
@@ -33,6 +35,7 @@ target_link_libraries(
 		aux_vk
 		comp_util
 		comp_render
+		xrt-external-stb
 	)
 
 if(XRT_HAVE_XCB)

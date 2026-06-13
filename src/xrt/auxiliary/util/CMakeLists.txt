@@ -78,6 +78,8 @@ add_library(
 	u_metrics.h
 	u_misc.c
 	u_misc.h
+	u_screenshot.c
+	u_screenshot.h
 	u_native_images.h
 	u_native_images_debug.h
 	u_pacing.h

@@ -36,6 +36,7 @@
 
 #include "main/comp_frame.h"
 #include "main/comp_mirror_to_debug_gui.h"
+#include "main/comp_screenshot.h"
 
 #ifdef XRT_FEATURE_WINDOW_PEEK
 #include "main/comp_window_peek.h"
@@ -127,6 +128,9 @@ struct comp_renderer
 	struct comp_settings *settings;
 
 	struct comp_mirror_to_debug_gui mirror_to_debug_gui;
+
+	//! Off-thread writer for in-headset screenshots.
+	struct comp_screenshot screenshot;
 
 	//! @}
 
@@ -628,6 +632,11 @@ renderer_init(struct comp_renderer *r, struct comp_compositor *c, VkExtent2D scr
 		COMP_ERROR(c, "comp_mirror_init: %s", vk_result_string(ret));
 		assert(false && "Whelp, can't return a error. But should never really fail.");
 	}
+
+	// Non-critical: a failure here just means no screenshots, not a dead compositor.
+	if (comp_screenshot_init(&r->screenshot) != 0) {
+		COMP_WARN(c, "comp_screenshot_init failed, screenshots disabled");
+	}
 }
 
 static void
@@ -862,6 +871,10 @@ renderer_fini(struct comp_renderer *r)
 
 	// Command buffers
 	renderer_close_renderings_and_fences(r);
+
+	// Stop the worker first: it may hold readback frames from the mirror's
+	// pool, which must be returned before comp_mirror_fini destroys that pool.
+	comp_screenshot_fini(&r->screenshot);
 
 	// Do before layer render just in case it holds any references.
 	comp_mirror_fini(&r->mirror_to_debug_gui, vk);
@@ -1162,6 +1175,36 @@ comp_renderer_draw(struct comp_renderer *r)
 		    clamp_to_edge,             //
 		    extent,                    //
 		    rect);                     //
+	}
+
+	// One-shot in-headset screenshot (test trigger: SIGUSR1). Reuses the
+	// mirror's GPU readback of the (undistorted) left-eye scratch image, then
+	// hands the frame to a worker thread so the PNG encode + disk write never
+	// stalls the compositor. On-demand only: zero cost when not capturing.
+	if (comp_screenshot_consume_request(&r->screenshot)) {
+		uint32_t scratch_index = frame_state.scratch_state.views[0].index;
+		struct comp_scratch_single_images *view = &c->scratch.views[0].cssi;
+		struct render_scratch_color_image *rsci = &view->images[scratch_index];
+		VkExtent2D extent = {view->info.width, view->info.height};
+		struct xrt_normalized_rect rect = {0, 0, 1.0f, 1.0f};
+
+		struct xrt_frame *shot = NULL;
+		xrt_result_t sret = comp_mirror_blit_to_frame( //
+		    &r->mirror_to_debug_gui,                   //
+		    &c->base.vk,                               //
+		    frame_id,                                  //
+		    predicted_display_time_ns,                 //
+		    rsci->image,                               //
+		    rsci->srgb_view,                           //
+		    c->nr.samplers.clamp_to_edge,              //
+		    extent,                                    //
+		    rect,                                      //
+		    &shot);                                    //
+		if (sret == XRT_SUCCESS && shot != NULL) {
+			comp_screenshot_submit(&r->screenshot, shot); // transfers the reference
+		} else {
+			COMP_WARN(c, "screenshot: blit failed (%d)", sret);
+		}
 	}
 
 	/*

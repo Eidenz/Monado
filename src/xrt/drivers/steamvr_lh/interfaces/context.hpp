@@ -57,6 +57,7 @@ private:
 
 	std::vector<vr::VRInputComponentHandle_t> handles;
 	std::unordered_map<vr::VRInputComponentHandle_t, xrt_input *> handle_to_input;
+	std::unordered_map<vr::VRInputComponentHandle_t, Device *> handle_to_device;
 	struct Vec2Components
 	{
 		vr::VRInputComponentHandle_t x;

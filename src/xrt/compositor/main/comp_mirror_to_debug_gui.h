@@ -114,7 +114,27 @@ comp_mirror_is_ready_and_active(struct comp_mirror_to_debug_gui *m,
                                 uint64_t predicted_display_time_ns);
 
 /*!
- * Do the blit.
+ * Run the GPU readback/blit and return the resulting host-visible frame, with a
+ * single reference transferred to the caller via @p out_frame, instead of
+ * pushing it to the debug sink. Shared by the debug-GUI mirror (@ref
+ * comp_mirror_do_blit) and the screenshot path.
+ *
+ * @public @memberof comp_mirror_to_debug_gui
+ */
+XRT_CHECK_RESULT xrt_result_t
+comp_mirror_blit_to_frame(struct comp_mirror_to_debug_gui *m,
+                          struct vk_bundle *vk,
+                          uint64_t frame_id,
+                          uint64_t predicted_display_time_ns,
+                          VkImage from_image,
+                          VkImageView from_view,
+                          VkSampler from_sampler,
+                          VkExtent2D from_extent,
+                          struct xrt_normalized_rect from_rect,
+                          struct xrt_frame **out_frame);
+
+/*!
+ * Do the blit, pushing the result to the debug sink.
  *
  * @public @memberof comp_mirror_to_debug_gui
  */

@@ -412,15 +412,16 @@ comp_mirror_is_ready_and_active(struct comp_mirror_to_debug_gui *m,
 }
 
 XRT_CHECK_RESULT xrt_result_t
-comp_mirror_do_blit(struct comp_mirror_to_debug_gui *m,
-                    struct vk_bundle *vk,
-                    uint64_t frame_id,
-                    uint64_t predicted_display_time_ns,
-                    VkImage from_image,
-                    VkImageView from_view,
-                    VkSampler from_sampler,
-                    VkExtent2D from_extent,
-                    struct xrt_normalized_rect from_rect)
+comp_mirror_blit_to_frame(struct comp_mirror_to_debug_gui *m,
+                          struct vk_bundle *vk,
+                          uint64_t frame_id,
+                          uint64_t predicted_display_time_ns,
+                          VkImage from_image,
+                          VkImageView from_view,
+                          VkSampler from_sampler,
+                          VkExtent2D from_extent,
+                          struct xrt_normalized_rect from_rect,
+                          struct xrt_frame **out_frame)
 {
 	COMP_TRACE_MARKER();
 
@@ -644,8 +645,41 @@ comp_mirror_do_blit(struct comp_mirror_to_debug_gui *m,
 	wrap->base_frame.source_timestamp = wrap->base_frame.timestamp = predicted_display_time_ns;
 	wrap->base_frame.source_sequence = frame_id;
 
-	struct xrt_frame *frame = &wrap->base_frame;
+	// Transfer the single reference held on the readback frame to the caller.
+	*out_frame = &wrap->base_frame;
 	wrap = NULL;
+
+	// Tidies the descriptor we created.
+	vk->vkResetDescriptorPool(vk->device, m->blit.descriptor_pool, 0);
+	return XRT_SUCCESS;
+}
+
+XRT_CHECK_RESULT xrt_result_t
+comp_mirror_do_blit(struct comp_mirror_to_debug_gui *m,
+                    struct vk_bundle *vk,
+                    uint64_t frame_id,
+                    uint64_t predicted_display_time_ns,
+                    VkImage from_image,
+                    VkImageView from_view,
+                    VkSampler from_sampler,
+                    VkExtent2D from_extent,
+                    struct xrt_normalized_rect from_rect)
+{
+	struct xrt_frame *frame = NULL;
+	xrt_result_t xret = comp_mirror_blit_to_frame( //
+	    m,                                         //
+	    vk,                                        //
+	    frame_id,                                  //
+	    predicted_display_time_ns,                 //
+	    from_image,                                //
+	    from_view,                                 //
+	    from_sampler,                              //
+	    from_extent,                               //
+	    from_rect,                                 //
+	    &frame);                                   //
+	if (xret != XRT_SUCCESS) {
+		return xret;
+	}
 
 	u_sink_debug_push_frame(&m->debug_sink, frame);
 
@@ -653,8 +687,6 @@ comp_mirror_do_blit(struct comp_mirror_to_debug_gui *m,
 
 	xrt_frame_reference(&frame, NULL);
 
-	// Tidies the descriptor we created.
-	vk->vkResetDescriptorPool(vk->device, m->blit.descriptor_pool, 0);
 	return XRT_SUCCESS;
 }
 

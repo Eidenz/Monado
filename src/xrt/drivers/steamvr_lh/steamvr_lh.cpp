@@ -21,6 +21,7 @@
 #include "util/u_device.h"
 #include "util/u_device.h"
 #include "util/u_system_devices.h"
+#include "util/u_screenshot.h"
 
 #include "vive/vive_bindings.h"
 
@@ -637,6 +638,7 @@ Context::create_component_common(vr::PropertyContainerHandle_t container,
 		CTX_DEBUG("creating component %s for %p", name, (void *)device);
 		vr::VRInputComponentHandle_t handle = new_handle();
 		handle_to_input[handle] = input;
+		handle_to_device[handle] = device;
 		*pHandle = handle;
 	}
 	return vr::VRInputError_None;
@@ -667,11 +669,47 @@ Context::CreateBooleanComponent(vr::PropertyContainerHandle_t ulContainer,
 	return create_component_common(ulContainer, pchName, pHandle);
 }
 
+// True if this device's analog trigger is currently pulled (or fully clicked).
+static bool
+device_trigger_held(const xrt_device *dev)
+{
+	bool held = false;
+	for (uint32_t i = 0; i < dev->input_count; i++) {
+		const xrt_input *in = &dev->inputs[i];
+		if (in->name == XRT_INPUT_INDEX_TRIGGER_VALUE && in->value.vec1.x >= 0.5f) {
+			held = true;
+		}
+		if (in->name == XRT_INPUT_INDEX_TRIGGER_CLICK && in->value.boolean) {
+			held = true;
+		}
+	}
+	return held;
+}
+
 vr::EVRInputError
 Context::UpdateBooleanComponent(vr::VRInputComponentHandle_t ulComponent, bool bNewValue, double fTimeOffset)
 {
 	xrt_input *input = update_component_common(ulComponent, fTimeOffset);
 	if (input) {
+		// Screenshot on a deliberate chord: hold the trigger and click the
+		// system button, on either hand controller. The trigger requirement
+		// keeps it from firing on an accidental system tap - and on the right,
+		// where the system button also opens WayVR, the chord makes the
+		// screenshot intentional rather than an accident.
+		bool is_system = input->name == XRT_INPUT_INDEX_SYSTEM_CLICK || //
+		                 input->name == XRT_INPUT_VIVE_SYSTEM_CLICK;
+		if (is_system && bNewValue && !input->value.boolean) {
+			Device *dev = nullptr;
+			if (auto it = handle_to_device.find(ulComponent); it != handle_to_device.end()) {
+				dev = it->second;
+			}
+			bool is_hand = dev != nullptr &&
+			               (dev->device_type == XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER ||
+			                dev->device_type == XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER);
+			if (is_hand && device_trigger_held(dev)) {
+				u_screenshot_request();
+			}
+		}
 		input->value.boolean = bNewValue;
 	}
 	return vr::VRInputError_None;
