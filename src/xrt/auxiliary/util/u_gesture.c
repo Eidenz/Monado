@@ -35,7 +35,7 @@
  */
 
 #define TICK_NS (1000000000LL / 90)   // ~90 Hz poll
-#define DEFAULT_HOLD_MS 2000          // pose must be held this long to fire
+#define DEFAULT_HOLD_MS 2000          // hold the full frame this long to enter capture mode
 #define COOLDOWN_MS 1500              // ignore re-fires for this long after firing
 
 // A finger is "extended" if the cosine of the bend angle is above this, and
@@ -72,9 +72,11 @@ struct u_gesture
 	int64_t cooldown_ns;
 
 	// State machine.
-	int64_t hold_start_ns; // 0 = not currently in pose
+	int64_t hold_start_ns; // 0 = full frame not currently being held (gating timer)
 	int64_t last_fire_ns;
 	int64_t last_debug_ns;
+	bool armed;                       // true once the hold gate passed: in "capture mode"
+	struct xrt_vec3 last_corners[4];  // last full-frame corners (both index fingers extended)
 
 	// Config file (XDG) + hot-reload tracking.
 	char config_path[512];
@@ -278,14 +280,13 @@ compute_frame_world_corners(const struct xrt_hand_joint_set *left,
 	}
 }
 
-// Compute the framed region (bounding box of the 4 fingertip corners projected
-// into the left eye) and request a cropped screenshot. Falls back to full view
-// if the head/projection isn't usable.
+// Compute the framed region (bounding box of the 4 corners projected into the
+// left eye) and request a cropped screenshot. The corners are passed in (the
+// frame as composed, with both index fingers extended) rather than recomputed,
+// so curling an index to trigger doesn't shrink the captured region. Falls back
+// to full view if the head/projection isn't usable.
 static void
-request_framed_screenshot(struct u_gesture *g,
-                          const struct xrt_hand_joint_set *left,
-                          const struct xrt_hand_joint_set *right,
-                          int64_t now_ns)
+request_framed_screenshot(struct u_gesture *g, const struct xrt_vec3 corners[4], int64_t now_ns)
 {
 	struct xrt_device *head = g->xsysd->static_roles.head;
 	if (head == NULL || head->get_view_poses == NULL) {
@@ -311,9 +312,6 @@ request_framed_screenshot(struct u_gesture *g,
 	math_pose_transform(&head_rel.pose, &eye_poses[0], &eye_world);
 	struct xrt_matrix_4x4 view;
 	math_matrix_4x4_view_from_pose(&eye_world, &view);
-
-	struct xrt_vec3 corners[4];
-	compute_frame_world_corners(left, right, corners);
 
 	float minu = 1e9f, minv = 1e9f, maxu = -1e9f, maxv = -1e9f;
 	int ok = 0;
@@ -362,6 +360,12 @@ detect_and_maybe_fire(struct u_gesture *g, int64_t now_ns)
 	struct xrt_system_roles roles = XRT_SYSTEM_ROLES_INIT;
 	if (xrt_system_devices_get_roles(g->xsysd, &roles) != XRT_SUCCESS) {
 		g->hold_start_ns = 0;
+		if (g->armed) {
+			g->armed = false;
+			if (g->frame_feedback) {
+				u_gesture_feedback_clear();
+			}
+		}
 		return;
 	}
 
@@ -369,12 +373,14 @@ detect_and_maybe_fire(struct u_gesture *g, int64_t now_ns)
 	bool have_left = get_hand(g->xsysd, roles.left, now_ns, &left);
 	bool have_right = get_hand(g->xsysd, roles.right, now_ns, &right);
 
-	bool detected = false;
+	bool have_both = have_left && have_right;
 	struct hand_pose lp = {0}, rp = {0};
 	float wrist_dist = 0.0f;
 	float idx_dot = 0.0f, thumb_dot = 0.0f;
+	bool frame_shape = false; // the L-frame WITHOUT the index requirement
+	bool opposed = false;
 
-	if (have_left && have_right) {
+	if (have_both) {
 		lp = analyse_hand(&left);
 		rp = analyse_hand(&right);
 
@@ -393,56 +399,96 @@ detect_and_maybe_fire(struct u_gesture *g, int64_t now_ns)
 		struct xrt_vec3 rt = world_finger_dir(&right, XRT_HAND_JOINT_THUMB_PROXIMAL, XRT_HAND_JOINT_THUMB_TIP);
 		idx_dot = v_dot(li, ri);
 		thumb_dot = v_dot(lt, rt);
-		bool opposed = idx_dot < FRAME_OPP_COS && thumb_dot < FRAME_OPP_COS;
+		opposed = idx_dot < FRAME_OPP_COS && thumb_dot < FRAME_OPP_COS;
 
-		detected = lp.is_frame && rp.is_frame && prox && opposed;
+		// The static L-frame minus the index requirement, so curling one
+		// index to trigger keeps the frame "held" (thumb out, other three
+		// curled, hands close).
+		frame_shape = lp.thumb > EXT_COS && rp.thumb > EXT_COS &&                                 //
+		              lp.middle < CURL_COS && lp.ring < CURL_COS && lp.little < CURL_COS &&        //
+		              rp.middle < CURL_COS && rp.ring < CURL_COS && rp.little < CURL_COS && prox;
 	}
+
+	// Index finger states, with the same hysteresis gap as the other fingers.
+	bool l_index_ext = lp.index > EXT_COS;
+	bool r_index_ext = rp.index > EXT_COS;
+	bool l_index_curled = lp.index < CURL_COS;
+	bool r_index_curled = rp.index < CURL_COS;
+
+	// Full frame (to arm): the L-frame with both index fingers extended and the
+	// hands opposed. Trigger: exactly one index curled, the other still out.
+	bool full_frame = frame_shape && l_index_ext && r_index_ext && opposed;
+	bool trigger = frame_shape && ((l_index_curled && r_index_ext) || (r_index_curled && l_index_ext));
 
 	// Throttled debug to help tune thresholds without a VR view.
 	if (g->debug && now_ns - g->last_debug_ns > 500 * 1000 * 1000LL) {
 		g->last_debug_ns = now_ns;
-		if (have_left && have_right) {
-			U_LOG_I("gesture: L[t%.2f i%.2f m%.2f r%.2f p%.2f f%d] "
-			        "R[t%.2f i%.2f m%.2f r%.2f p%.2f f%d] dist=%.2f idot=%.2f tdot=%.2f -> %s",
-			        lp.thumb, lp.index, lp.middle, lp.ring, lp.little, lp.is_frame, rp.thumb, rp.index,
-			        rp.middle, rp.ring, rp.little, rp.is_frame, wrist_dist, idx_dot, thumb_dot,
-			        detected ? "FRAME" : "-");
+		if (have_both) {
+			U_LOG_I("gesture: L[t%.2f i%.2f m%.2f r%.2f p%.2f] R[t%.2f i%.2f m%.2f r%.2f p%.2f] "
+			        "dist=%.2f idot=%.2f tdot=%.2f shape=%d full=%d armed=%d trig=%d",
+			        lp.thumb, lp.index, lp.middle, lp.ring, lp.little, rp.thumb, rp.index, rp.middle,
+			        rp.ring, rp.little, wrist_dist, idx_dot, thumb_dot, frame_shape, full_frame, g->armed,
+			        trigger);
 		} else {
 			U_LOG_I("gesture: hands not both tracked (L=%d R=%d)", have_left, have_right);
 		}
 	}
 
-	if (!detected) {
+	// Lost the frame entirely: leave capture mode and stop drawing.
+	if (!frame_shape) {
 		g->hold_start_ns = 0;
-		if (g->frame_feedback) {
-			u_gesture_feedback_clear();
+		if (g->armed) {
+			g->armed = false;
+			if (g->frame_feedback) {
+				u_gesture_feedback_clear();
+			}
 		}
 		return;
 	}
 
-	if (g->hold_start_ns == 0) {
-		g->hold_start_ns = now_ns;
-	}
-
-	// Publish the live in-headset rectangle (corners + hold progress) every
-	// tick the pose is held.
-	if (g->frame_feedback) {
-		struct xrt_vec3 corners[4];
-		compute_frame_world_corners(&left, &right, corners);
-		float progress = (float)(now_ns - g->hold_start_ns) / (float)g->hold_ns;
-		progress = progress < 0.0f ? 0.0f : (progress > 1.0f ? 1.0f : progress);
-		u_gesture_feedback_publish(corners, progress);
-	}
-
-	if (now_ns - g->hold_start_ns >= g->hold_ns && now_ns - g->last_fire_ns >= g->cooldown_ns) {
-		// Stop drawing before the shutter fires so the captured frame is
-		// clean (no overlay lines burned into the screenshot).
-		if (g->frame_feedback) {
-			u_gesture_feedback_clear();
+	// Not in capture mode yet: charge the hold gate with a clean full frame.
+	if (!g->armed) {
+		if (full_frame) {
+			if (g->hold_start_ns == 0) {
+				g->hold_start_ns = now_ns;
+			}
+			if (now_ns - g->hold_start_ns >= g->hold_ns) {
+				g->armed = true; // enter capture mode
+			}
+		} else {
+			g->hold_start_ns = 0; // a clean full frame is required to charge
 		}
-		request_framed_screenshot(g, &left, &right, now_ns);
+
+		if (!g->armed) {
+			// Still gating: no overlay until capture mode is entered.
+			if (g->frame_feedback) {
+				u_gesture_feedback_clear();
+			}
+			return;
+		}
+	}
+
+	// In capture mode. Fire on a single-index "trigger pull", using the frame
+	// as last composed (both index fingers extended) so the crop stays stable.
+	if (trigger && now_ns - g->last_fire_ns >= g->cooldown_ns) {
+		if (g->frame_feedback) {
+			u_gesture_feedback_clear(); // clean screenshot, no overlay lines
+		}
+		request_framed_screenshot(g, g->last_corners, now_ns);
 		g->last_fire_ns = now_ns;
-		g->hold_start_ns = 0; // require releasing and re-forming the pose
+		g->armed = false;
+		g->hold_start_ns = 0; // require re-forming the frame to re-arm
+		return;
+	}
+
+	// Otherwise keep the frame on screen. While both index fingers are out,
+	// track the live frame and remember it for the eventual capture; during a
+	// partial trigger pull, leave the last frame up.
+	if (full_frame) {
+		compute_frame_world_corners(&left, &right, g->last_corners);
+		if (g->frame_feedback) {
+			u_gesture_feedback_publish(g->last_corners, 1.0f);
+		}
 	}
 }
 
@@ -528,8 +574,10 @@ maybe_reload_config(struct u_gesture *g, int64_t now_ns)
 	U_LOG_I("gesture: reloaded config (enabled=%d hold=%lldms debug=%d frame_feedback=%d)", g->enabled,
 	        (long long)(g->hold_ns / (1000 * 1000)), g->debug, g->frame_feedback);
 
-	// Drop any lingering overlay if the feature was just turned off.
+	// Drop any lingering overlay / capture mode if the feature was just turned off.
 	if (!g->enabled || !g->frame_feedback) {
+		g->armed = false;
+		g->hold_start_ns = 0;
 		u_gesture_feedback_clear();
 	}
 #else
