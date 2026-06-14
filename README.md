@@ -54,12 +54,14 @@ without controllers.)
 ### Finger-frame gesture
 
 Make a "frame" with both hands — thumb and index extended, the other three
-fingers curled, the two hands forming opposite corners of a rectangle — and hold
-it for a couple of seconds. It takes a screenshot **cropped to the framed
-region** (a viewfinder), saved alongside the others in `~/Pictures/Monado`. It's
-driven by hand tracking, so it works with UDCAP gloves or Valve Index
-controllers. Enabled by default; build with `-DXRT_FEATURE_GESTURE_DETECTOR=OFF`
-to leave it out.
+fingers curled, the two hands forming opposite corners of a rectangle. Hold it
+for the configured delay and a frame outline appears in the headset, previewing
+the region about to be captured (it follows your hands, so you can recompose).
+Then **curl one index finger** — left or right, like pressing a shutter — to
+take the shot. It's saved **cropped to the framed region** (a viewfinder),
+alongside the others in `~/Pictures/Monado`. Driven by hand tracking, so it works
+with UDCAP gloves or Valve Index controllers. Enabled by default; build with
+`-DXRT_FEATURE_GESTURE_DETECTOR=OFF` to leave it out.
 
 Settings live in `~/.config/monado/gestures.json`, hot-reloaded while running
 (built-in defaults are used if the file is absent):
@@ -68,9 +70,15 @@ Settings live in `~/.config/monado/gestures.json`, hot-reloaded while running
 {
   "enabled": true,
   "hold_ms": 2000,
+  "frame_feedback": true,
   "debug": false
 }
 ```
+
+`hold_ms` is how long the frame must be held before the preview appears and
+capture is armed (it no longer fires on its own — you trigger with an index
+curl). Set `frame_feedback` to `false` to arm silently, without the in-headset
+outline.
 
 > **AI usage:** The UDCAP, hotplug, in-headset screenshot and finger-frame gesture additions in this fork were developed with AI assistance (Anthropic's Claude), under human direction, testing, and review. Upstream Monado is unaffected.
 
