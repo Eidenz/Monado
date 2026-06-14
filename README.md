@@ -9,7 +9,7 @@ cmake -B cbuild -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DXRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE=ON \
   -DXRT_BUILD_DRIVER_SURVIVE=OFF \
   -DXRT_BUILD_DRIVER_UDCAP=ON \
-  -DXRT_FEATURE_GESTURE_DETECTOR=ON
+  -DXRT_FEATURE_GESTURE_DETECTOR=OFF
 cmake --build cbuild -j$(nproc)
 
 # Install
@@ -60,8 +60,8 @@ the region about to be captured (it follows your hands, so you can recompose).
 Then **curl one index finger** — left or right, like pressing a shutter — to
 take the shot. It's saved **cropped to the framed region** (a viewfinder),
 alongside the others in `~/Pictures/Monado`. Driven by hand tracking, so it works
-with UDCAP gloves or Valve Index controllers. Enabled by default; build with
-`-DXRT_FEATURE_GESTURE_DETECTOR=OFF` to leave it out.
+with UDCAP gloves or Valve Index controllers. Disabled by default; build with
+`-DXRT_FEATURE_GESTURE_DETECTOR=ON` to enable it.
 
 Settings live in `~/.config/monado/gestures.json`, hot-reloaded while running
 (built-in defaults are used if the file is absent):
