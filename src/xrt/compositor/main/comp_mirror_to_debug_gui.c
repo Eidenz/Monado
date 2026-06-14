@@ -11,6 +11,14 @@
 #include "xrt/xrt_results.h"
 #include "math/m_mathinclude.h"
 #include "main/comp_mirror_to_debug_gui.h"
+#include "util/u_debug.h"
+
+
+// Height of the mirror/screenshot readback buffer. Default 1080 keeps the
+// desktop mirror cheap; raise it (or set 0 for full native render resolution) to
+// capture higher-resolution in-headset screenshots. Note this also enlarges the
+// debug-GUI mirror buffer, so only bump it if you don't mind that cost.
+DEBUG_GET_ONCE_NUM_OPTION(screenshot_height, "MONADO_SCREENSHOT_HEIGHT", 1080)
 
 
 /*
@@ -272,7 +280,14 @@ comp_mirror_init(struct comp_mirror_to_debug_gui *m,
 	double orig_width = extent.width;
 	double orig_height = extent.height;
 
-	double target_height = 1080;
+	// Default 1080 (cheap mirror); MONADO_SCREENSHOT_HEIGHT overrides it, with
+	// 0 (or any value >= native) meaning full native render resolution. Never
+	// upscale beyond what's actually rendered.
+	long opt = debug_get_num_option_screenshot_height();
+	double target_height = (opt <= 0) ? orig_height : (double)opt;
+	if (target_height > orig_height) {
+		target_height = orig_height;
+	}
 
 	double mul = target_height / orig_height;
 

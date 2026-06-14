@@ -43,6 +43,10 @@ Environment overrides (set on whatever launches the Monado service):
 - `MONADO_SCREENSHOT_DIR` — output directory (default `~/Pictures/Monado`).
 - `MONADO_SCREENSHOT_SOUND_CMD` — command used to play the shutter sound.
 - `MONADO_SCREENSHOT_NO_SOUND` — set to mute the shutter sound.
+- `MONADO_SCREENSHOT_HEIGHT` — capture height in pixels (default `1080`). Set `0`
+  for full native render resolution. This resizes the shared mirror readback
+  buffer, so larger values also enlarge the debug-GUI desktop mirror — only raise
+  it if you don't mind that cost.
 
 (`kill -USR1 <monado-service pid>` also triggers a capture — handy for testing
 without controllers.)
