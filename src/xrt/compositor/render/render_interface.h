@@ -520,6 +520,19 @@ struct render_resources
 
 			//! @todo other resources
 		} clear;
+
+		struct
+		{
+			/*!
+			 * Draws the finger-frame gesture rectangle into the
+			 * per-eye scratch. Reuses the distortion pipeline layout
+			 * (shared with clear), one UBO per view.
+			 */
+			VkPipeline pipeline;
+
+			//! Per-view target info.
+			struct render_buffer ubos[XRT_MAX_VIEWS];
+		} frame_overlay;
 	} compute;
 
 	struct
@@ -1169,6 +1182,14 @@ struct render_compute
 	 * @ref render_compute_projection, and @ref render_compute_clear.
 	 */
 	VkDescriptorSet shared_descriptor_set;
+
+	/*!
+	 * Per-view descriptor sets for the frame-overlay shader. One per view
+	 * because the per-eye scratch images are separate, so each view needs
+	 * its own bound storage image (unlike the shared distortion/clear set
+	 * which writes both views of a single target in one dispatch).
+	 */
+	VkDescriptorSet frame_overlay_descriptor_sets[XRT_MAX_VIEWS];
 };
 
 /*!
@@ -1336,6 +1357,35 @@ struct render_compute_distortion_ubo_data
 };
 
 /*!
+ * UBO data that is sent to the frame-overlay compute shader, one per view.
+ *
+ * @relates render_compute
+ */
+struct render_compute_frame_overlay_ubo_data
+{
+	//! Where in the scratch image this view lives: xy = offset, zw = extent (px).
+	struct
+	{
+		int32_t x, y, w, h;
+	} viewport;
+	//! Rectangle in normalised viewport coords [0,1], top-left origin.
+	struct
+	{
+		float x0, y0, x1, y1;
+	} rect;
+	//! Line colour, straight RGBA.
+	struct
+	{
+		float r, g, b, a;
+	} color;
+	//! x = line half-thickness in pixels; yzw reserved (kept for std140 vec4).
+	struct
+	{
+		float x, y, z, w;
+	} params;
+};
+
+/*!
  * Init struct and create resources needed for compute rendering.
  *
  * @public @memberof render_compute
@@ -1443,6 +1493,23 @@ render_compute_clear(struct render_compute *render,
                      VkImage target_image,
                      VkImageView target_image_view,
                      const struct render_viewport_data views[XRT_MAX_VIEWS]);
+
+/*!
+ * Draw a rectangle outline into one view's scratch (storage) image.
+ *
+ * Records its own layout transitions: it expects @p scratch_image in
+ * @p VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL (as left by the layer squash),
+ * writes the border pixels, and restores that layout for the distortion read.
+ *
+ * @public @memberof render_compute
+ */
+void
+render_compute_frame_overlay(struct render_compute *render,
+                             uint32_t view_index,
+                             VkImage scratch_image,
+                             VkImageView scratch_storage_view,
+                             const struct render_viewport_data *view,
+                             const struct render_compute_frame_overlay_ubo_data *data);
 
 
 

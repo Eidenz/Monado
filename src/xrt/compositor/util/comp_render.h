@@ -692,6 +692,18 @@ comp_render_cs_dispatch(struct render_compute *render,
                         const uint32_t layer_count,
                         const struct comp_render_dispatch_data *d);
 
+/*!
+ * Whether the in-headset finger-frame overlay should be drawn this frame: true
+ * while the gesture detector reports the pose held (live feedback), or when the
+ * @p MONADO_FRAME_OVERLAY_TEST de-risk env var is set. The compute fast path
+ * (which bypasses the scratch) must be disabled while this is active so the
+ * overlay is visible.
+ *
+ * @ingroup comp_util
+ */
+bool
+comp_render_cs_frame_overlay_active(void);
+
 /* end of comp_render_cs group */
 /*! @} */
 

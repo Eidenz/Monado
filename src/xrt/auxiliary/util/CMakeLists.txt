@@ -82,6 +82,8 @@ add_library(
 	u_screenshot.h
 	u_gesture.c
 	u_gesture.h
+	u_gesture_feedback.c
+	u_gesture_feedback.h
 	u_native_images.h
 	u_native_images_debug.h
 	u_pacing.h

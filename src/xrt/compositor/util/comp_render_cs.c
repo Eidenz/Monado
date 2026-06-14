@@ -31,6 +31,10 @@
 #include "util/comp_render.h"
 #include "util/comp_render_helpers.h"
 #include "util/comp_base.h"
+#include "util/u_gesture_feedback.h"
+
+#include <stdlib.h>
+#include <math.h>
 
 
 /*
@@ -787,6 +791,192 @@ comp_render_cs_layers(struct render_compute *render,
 	    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT); // dst_stage_mask
 }
 
+// De-risk env toggle: draw a hardcoded test quad even without a live gesture.
+static bool
+frame_overlay_test_enabled(void)
+{
+	static int cached = -1;
+	if (cached < 0) {
+		cached = getenv("MONADO_FRAME_OVERLAY_TEST") != NULL ? 1 : 0;
+	}
+	return cached != 0;
+}
+
+bool
+comp_render_cs_frame_overlay_active(void)
+{
+	struct u_gesture_feedback fb;
+	if (u_gesture_feedback_get(&fb)) {
+		return true;
+	}
+	return frame_overlay_test_enabled();
+}
+
+// Project a world point into this eye's normalised scratch coords [0,1],
+// top-left origin. Returns false if the point is behind the eye. Mirrors
+// u_gesture.c's project_to_uv so the overlay lands where the scene rendered.
+static bool
+frame_overlay_project(const struct xrt_matrix_4x4 *eye_view,
+                      const struct xrt_fov *fov,
+                      struct xrt_vec3 world,
+                      float *out_u,
+                      float *out_v)
+{
+	struct xrt_vec3 cam;
+	math_matrix_4x4_transform_vec3(eye_view, &world, &cam); // rigid, w=1
+	float depth = -cam.z;                                   // eye looks down -Z
+	if (depth <= 0.001f) {
+		return false;
+	}
+	float tl = tanf(fov->angle_left);
+	float tr = tanf(fov->angle_right);
+	float tu = tanf(fov->angle_up);
+	float td = tanf(fov->angle_down);
+	if (tr - tl < 1e-6f || tu - td < 1e-6f) {
+		return false;
+	}
+	*out_u = (cam.x / depth - tl) / (tr - tl);
+	*out_v = (tu - cam.y / depth) / (tu - td); // up -> 0 (top), down -> 1
+	return true;
+}
+
+// Hardcoded head-locked test quad (env de-risk path): a real 3D quad a fixed
+// distance in front of the user, returned in tracking space.
+static void
+frame_overlay_test_corners(const struct comp_render_dispatch_data *d, struct xrt_vec3 out_corners[4])
+{
+	uint32_t view_count = d->squash_view_count;
+
+	// Approximate head pose: midpoint of the per-eye world poses, sharing the
+	// (left) eye orientation.
+	struct xrt_pose eye0 = d->views[0].world_pose_scanout_begin;
+	struct xrt_pose eyeN = d->views[view_count > 1 ? 1 : 0].world_pose_scanout_begin;
+	struct xrt_quat head_orient = eye0.orientation;
+	struct xrt_vec3 head_pos = {
+	    (eye0.position.x + eyeN.position.x) * 0.5f,
+	    (eye0.position.y + eyeN.position.y) * 0.5f,
+	    (eye0.position.z + eyeN.position.z) * 0.5f,
+	};
+
+	const float depth_m = 1.0f;
+	const float half_w = 0.25f;
+	const float half_h = 0.18f;
+
+	struct xrt_vec3 fwd = {0, 0, -1}, right = {1, 0, 0}, up = {0, 1, 0};
+	math_quat_rotate_vec3(&head_orient, &fwd, &fwd);
+	math_quat_rotate_vec3(&head_orient, &right, &right);
+	math_quat_rotate_vec3(&head_orient, &up, &up);
+
+	struct xrt_vec3 center = {
+	    head_pos.x + fwd.x * depth_m,
+	    head_pos.y + fwd.y * depth_m,
+	    head_pos.z + fwd.z * depth_m,
+	};
+
+	for (int c = 0; c < 4; c++) {
+		float sx = (c == 0 || c == 3) ? -half_w : half_w; // left for TL/BL
+		float sy = (c == 0 || c == 1) ? half_h : -half_h; // top for TL/TR
+		out_corners[c].x = center.x + right.x * sx + up.x * sy;
+		out_corners[c].y = center.y + right.y * sx + up.y * sy;
+		out_corners[c].z = center.z + right.z * sx + up.z * sy;
+	}
+}
+
+// Source the 4 tracking-space corners + hold progress: the live detector
+// feedback when armed, else the env-gated hardcoded test quad. Returns false
+// when there is nothing to draw.
+static bool
+frame_overlay_get_corners(const struct comp_render_dispatch_data *d,
+                          struct xrt_vec3 out_corners[4],
+                          float *out_progress)
+{
+	struct u_gesture_feedback fb;
+	if (u_gesture_feedback_get(&fb)) {
+		for (int i = 0; i < 4; i++) {
+			out_corners[i] = fb.corners[i];
+		}
+		*out_progress = fb.progress;
+		return true;
+	}
+
+	if (!frame_overlay_test_enabled()) {
+		return false;
+	}
+
+	frame_overlay_test_corners(d, out_corners);
+	*out_progress = 1.0f;
+	return true;
+}
+
+// Draw the finger-frame rectangle into each view's scratch image, between the
+// layer squash and distortion. The 4 corners are a real 3D quad, projected
+// SEPARATELY into each eye so the rectangle carries the correct binocular
+// disparity and fuses cleanly (drawing the same UV in both eyes would fuse at
+// infinity). The colour charges white -> green as the hold completes.
+static void
+crc_frame_overlay(struct render_compute *render, const struct comp_render_dispatch_data *d)
+{
+	uint32_t view_count = d->squash_view_count;
+	if (view_count == 0) {
+		return;
+	}
+
+	struct xrt_vec3 corners[4];
+	float progress = 1.0f;
+	if (!frame_overlay_get_corners(d, corners, &progress)) {
+		return;
+	}
+
+	// Charge-up cue: white when just detected, green about to fire.
+	float col_r = 1.0f - progress;
+	float col_g = 1.0f;
+	float col_b = 1.0f - progress;
+
+	for (uint32_t view_index = 0; view_index < view_count; view_index++) {
+		const struct comp_render_view_data *view = &d->views[view_index];
+		const struct render_viewport_data *vp = &view->squash.viewport_data;
+
+		struct xrt_matrix_4x4 eye_view;
+		math_matrix_4x4_view_from_pose(&view->world_pose_scanout_begin, &eye_view);
+
+		// Per-eye axis-aligned bounding box of the projected corners. No
+		// clamp: corners off-screen just leave that edge undrawn (the shader
+		// skips out-of-image pixels), rather than snapping a false edge to the
+		// view border.
+		float minu = 1e9f, minv = 1e9f, maxu = -1e9f, maxv = -1e9f;
+		int ok = 0;
+		for (int c = 0; c < 4; c++) {
+			float u, v;
+			if (!frame_overlay_project(&eye_view, &view->fov, corners[c], &u, &v)) {
+				continue;
+			}
+			minu = fminf(minu, u);
+			maxu = fmaxf(maxu, u);
+			minv = fminf(minv, v);
+			maxv = fmaxf(maxv, v);
+			ok++;
+		}
+		if (ok < 4 || maxu <= minu || maxv <= minv) {
+			continue; // partly behind the eye, or a degenerate box
+		}
+
+		struct render_compute_frame_overlay_ubo_data data = {
+		    .viewport = {(int32_t)vp->x, (int32_t)vp->y, (int32_t)vp->w, (int32_t)vp->h},
+		    .rect = {minu, minv, maxu, maxv},
+		    .color = {col_r, col_g, col_b, 1.0f},
+		    .params = {4.0f, 0.0f, 0.0f, 0.0f}, // 4px half-thickness
+		};
+
+		render_compute_frame_overlay( //
+		    render,                   //
+		    view_index,               //
+		    view->squash.image,       //
+		    view->squash.cs.storage_view, //
+		    vp,                       //
+		    &data);                   //
+	}
+}
+
 void
 comp_render_cs_dispatch(struct render_compute *render,
                         const struct comp_layer *layers,
@@ -852,6 +1042,14 @@ comp_render_cs_dispatch(struct render_compute *render,
 		    layer_count,       //
 		    d,                 //
 		    transition_to);    //
+
+		/*
+		 * In-headset finger-frame overlay. Drawn into the scratch between
+		 * squash and distortion, when a gesture is held (or the env test).
+		 */
+		if (comp_render_cs_frame_overlay_active()) {
+			crc_frame_overlay(render, d);
+		}
 
 		/*
 		 * Distortion.

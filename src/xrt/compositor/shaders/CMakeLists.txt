@@ -10,6 +10,7 @@ set(SHADERS
     blit.comp
     clear.comp
     distortion.comp
+    frame_overlay.comp
     layer.comp
     mesh.frag
     mesh.vert

@@ -14,6 +14,8 @@
 
 #include "render/render_interface.h"
 
+#include <string.h>
+
 
 /*
  *
@@ -438,6 +440,18 @@ render_compute_init(struct render_compute *render, struct render_resources *r)
 
 	VK_NAME_DESCRIPTOR_SET(vk, render->shared_descriptor_set, "render_compute shared descriptor set");
 
+	for (uint32_t i = 0; i < r->view_count; i++) {
+		ret = vk_create_descriptor_set(                    //
+		    vk,                                            // vk_bundle
+		    r->compute.descriptor_pool,                    // descriptor_pool
+		    r->compute.distortion.descriptor_set_layout,   // descriptor_set_layout
+		    &render->frame_overlay_descriptor_sets[i]);    // descriptor_set
+		VK_CHK_WITH_RET(ret, "vk_create_descriptor_set", false);
+
+		VK_NAME_DESCRIPTOR_SET(vk, render->frame_overlay_descriptor_sets[i],
+		                       "render_compute frame overlay descriptor set");
+	}
+
 	return true;
 }
 
@@ -504,6 +518,9 @@ render_compute_fini(struct render_compute *render)
 	render->shared_descriptor_set = VK_NULL_HANDLE;
 	for (uint32_t i = 0; i < ARRAY_SIZE(render->layer_descriptor_sets); i++) {
 		render->layer_descriptor_sets[i] = VK_NULL_HANDLE;
+	}
+	for (uint32_t i = 0; i < ARRAY_SIZE(render->frame_overlay_descriptor_sets); i++) {
+		render->frame_overlay_descriptor_sets[i] = VK_NULL_HANDLE;
 	}
 
 	vk->vkResetDescriptorPool(vk->device, render->r->compute.descriptor_pool, 0);
@@ -819,4 +836,111 @@ render_compute_clear(struct render_compute *render,
 	    NULL,                                 //
 	    1,                                    //
 	    &memoryBarrier);                      //
+}
+
+void
+render_compute_frame_overlay(struct render_compute *render,
+                             uint32_t view_index,
+                             VkImage scratch_image,
+                             VkImageView scratch_storage_view,
+                             const struct render_viewport_data *view,
+                             const struct render_compute_frame_overlay_ubo_data *data)
+{
+	assert(render->r != NULL);
+	assert(view_index < render->r->view_count);
+
+	struct vk_bundle *vk = vk_from_render(render);
+	struct render_resources *r = render->r;
+
+	VkDescriptorSet descriptor_set = render->frame_overlay_descriptor_sets[view_index];
+	struct render_buffer *ubo = &r->compute.frame_overlay.ubos[view_index];
+
+	// Push the per-view rectangle into the mapped UBO.
+	memcpy(ubo->mapped, data, sizeof(*data));
+
+	VkImageSubresourceRange subresource_range = {
+	    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+	    .baseMipLevel = 0,
+	    .levelCount = VK_REMAINING_MIP_LEVELS,
+	    .baseArrayLayer = 0,
+	    .layerCount = VK_REMAINING_ARRAY_LAYERS,
+	};
+
+	// The squash left the scratch in SHADER_READ_ONLY_OPTIMAL; flip it to
+	// GENERAL so the compute shader can write the border pixels.
+	vk_cmd_image_barrier_gpu_locked(              //
+	    vk,                                       //
+	    r->cmd,                                   //
+	    scratch_image,                            //
+	    VK_ACCESS_SHADER_READ_BIT,                // src_access_mask
+	    VK_ACCESS_SHADER_WRITE_BIT,               // dst_access_mask
+	    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // old_layout
+	    VK_IMAGE_LAYOUT_GENERAL,                  // new_layout
+	    subresource_range);                       //
+
+	// Only the target (binding 2) and UBO (binding 3) are used by the
+	// shader; src/distortion bindings are filled with mocks like clear.
+	VkSampler sampler = r->samplers.mock;
+	VkSampler src_samplers[XRT_MAX_VIEWS];
+	VkImageView src_image_views[XRT_MAX_VIEWS];
+	VkSampler distortion_samplers[3 * XRT_MAX_VIEWS];
+	for (uint32_t i = 0; i < r->view_count; ++i) {
+		src_samplers[i] = sampler;
+		src_image_views[i] = r->mock.color.image_view;
+		distortion_samplers[3 * i + 0] = sampler;
+		distortion_samplers[3 * i + 1] = sampler;
+		distortion_samplers[3 * i + 2] = sampler;
+	}
+
+	update_compute_shared_descriptor_set( //
+	    vk,                               //
+	    r->compute.src_binding,           //
+	    src_samplers,                     //
+	    src_image_views,                  //
+	    r->compute.distortion_binding,    //
+	    distortion_samplers,              //
+	    r->distortion.image_views,        //
+	    r->compute.target_binding,        //
+	    scratch_storage_view,             // target_image_view
+	    r->compute.ubo_binding,           //
+	    ubo->buffer,                      //
+	    VK_WHOLE_SIZE,                    // ubo_size
+	    descriptor_set,                   //
+	    r->view_count);                   //
+
+	vk->vkCmdBindPipeline(                  //
+	    r->cmd,                             //
+	    VK_PIPELINE_BIND_POINT_COMPUTE,     // pipelineBindPoint
+	    r->compute.frame_overlay.pipeline); // pipeline
+
+	vk->vkCmdBindDescriptorSets(               //
+	    r->cmd,                                //
+	    VK_PIPELINE_BIND_POINT_COMPUTE,        // pipelineBindPoint
+	    r->compute.distortion.pipeline_layout, // layout
+	    0,                                     // firstSet
+	    1,                                     // descriptorSetCount
+	    &descriptor_set,                       // pDescriptorSets
+	    0,                                     // dynamicOffsetCount
+	    NULL);                                 // pDynamicOffsets
+
+	uint32_t w = uint_divide_and_round_up(view->w, 8);
+	uint32_t h = uint_divide_and_round_up(view->h, 8);
+	assert(w != 0 && h != 0);
+
+	vk->vkCmdDispatch( //
+	    r->cmd,        //
+	    w,             // groupCountX
+	    h,             // groupCountY
+	    1);            // groupCountZ
+
+	// Restore SHADER_READ_ONLY_OPTIMAL for the distortion sample.
+	vk_cmd_image_barrier_gpu_locked(              //
+	    vk,                                       //
+	    r->cmd,                                   //
+	    scratch_image,                            //
+	    VK_ACCESS_SHADER_WRITE_BIT,               // src_access_mask
+	    VK_ACCESS_SHADER_READ_BIT,                // dst_access_mask
+	    VK_IMAGE_LAYOUT_GENERAL,                  // old_layout
+	    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // new_layout
+	    subresource_range);                       //
 }

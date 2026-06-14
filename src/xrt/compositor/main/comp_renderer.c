@@ -1078,6 +1078,13 @@ comp_renderer_draw(struct comp_renderer *r)
 	bool fast_path = c->base.frame_params.one_projection_layer_fast_path;
 	bool do_timewarp = !c->debug.atw_off;
 
+	// The frame-overlay (finger-frame feedback) draws into the per-eye scratch,
+	// which the compute fast path bypasses. Force the layer-squash path so the
+	// overlay is visible while it is active.
+	if (fast_path && comp_render_cs_frame_overlay_active()) {
+		fast_path = false;
+	}
+
 	// Consistency check.
 	assert(!fast_path || c->base.layer_accum.layer_count >= 1);
 

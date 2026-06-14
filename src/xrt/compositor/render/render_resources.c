@@ -830,7 +830,8 @@ render_resources_init(struct render_resources *r,
 
 	const uint32_t compute_descriptor_count = //
 	    1 +                                   // Shared/distortion run(s).
-	    RENDER_MAX_LAYER_RUNS_COUNT(r);       // Layer shader run(s).
+	    RENDER_MAX_LAYER_RUNS_COUNT(r) +      // Layer shader run(s).
+	    r->view_count;                        // Frame-overlay run(s), one per view.
 
 	struct vk_descriptor_pool_info compute_pool_info = {
 	    .uniform_per_descriptor_count = 1,
@@ -1038,6 +1039,41 @@ render_resources_init(struct render_resources *r,
 
 
 	/*
+	 * Frame-overlay pipeline (reuses the distortion descriptor/pipeline
+	 * layout, like clear), with one UBO per view.
+	 */
+
+	ret = vk_create_compute_pipeline(          //
+	    vk,                                    // vk_bundle
+	    r->pipeline_cache,                     // pipeline_cache
+	    r->shaders->frame_overlay_comp,        // shader
+	    r->compute.distortion.pipeline_layout, // pipeline_layout
+	    NULL,                                  // specialization_info
+	    &r->compute.frame_overlay.pipeline);   // out_compute_pipeline
+	VK_CHK_WITH_RET(ret, "vk_create_compute_pipeline", false);
+
+	VK_NAME_PIPELINE(vk, r->compute.frame_overlay.pipeline, "render_resources compute frame overlay pipeline");
+
+	size_t frame_overlay_ubo_size = sizeof(struct render_compute_frame_overlay_ubo_data);
+
+	for (uint32_t i = 0; i < r->view_count; i++) {
+		ret = render_buffer_init(              //
+		    vk,                                // vk_bundle
+		    &r->compute.frame_overlay.ubos[i], // buffer
+		    ubo_usage_flags,                   // usage_flags
+		    memory_property_flags,             // memory_property_flags
+		    frame_overlay_ubo_size);           // size
+		VK_CHK_WITH_RET(ret, "render_buffer_init", false);
+		VK_NAME_BUFFER(vk, r->compute.frame_overlay.ubos[i].buffer, "render_resources compute frame overlay ubo");
+
+		ret = render_buffer_map(               //
+		    vk,                                // vk_bundle
+		    &r->compute.frame_overlay.ubos[i]); // buffer
+		VK_CHK_WITH_RET(ret, "render_buffer_map", false);
+	}
+
+
+	/*
 	 * Compute distortion textures, not created until later.
 	 */
 
@@ -1131,12 +1167,17 @@ render_resources_fini(struct render_resources *r)
 
 	D(Pipeline, r->compute.clear.pipeline);
 
+	D(Pipeline, r->compute.frame_overlay.pipeline);
+
 	render_distortion_images_fini(r);
 	render_buffer_fini(vk, &r->compute.clear.ubo);
 	for (uint32_t i = 0; i < r->view_count; i++) {
 		render_buffer_fini(vk, &r->compute.layer.ubos[i]);
 	}
 	render_buffer_fini(vk, &r->compute.distortion.ubo);
+	for (uint32_t i = 0; i < r->view_count; i++) {
+		render_buffer_fini(vk, &r->compute.frame_overlay.ubos[i]);
+	}
 
 	vk_cmd_pool_destroy(vk, &r->distortion_pool);
 	D(CommandPool, r->cmd_pool);

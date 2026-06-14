@@ -28,6 +28,7 @@ struct render_shaders
 	VkShaderModule clear_comp;
 	VkShaderModule layer_comp;
 	VkShaderModule distortion_comp;
+	VkShaderModule frame_overlay_comp;
 
 	VkShaderModule mesh_vert;
 	VkShaderModule mesh_frag;

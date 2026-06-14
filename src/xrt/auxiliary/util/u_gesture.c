@@ -10,6 +10,7 @@
 #include "util/u_misc.h"
 #include "util/u_logging.h"
 #include "util/u_screenshot.h"
+#include "util/u_gesture_feedback.h"
 #include "util/u_file.h"
 #include "util/u_json.h"
 
@@ -66,6 +67,7 @@ struct u_gesture
 
 	bool enabled;
 	bool debug;
+	bool frame_feedback; // draw the in-headset rectangle while the pose is held
 	int64_t hold_ns;
 	int64_t cooldown_ns;
 
@@ -259,6 +261,23 @@ project_to_uv(const struct xrt_matrix_4x4 *view, const struct xrt_fov *fov, stru
 	return true;
 }
 
+// The frame's corners: thumb tip + index tip of each hand, in tracking space.
+// Order is irrelevant downstream (both the crop and the overlay take a bounding
+// box of the four points).
+static void
+compute_frame_world_corners(const struct xrt_hand_joint_set *left,
+                            const struct xrt_hand_joint_set *right,
+                            struct xrt_vec3 out_corners[4])
+{
+	const struct xrt_hand_joint_set *sets[4] = {left, left, right, right};
+	const enum xrt_hand_joint js[4] = {XRT_HAND_JOINT_THUMB_TIP, XRT_HAND_JOINT_INDEX_TIP,
+	                                   XRT_HAND_JOINT_THUMB_TIP, XRT_HAND_JOINT_INDEX_TIP};
+	for (int i = 0; i < 4; i++) {
+		struct xrt_vec3 local = joint_pos(sets[i], js[i]);
+		math_pose_transform_point(&sets[i]->hand_pose.pose, &local, &out_corners[i]);
+	}
+}
+
 // Compute the framed region (bounding box of the 4 fingertip corners projected
 // into the left eye) and request a cropped screenshot. Falls back to full view
 // if the head/projection isn't usable.
@@ -293,20 +312,14 @@ request_framed_screenshot(struct u_gesture *g,
 	struct xrt_matrix_4x4 view;
 	math_matrix_4x4_view_from_pose(&eye_world, &view);
 
-	// The frame's corners: thumb tip + index tip of each hand, world space.
-	const struct xrt_hand_joint_set *sets[4] = {left, left, right, right};
-	const enum xrt_hand_joint js[4] = {XRT_HAND_JOINT_THUMB_TIP, XRT_HAND_JOINT_INDEX_TIP,
-	                                   XRT_HAND_JOINT_THUMB_TIP, XRT_HAND_JOINT_INDEX_TIP};
+	struct xrt_vec3 corners[4];
+	compute_frame_world_corners(left, right, corners);
 
 	float minu = 1e9f, minv = 1e9f, maxu = -1e9f, maxv = -1e9f;
 	int ok = 0;
 	for (int i = 0; i < 4; i++) {
-		struct xrt_vec3 local = joint_pos(sets[i], js[i]);
-		struct xrt_vec3 world;
-		math_pose_transform_point(&sets[i]->hand_pose.pose, &local, &world);
-
 		float u, v;
-		if (!project_to_uv(&view, &fovs[0], world, &u, &v)) {
+		if (!project_to_uv(&view, &fovs[0], corners[i], &u, &v)) {
 			continue;
 		}
 		if (u < minu) {
@@ -401,15 +414,32 @@ detect_and_maybe_fire(struct u_gesture *g, int64_t now_ns)
 
 	if (!detected) {
 		g->hold_start_ns = 0;
+		if (g->frame_feedback) {
+			u_gesture_feedback_clear();
+		}
 		return;
 	}
 
 	if (g->hold_start_ns == 0) {
 		g->hold_start_ns = now_ns;
-		return;
+	}
+
+	// Publish the live in-headset rectangle (corners + hold progress) every
+	// tick the pose is held.
+	if (g->frame_feedback) {
+		struct xrt_vec3 corners[4];
+		compute_frame_world_corners(&left, &right, corners);
+		float progress = (float)(now_ns - g->hold_start_ns) / (float)g->hold_ns;
+		progress = progress < 0.0f ? 0.0f : (progress > 1.0f ? 1.0f : progress);
+		u_gesture_feedback_publish(corners, progress);
 	}
 
 	if (now_ns - g->hold_start_ns >= g->hold_ns && now_ns - g->last_fire_ns >= g->cooldown_ns) {
+		// Stop drawing before the shutter fires so the captured frame is
+		// clean (no overlay lines burned into the screenshot).
+		if (g->frame_feedback) {
+			u_gesture_feedback_clear();
+		}
 		request_framed_screenshot(g, &left, &right, now_ns);
 		g->last_fire_ns = now_ns;
 		g->hold_start_ns = 0; // require releasing and re-forming the pose
@@ -430,6 +460,7 @@ load_config(struct u_gesture *g)
 	bool enabled = true;
 	int hold_ms = DEFAULT_HOLD_MS;
 	bool debug = false;
+	bool frame_feedback = true;
 
 	if (g->config_path[0] != '\0') {
 		size_t size = 0;
@@ -440,6 +471,7 @@ load_config(struct u_gesture *g)
 				u_json_get_bool(u_json_get(root, "enabled"), &enabled);
 				u_json_get_int(u_json_get(root, "hold_ms"), &hold_ms);
 				u_json_get_bool(u_json_get(root, "debug"), &debug);
+				u_json_get_bool(u_json_get(root, "frame_feedback"), &frame_feedback);
 				cJSON_Delete(root);
 			}
 			free(content);
@@ -459,6 +491,9 @@ load_config(struct u_gesture *g)
 	if (getenv("MONADO_GESTURE_DEBUG") != NULL) {
 		debug = true;
 	}
+	if (getenv("MONADO_GESTURE_NO_FEEDBACK") != NULL) {
+		frame_feedback = false;
+	}
 
 	if (hold_ms < 100) {
 		hold_ms = 100; // sanity floor
@@ -467,6 +502,7 @@ load_config(struct u_gesture *g)
 	g->enabled = enabled;
 	g->hold_ns = (int64_t)hold_ms * 1000 * 1000LL;
 	g->debug = debug;
+	g->frame_feedback = frame_feedback;
 }
 
 // Reload the config file when it changes on disk (so the control app can toggle
@@ -489,8 +525,13 @@ maybe_reload_config(struct u_gesture *g, int64_t now_ns)
 	}
 	g->config_mtime = (int64_t)st.st_mtime;
 	load_config(g);
-	U_LOG_I("gesture: reloaded config (enabled=%d hold=%lldms debug=%d)", g->enabled,
-	        (long long)(g->hold_ns / (1000 * 1000)), g->debug);
+	U_LOG_I("gesture: reloaded config (enabled=%d hold=%lldms debug=%d frame_feedback=%d)", g->enabled,
+	        (long long)(g->hold_ns / (1000 * 1000)), g->debug, g->frame_feedback);
+
+	// Drop any lingering overlay if the feature was just turned off.
+	if (!g->enabled || !g->frame_feedback) {
+		u_gesture_feedback_clear();
+	}
 #else
 	(void)g;
 	(void)now_ns;

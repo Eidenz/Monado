@@ -1,0 +1,62 @@
+// Copyright 2026, Collabora, Ltd.
+// SPDX-License-Identifier: BSL-1.0
+//
+// Draws a rectangle outline into the per-eye scratch image (undistorted,
+// post-layer, pre-distortion), as live in-headset feedback for the
+// finger-frame screenshot gesture. One dispatch per view; only border
+// pixels are written, every other pixel keeps its composited value.
+
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// Reuses the compute distortion descriptor set layout (shared with clear), so
+// the target storage image lives on binding 2 and the UBO on binding 3.
+layout(set = 0, binding = 2) uniform writeonly restrict image2D target;
+layout(set = 0, binding = 3) uniform restrict Config
+{
+	//! Where in the scratch image this view lives: xy = offset, zw = extent (px).
+	ivec4 viewport;
+	//! Rectangle in normalised viewport coords [0,1], top-left origin.
+	vec4 rect;
+	//! Line colour, straight RGBA written as unorm.
+	vec4 color;
+	//! x = line half-thickness in pixels; yzw reserved.
+	vec4 params;
+} data;
+
+
+void main()
+{
+	ivec2 extent = data.viewport.zw;
+
+	int ix = int(gl_GlobalInvocationID.x);
+	int iy = int(gl_GlobalInvocationID.y);
+	if (ix >= extent.x || iy >= extent.y) {
+		return;
+	}
+
+	// Rectangle edges in this view's pixel space.
+	float rx0 = data.rect.x * float(extent.x);
+	float ry0 = data.rect.y * float(extent.y);
+	float rx1 = data.rect.z * float(extent.x);
+	float ry1 = data.rect.w * float(extent.y);
+
+	float t = data.params.x;
+	vec2 px = vec2(ix, iy);
+
+	// On the border = inside the fattened outer rect but outside the
+	// shrunken inner rect.
+	bool inside_outer = px.x >= rx0 - t && px.x <= rx1 + t && //
+	                    px.y >= ry0 - t && px.y <= ry1 + t;
+	bool inside_inner = px.x >= rx0 + t && px.x <= rx1 - t && //
+	                    px.y >= ry0 + t && px.y <= ry1 - t;
+	if (!inside_outer || inside_inner) {
+		return;
+	}
+
+	ivec2 coord = data.viewport.xy + ivec2(ix, iy);
+	imageStore(target, coord, data.color);
+}
