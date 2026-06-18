@@ -105,18 +105,24 @@ fi
 declare -A SKIP
 for l in "${EXC[@]}"; do SKIP["$l"]=1; done
 
-# Always leave these to the target regardless of the fetched list: the GPU /
-# display / system-service stack. A bundled copy would talk to a mismatched
-# system daemon (systemd/udev/dbus) or load a wrong Vulkan ICD -- these MUST come
-# from the user's own machine. Every VR-capable desktop already has them.
-EXTRA_EXCLUDE=(
-	libvulkan.so.1 libGL.so.1 libEGL.so.1 libGLX.so.0 libGLdispatch.so.0 libOpenGL.so.0
-	libdrm.so.2 libgbm.so.1
-	libwayland-client.so.0 libwayland-server.so.0 libwayland-egl.so.1 libwayland-cursor.so.0
-	libxkbcommon.so.0 libxkbcommon-x11.so.0
-	libudev.so.1 libsystemd.so.0 libdbus-1.so.3
-)
-for l in "${EXTRA_EXCLUDE[@]}"; do SKIP["$l"]=1; done
+# Force-to-system (never bundle): the GPU / kernel-coupled stack -- a bundled
+# copy would mismatch the target's GPU userspace driver or kernel DRM. The
+# excludelist already leaves libGL/libdrm/libX11/libxcb/libwayland-client to the
+# system (the latter two avoid the infamous double-libxcb-with-system-GL crash),
+# but it does NOT exclude the Vulkan loader -- and a VR runtime wants the
+# target's loader so it matches that machine's own GPU ICDs. The GL/EGL/gbm
+# names are listed for clarity and in case the embedded fallback list is used.
+for l in libvulkan.so.1 libGL.so.1 libEGL.so.1 libGLX.so.0 libGLdispatch.so.0 \
+	libOpenGL.so.0 libgbm.so.1 libdrm.so.2; do
+	SKIP["$l"]=1
+done
+
+# Force-to-bundle (override the excludelist): SDL2 hard-links the PulseAudio/ALSA
+# stack, but libasound isn't guaranteed present (pipewire-only / minimal boxes).
+# Monado never uses audio, so a bundled copy just has to satisfy the loader --
+# bundling drops the dependency entirely. Leaving it to the system is what failed
+# the clean-container check.
+unset 'SKIP[libasound.so.2]' 2>/dev/null || true
 
 # Recursively copy a binary's non-excluded shared-lib deps into PREFIX/lib.
 bundle_deps() {

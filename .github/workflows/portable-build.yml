@@ -74,10 +74,10 @@ jobs:
           docker run --rm -v "$PWD/dist-out:/work:ro" fedora:latest bash -c '
             set -e
             # Install only the GPU/display stack a VR box always has (mesa pulls
-            # in libdrm, wayland, libX11/xcb, etc.) -- NOT monado build deps.
+            # in libdrm, libgbm, wayland-client, libX11/xcb) plus libusb -- NOT
+            # monado build deps. Everything else the binary needs is bundled.
             dnf -y install tar gzip vulkan-loader mesa-libGL mesa-vulkan-drivers \
-              libX11 libxcb libXrandr libXext libxkbcommon libusb1 \
-              systemd-libs dbus-libs || true
+              libX11 libxcb libusb1 || true
             cd /tmp && tar -xzf /work/monado-fork-*.tar.gz
             echo "== ldd monado/bin/monado-service =="
             ldd monado/bin/monado-service || true
