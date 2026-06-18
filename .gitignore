@@ -111,6 +111,9 @@ vk_layer_settings.txt
 # Ignore local pyenv version file
 .python-version
 
+# Ignore portable-build output (build-portable/ is already covered by build*/)
+dist-out/
+
 # Ignore Nix files
 result/
 .direnv/
