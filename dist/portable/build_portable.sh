@@ -27,6 +27,10 @@
 
 set -euo pipefail
 
+# Release (-O3, no debug info) for the distributed artifact. The README uses
+# RelWithDebInfo, but that's only useful for getting crash backtraces during
+# development -- and we strip the artifact anyway, so the symbols would be thrown
+# away. Override with BUILD_TYPE=RelWithDebInfo if you need to debug a build.
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 SRC_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 BUILD_DIR="$SRC_DIR/build-portable"
@@ -56,8 +60,19 @@ cmake -G Ninja -S "$SRC_DIR" -B "$BUILD_DIR" \
 	-DXRT_FEATURE_OPENXR=ON \
 	-DXRT_FEATURE_SERVICE_SYSTEMD=OFF \
 	-DXRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE=ON \
-	-DXRT_BUILD_DRIVER_VIVE=ON \
-	-DXRT_BUILD_DRIVER_WMR=ON
+	-DXRT_BUILD_DRIVER_SURVIVE=OFF \
+	-DXRT_BUILD_DRIVER_UDCAP=ON \
+	-DXRT_FEATURE_GESTURE_DETECTOR=OFF
+
+# Guard: option_with_deps silently turns a driver OFF when a build dependency is
+# missing (it doesn't error). Fail loudly if a fork-critical driver didn't enable.
+for opt in XRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE XRT_BUILD_DRIVER_UDCAP; do
+	if ! grep -q "^${opt}:BOOL=ON" "$BUILD_DIR/CMakeCache.txt"; then
+		echo "ERROR: $opt did not enable (missing build dependency?)" >&2
+		grep "^${opt}:" "$BUILD_DIR/CMakeCache.txt" >&2 || true
+		exit 1
+	fi
+done
 
 cmake --build "$BUILD_DIR"
 DESTDIR="$APPDIR" cmake --install "$BUILD_DIR"
@@ -89,6 +104,19 @@ else
 fi
 declare -A SKIP
 for l in "${EXC[@]}"; do SKIP["$l"]=1; done
+
+# Always leave these to the target regardless of the fetched list: the GPU /
+# display / system-service stack. A bundled copy would talk to a mismatched
+# system daemon (systemd/udev/dbus) or load a wrong Vulkan ICD -- these MUST come
+# from the user's own machine. Every VR-capable desktop already has them.
+EXTRA_EXCLUDE=(
+	libvulkan.so.1 libGL.so.1 libEGL.so.1 libGLX.so.0 libGLdispatch.so.0 libOpenGL.so.0
+	libdrm.so.2 libgbm.so.1
+	libwayland-client.so.0 libwayland-server.so.0 libwayland-egl.so.1 libwayland-cursor.so.0
+	libxkbcommon.so.0 libxkbcommon-x11.so.0
+	libudev.so.1 libsystemd.so.0 libdbus-1.so.3
+)
+for l in "${EXTRA_EXCLUDE[@]}"; do SKIP["$l"]=1; done
 
 # Recursively copy a binary's non-excluded shared-lib deps into PREFIX/lib.
 bundle_deps() {
@@ -128,4 +156,5 @@ tar -C "$STAGE" -czf "$TARBALL" monado
 echo "==> done: $TARBALL"
 du -h "$TARBALL"
 echo "==> bundled libs:"; ls "$PREFIX/lib" | sed 's/^/    /'
-echo "==> tree (first 25 entries):"; tar -tzf "$TARBALL" | head -25
+# NB: `| head` would SIGPIPE tar and trip `set -o pipefail`; sed reads to EOF.
+echo "==> tree (first 25 entries):"; tar -tzf "$TARBALL" | sed -n '1,25p'

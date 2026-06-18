@@ -31,14 +31,12 @@ jobs:
             curl ca-certificates file python3 \
             glslang-tools \
             libvulkan-dev libgl1-mesa-dev mesa-common-dev \
-            libeigen3-dev libsdl2-dev libusb-1.0-0-dev libudev-dev \
+            libeigen3-dev libsdl2-dev libusb-1.0-0-dev libudev-dev zlib1g-dev \
             libx11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxrandr-dev \
             libwayland-dev wayland-protocols libbsd-dev libopenxr-dev libdbus-1-dev
 
       - name: Build + package portable Monado
         run: bash ./dist/portable/build_portable.sh
-        env:
-          BUILD_TYPE: Release
 
       - uses: actions/upload-artifact@v4
         with:
@@ -78,7 +76,8 @@ jobs:
             # Install only the GPU/display stack a VR box always has (mesa pulls
             # in libdrm, wayland, libX11/xcb, etc.) -- NOT monado build deps.
             dnf -y install tar gzip vulkan-loader mesa-libGL mesa-vulkan-drivers \
-              libX11 libxcb libXrandr libXext libxkbcommon libusb1 || true
+              libX11 libxcb libXrandr libXext libxkbcommon libusb1 \
+              systemd-libs dbus-libs || true
             cd /tmp && tar -xzf /work/monado-fork-*.tar.gz
             echo "== ldd monado/bin/monado-service =="
             ldd monado/bin/monado-service || true

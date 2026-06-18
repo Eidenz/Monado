@@ -4,7 +4,7 @@
 
 ```bash
 # Build
-cmake -B cbuild -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+cmake -B cbuild -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX=/usr \
   -DXRT_BUILD_DRIVER_STEAMVR_LIGHTHOUSE=ON \
   -DXRT_BUILD_DRIVER_SURVIVE=OFF \
