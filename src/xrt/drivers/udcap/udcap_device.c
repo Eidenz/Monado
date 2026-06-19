@@ -141,10 +141,17 @@ udcap_device_is_alive(struct xrt_device *xdev)
 static float
 bone_curl(udcap_quat q)
 {
-	// Continuous rotation angle (2*atan2(|vec|, w)) so a hard curl stays
-	// monotonic past 180° instead of folding back toward 0 like 2*acos(|w|).
-	float v = sqrtf(q.x * q.x + q.y * q.y + q.z * q.z);
-	float c = 2.0f * atan2f(v, q.w) / UDCAP_MAX_BEND_RAD;
+	// Flexion = rotation about the bone's roll (Z) axis, where the core encodes
+	// curl. Project onto Z -- 2*atan2(|z|, w) -- rather than the total rotation
+	// magnitude 2*atan2(|xyz|, w): the magnitude also absorbs splay (encoded on the
+	// proximal's Y), so for q = Rz(curl)*Rx*Ry(splay), z = sin(c/2)cos(s/2) and
+	// w = cos(c/2)cos(s/2) -- the splay's cos(s/2) cancels in the Z projection but
+	// not the magnitude. With the old formula a pure splay read as curl (fingers
+	// curled the first phalanx instead of spreading). Intermediate/distal carry no
+	// splay (curl on Z only), so |z| == magnitude there and they're unaffected.
+	// fabsf keeps it valid for both hands (curl sign flips L/R) and monotonic past
+	// 180° (z keeps one sign across a full bend).
+	float c = 2.0f * atan2f(fabsf(q.z), q.w) / UDCAP_MAX_BEND_RAD;
 	if (c < 0.0f) {
 		c = 0.0f;
 	}
