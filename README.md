@@ -80,7 +80,24 @@ capture is armed (it no longer fires on its own — you trigger with an index
 curl). Set `frame_feedback` to `false` to arm silently, without the in-headset
 outline.
 
-> **AI usage:** The UDCAP, hotplug, in-headset screenshot and finger-frame gesture additions in this fork were developed with AI assistance (Anthropic's Claude), under human direction, testing, and review. Upstream Monado is unaffected.
+### Controller freeze
+
+Hold one app's controllers in place while every other app and overlay keeps
+tracking them live. The frozen app sees its hands stay where they were, with no
+effect on anything else. It is per client, addressed by client id.
+
+Trigger it from libmonado (`mnd_root_set_client_controller_freeze`) or the
+command line:
+
+```bash
+monado-ctl --freeze <client-id>     # hold that client's controllers
+monado-ctl --unfreeze <client-id>   # resume live tracking
+```
+
+Run `monado-ctl` with no arguments to list clients and their ids. The symbol is
+absent on stock Monado, so tools can detect support before showing freeze UI.
+
+> **AI usage:** The UDCAP, hotplug, in-headset screenshot, finger-frame gesture and controller-freeze additions in this fork were developed with AI assistance (Anthropic's Claude), under human direction, testing, and review. Upstream Monado is unaffected.
 
 ---
 
