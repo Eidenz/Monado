@@ -34,6 +34,7 @@ typedef enum op_mode
 	MODE_RECENTER,
 	MODE_GET_BRIGHTNESS,
 	MODE_SET_BRIGHTNESS,
+	MODE_SET_CONTROLLER_FREEZE,
 } op_mode_t;
 
 
@@ -191,6 +192,21 @@ toggle_io(struct ipc_connection *ipc_c, int client_id)
 }
 
 int
+set_controller_freeze(struct ipc_connection *ipc_c, int client_id, bool freeze)
+{
+	xrt_result_t r;
+
+	r = ipc_call_system_set_client_controller_freeze(ipc_c, client_id, freeze ? 1u : 0u);
+	if (r != XRT_SUCCESS) {
+		PE("Failed to set controller freeze for client %d.\n", client_id);
+		return 1;
+	}
+
+	P("%s controllers for client %d.\n", freeze ? "Froze" : "Unfroze", client_id);
+	return 0;
+}
+
+int
 recenter_local_spaces(struct ipc_connection *ipc_c)
 {
 	xrt_result_t r;
@@ -305,6 +321,8 @@ enum LongOptions
 	OPTION_DEVICE = 1,
 	OPTION_GET_BRIGHTNESS,
 	OPTION_SET_BRIGHTNESS,
+	OPTION_FREEZE,
+	OPTION_UNFREEZE,
 };
 
 int
@@ -316,12 +334,15 @@ main(int argc, char *argv[])
 	int c;
 	int s_val = 0;
 	int device_val = -1;
+	bool freeze_val = false;
 	char *brightness;
 
 	static struct option long_options[] = {
 	    {"device", required_argument, NULL, OPTION_DEVICE},
 	    {"get-brightness", no_argument, NULL, OPTION_GET_BRIGHTNESS},
 	    {"set-brightness", required_argument, NULL, OPTION_SET_BRIGHTNESS},
+	    {"freeze", required_argument, NULL, OPTION_FREEZE},
+	    {"unfreeze", required_argument, NULL, OPTION_UNFREEZE},
 	    {NULL, 0, NULL, 0},
 	};
 
@@ -355,6 +376,18 @@ main(int argc, char *argv[])
 			op_mode = MODE_SET_BRIGHTNESS;
 			break;
 		}
+		case OPTION_FREEZE: {
+			s_val = atoi(optarg);
+			freeze_val = true;
+			op_mode = MODE_SET_CONTROLLER_FREEZE;
+			break;
+		}
+		case OPTION_UNFREEZE: {
+			s_val = atoi(optarg);
+			freeze_val = false;
+			op_mode = MODE_SET_CONTROLLER_FREEZE;
+			break;
+		}
 		case '?':
 			if (optopt == 's') {
 				PE("Option -s requires an id to set.\n");
@@ -368,6 +401,8 @@ main(int argc, char *argv[])
 				   "primary device\n");
 				PE("    --get-brightness: Get current display brightness in percent\n");
 				PE("    --set-brightness <[+-]brightness[%%]>: Set display brightness\n");
+				PE("    --freeze <id>: Hold a client's hand-controller poses in place\n");
+				PE("    --unfreeze <id>: Resume live controller tracking for a client\n");
 			} else {
 				PE("Option `\\x%x' unknown.\n", optopt);
 			}
@@ -407,6 +442,7 @@ main(int argc, char *argv[])
 	case MODE_RECENTER: exit(recenter_local_spaces(&ipc_c)); break;
 	case MODE_GET_BRIGHTNESS: exit(get_brightness(&ipc_c, device_val)); break;
 	case MODE_SET_BRIGHTNESS: exit(set_brightness(&ipc_c, device_val, brightness)); break;
+	case MODE_SET_CONTROLLER_FREEZE: exit(set_controller_freeze(&ipc_c, s_val, freeze_val)); break;
 	default: P("Unrecognised operation mode.\n"); exit(1);
 	}
 

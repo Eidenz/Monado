@@ -410,6 +410,21 @@ mnd_root_set_client_io_blocks(mnd_root_t *root, uint32_t client_id, mnd_io_block
 }
 
 mnd_result_t
+mnd_root_set_client_controller_freeze(mnd_root_t *root, uint32_t client_id, bool freeze)
+{
+	CHECK_NOT_NULL(root);
+	CHECK_CLIENT_ID(client_id);
+
+	xrt_result_t r = ipc_call_system_set_client_controller_freeze(&root->ipc_c, client_id, freeze ? 1u : 0u);
+	if (r != XRT_SUCCESS) {
+		PE("Failed to set controller freeze for client id: %u.\n", client_id);
+		return MND_ERROR_OPERATION_FAILED;
+	}
+
+	return MND_SUCCESS;
+}
+
+mnd_result_t
 mnd_root_get_device_count(mnd_root_t *root, uint32_t *out_device_count)
 {
 	CHECK_NOT_NULL(root);

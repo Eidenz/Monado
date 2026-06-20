@@ -196,6 +196,33 @@ struct ipc_client_state
 	int server_thread_index;
 
 	xrt_shmem_handle_t ism_handle;
+
+	/*!
+	 * NemuriXR controller-pose freeze ("hold hands in place").
+	 *
+	 * When set (by another client via
+	 * ipc_handle_system_set_client_controller_freeze targeting this client),
+	 * hand-controller pose spaces this client locates are held at the pose
+	 * captured on the freeze's rising edge, while every other client keeps
+	 * tracking the same controllers live.
+	 *
+	 * Only written by the per-client thread (locate/create_pose) except
+	 * @ref freeze_controllers and @ref freeze_epoch which are flipped under
+	 * the global lock by the controlling client, mirroring io_blocks.
+	 */
+	bool freeze_controllers;
+
+	//! Bumped on each freeze ON; spaces re-capture when their stored epoch differs.
+	uint32_t freeze_epoch;
+
+	//! Per-space: is this a hand-controller (non-head) pose space.
+	bool space_is_controller_pose[IPC_MAX_CLIENT_SPACES];
+
+	//! Per-space: freeze epoch the snapshot below was captured at (0 = none).
+	uint32_t space_freeze_epoch[IPC_MAX_CLIENT_SPACES];
+
+	//! Per-space: the held relation, replayed while frozen.
+	struct xrt_space_relation space_freeze_relation[IPC_MAX_CLIENT_SPACES];
 };
 
 enum ipc_thread_state
@@ -496,6 +523,15 @@ ipc_server_toggle_io_client(struct ipc_server *s, uint32_t client_id);
  */
 xrt_result_t
 ipc_server_set_client_io_blocks(struct ipc_server *s, uint32_t client_id, const struct ipc_client_io_blocks *blocks);
+
+/*!
+ * Freeze (hold in place) or unfreeze the hand-controller poses delivered to this
+ * client, while other clients keep tracking the same controllers live.
+ *
+ * @ingroup ipc_server
+ */
+xrt_result_t
+ipc_server_set_client_controller_freeze(struct ipc_server *s, uint32_t client_id, bool freeze);
 
 /*!
  * Called by client threads to set a session to active.

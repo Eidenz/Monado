@@ -26,7 +26,7 @@ extern "C" {
 //! Major version of the API.
 #define MND_API_VERSION_MAJOR 1
 //! Minor version of the API.
-#define MND_API_VERSION_MINOR 7
+#define MND_API_VERSION_MINOR 8
 //! Patch version of the API.
 #define MND_API_VERSION_PATCH 0
 
@@ -320,6 +320,25 @@ mnd_root_toggle_client_io_active(mnd_root_t *root, uint32_t client_id);
  */
 mnd_result_t
 mnd_root_set_client_io_blocks(mnd_root_t *root, uint32_t client_id, mnd_io_block_flags_t block_flags);
+
+/*!
+ * Freeze (or unfreeze) the hand-controller poses delivered to the given client,
+ * holding the hands at their last position. The same controllers keep tracking
+ * live in every other client (overlays, other apps), so e.g. VRChat hands can be
+ * pinned in place while a WayVR menu stays usable.
+ *
+ * Supported in version 1.8 and above.
+ *
+ * @param root      The libmonado state.
+ * @param client_id ID of the client to freeze controllers for.
+ * @param freeze    True to hold the hands still, false to resume live tracking.
+ *
+ * @pre Called @ref mnd_root_update_client_list at least once
+ *
+ * @return MND_SUCCESS on success
+ */
+mnd_result_t
+mnd_root_set_client_controller_freeze(mnd_root_t *root, uint32_t client_id, bool freeze);
 
 /*!
  * Get the number of devices

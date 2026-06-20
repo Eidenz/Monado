@@ -54,6 +54,58 @@
 	} while (0)
 
 
+/*!
+ * NemuriXR controller-freeze: a pose space is freezable if it belongs to a hand
+ * controller (left/right) and isn't the head pose — same head exclusion the
+ * io_blocks pose-blocking uses.
+ */
+static bool
+is_controller_pose_space(struct xrt_device *xdev, enum xrt_input_name name)
+{
+	if (xdev == NULL || name == XRT_INPUT_GENERIC_HEAD_POSE) {
+		return false;
+	}
+	return xdev->device_type == XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER ||
+	       xdev->device_type == XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER;
+}
+
+/*!
+ * NemuriXR controller-freeze: if this client has its controllers frozen and the
+ * given space is a tagged hand-controller pose space, hold @p out_relation at the
+ * pose captured on the freeze's rising edge (velocities zeroed). No-op otherwise,
+ * so all other clients keep getting live poses for the same controllers.
+ */
+static void
+apply_controller_freeze(volatile struct ipc_client_state *ics_v,
+                        uint32_t space_id,
+                        struct xrt_space_relation *out_relation)
+{
+	if (!ics_v->freeze_controllers || space_id >= IPC_MAX_CLIENT_SPACES) {
+		return;
+	}
+
+	// Only this client's own per-client thread touches these arrays.
+	struct ipc_client_state *ics = (struct ipc_client_state *)ics_v;
+	if (!ics->space_is_controller_pose[space_id]) {
+		return;
+	}
+
+	if (ics->space_freeze_epoch[space_id] != ics->freeze_epoch) {
+		// Rising edge for this space: snapshot the current pose, then hold it.
+		struct xrt_space_relation held = *out_relation;
+		held.relation_flags = (enum xrt_space_relation_flags)(
+		    held.relation_flags & ~(XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT |
+		                            XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT));
+		held.linear_velocity = (struct xrt_vec3)XRT_VEC3_ZERO;
+		held.angular_velocity = (struct xrt_vec3)XRT_VEC3_ZERO;
+		ics->space_freeze_relation[space_id] = held;
+		ics->space_freeze_epoch[space_id] = ics->freeze_epoch;
+	}
+
+	*out_relation = ics->space_freeze_relation[space_id];
+}
+
+
 static xrt_result_t
 validate_reference_space_type(volatile struct ipc_client_state *ics, enum xrt_reference_space_type type)
 {
@@ -675,6 +727,15 @@ ipc_handle_space_create_pose(volatile struct ipc_client_state *ics,
 		return xret;
 	}
 
+	// NemuriXR controller-freeze: remember whether this pose space is a hand
+	// controller, so locate can hold it still when this client is frozen. Reset
+	// the snapshot epoch in case this slot was just reused by a different space.
+	if (space_id < IPC_MAX_CLIENT_SPACES) {
+		struct ipc_client_state *ncs = (struct ipc_client_state *)ics;
+		ncs->space_is_controller_pose[space_id] = is_controller_pose_space(xdev, name);
+		ncs->space_freeze_epoch[space_id] = 0;
+	}
+
 	*out_space_id = space_id;
 
 	return xret;
@@ -699,14 +760,19 @@ ipc_handle_space_locate_space(volatile struct ipc_client_state *ics,
 
 	GET_XSPC_OR_RETURN(ics, space_id, space);
 
-	return xrt_space_overseer_locate_space( //
-	    xso,                                //
-	    base_space,                         //
-	    base_offset,                        //
-	    at_timestamp,                       //
-	    space,                              //
-	    offset,                             //
-	    out_relation);                      //
+	xrt_result_t xret = xrt_space_overseer_locate_space( //
+	    xso,                                             //
+	    base_space,                                      //
+	    base_offset,                                     //
+	    at_timestamp,                                    //
+	    space,                                           //
+	    offset,                                          //
+	    out_relation);                                   //
+
+	// NemuriXR: hold frozen hand-controller spaces still for this client.
+	apply_controller_freeze(ics, space_id, out_relation);
+
+	return xret;
 }
 
 xrt_result_t
@@ -790,6 +856,11 @@ ipc_handle_space_locate_spaces(volatile struct ipc_client_state *ics,
 	    space_count,                         //
 	    offsets,                             //
 	    out_relations);                      //
+
+	// NemuriXR: hold frozen hand-controller spaces still for this client.
+	for (uint32_t i = 0; i < space_count; i++) {
+		apply_controller_freeze(ics, space_ids[i], &out_relations[i]);
+	}
 
 	xret = ipc_send(imc, out_relations, sizeof(struct xrt_space_relation) * space_count);
 	if (xret != XRT_SUCCESS) {
@@ -1648,6 +1719,18 @@ ipc_handle_system_set_client_io_blocks(volatile struct ipc_client_state *_ics,
 	          blocks->block_outputs ? "true" : "false");
 
 	return ipc_server_set_client_io_blocks(s, client_id, blocks);
+}
+
+xrt_result_t
+ipc_handle_system_set_client_controller_freeze(volatile struct ipc_client_state *_ics,
+                                               uint32_t client_id,
+                                               uint32_t freeze)
+{
+	struct ipc_server *s = _ics->server;
+
+	IPC_INFO(s, "System setting controller freeze for client %u to %s.", client_id, freeze ? "on" : "off");
+
+	return ipc_server_set_client_controller_freeze(s, client_id, freeze != 0);
 }
 
 

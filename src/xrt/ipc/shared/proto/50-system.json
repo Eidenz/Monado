@@ -47,6 +47,13 @@
 		]
 	},
 
+	"system_set_client_controller_freeze": {
+		"in": [
+			{"name": "id", "type": "uint32_t"},
+			{"name": "freeze", "type": "uint32_t"}
+		]
+	},
+
 	"system_devices_get_list": {
 		"out": [
 			{"name": "device_list", "type": "struct ipc_device_list"}

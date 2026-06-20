@@ -633,6 +633,24 @@ set_client_io_blocks_locked(struct ipc_server *s, uint32_t client_id, const stru
 	return XRT_SUCCESS;
 }
 
+static xrt_result_t
+set_client_controller_freeze_locked(struct ipc_server *s, uint32_t client_id, bool freeze)
+{
+	volatile struct ipc_client_state *ics = find_client_locked(s, client_id);
+	if (ics == NULL) {
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	// Bump the epoch on each enable so already-tagged controller spaces re-snapshot
+	// their current pose on the next locate, instead of replaying a stale hold.
+	if (freeze) {
+		ics->freeze_epoch++;
+	}
+	ics->freeze_controllers = freeze;
+
+	return XRT_SUCCESS;
+}
+
 static uint32_t
 allocate_id_locked(struct ipc_server *s)
 {
@@ -747,6 +765,16 @@ ipc_server_set_client_io_blocks(struct ipc_server *s, uint32_t client_id, const 
 {
 	os_mutex_lock(&s->global_state.lock);
 	xrt_result_t xret = set_client_io_blocks_locked(s, client_id, blocks);
+	os_mutex_unlock(&s->global_state.lock);
+
+	return xret;
+}
+
+xrt_result_t
+ipc_server_set_client_controller_freeze(struct ipc_server *s, uint32_t client_id, bool freeze)
+{
+	os_mutex_lock(&s->global_state.lock);
+	xrt_result_t xret = set_client_controller_freeze_locked(s, client_id, freeze);
 	os_mutex_unlock(&s->global_state.lock);
 
 	return xret;
