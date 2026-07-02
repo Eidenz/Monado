@@ -25,7 +25,7 @@ extern "C" {
 /* shm_open() name (lives at /dev/shm/udcap_hands on Linux). */
 #define UDCAP_SHM_NAME "/udcap_hands"
 #define UDCAP_SHM_MAGIC 0x55444331u /* "UDC1" */
-#define UDCAP_SHM_VERSION 12u
+#define UDCAP_SHM_VERSION 13u
 
 enum udcap_hand_index
 {
@@ -202,6 +202,28 @@ typedef struct udcap_hand
 	 * above which the trackpad reports a resting finger. */
 	float stick_deadzone;
 	float trackpad_threshold;
+
+	/* --- Diagnostics for a control-app debug page (added in v13) -----------
+	 * Raw calibration internals for the 12 finger sensor channels the core
+	 * calibrates (raw sensors f4..f15, in capture order). For each channel:
+	 *   cali_open  = spread / adduction reference (the "open" capture)
+	 *   cali_fist  = fist / together reference    (fist for the flexion
+	 *                channels; the "together" protract capture for the splay
+	 *                channels at indices 4, 7, 10 = index / ring / little)
+	 *   cali_live  = current smoothed sensor reading (same source the core
+	 *                captures references from)
+	 * span = cali_fist - cali_open. A small |span| means the sensor barely
+	 * moved between the two poses, so that joint can't track -- it falls back
+	 * to the core's MIN_SPAN floor. The core treats |span| > 25 as a
+	 * "significant" (well-tracking) joint. cali_valid = 1 once a calibration
+	 * has populated the references. These are NOT part of the seqlock payload;
+	 * the server writes them directly (diagnostic only -- an occasional torn
+	 * float between poll frames is harmless). Consumers that don't need them
+	 * can ignore these fields entirely. */
+	float cali_open[12];
+	float cali_fist[12];
+	float cali_live[12];
+	uint32_t cali_valid;
 } udcap_hand;
 
 /* A wireless receiver (USB dongle). Receivers are hand-agnostic until a glove
