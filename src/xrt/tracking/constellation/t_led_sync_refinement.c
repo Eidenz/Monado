@@ -36,7 +36,7 @@ DEBUG_GET_ONCE_LOG_OPTION(led_sync_refinement_log, "T_LED_SYNC_REFINEMENT_LOG", 
 static time_duration_ns
 change_good_cutoff(struct t_led_sync_refinement *refinement)
 {
-	return MIN(refinement->current_blink_duration_ns, refinement->exposure_time_ns) / 20;
+	return MIN(refinement->current_blink_duration_ns, refinement->exposure_time_ns) / 50;
 }
 
 //! The amount of frames since the sample was applied to the controller
@@ -59,10 +59,20 @@ set_offset_duration(struct t_led_sync_refinement *refinement,
 	refinement->has_sample_for_driver = true;
 	refinement->sample_applied = false;
 	refinement->sample_for_driver = XRT_C11_COMPOUND(struct t_led_sync_sample){
-	    .device_host_latency_ns = latency_offset_ns,
+	    .timestamp.device_host_latency_ns = latency_offset_ns,
+	    .timestamp_mode = T_LED_SYNC_SAMPLE_TIMESTAMP_MODE_DEVICE_HOST_LATENCY,
 	    .fudge_offset_ns = fudge_offset_ns,
 	    .blink_duration_ns = blink_duration_ns,
 	};
+
+	// If we're doing optical driven offset and have a saved offset, use that mode.
+	if ((refinement->options.flags & T_LED_SYNC_REFINEMENT_FLAGS_OPTICAL_DRIVEN_OFFSET) != 0 &&
+	    refinement->optical_driven_offset.has_saved_offset) {
+		refinement->sample_for_driver.timestamp_mode =
+		    T_LED_SYNC_SAMPLE_TIMESTAMP_MODE_HOST_DEVICE_CLOCK_OFFSET;
+		refinement->sample_for_driver.timestamp.host_device_clock_offset_ns =
+		    refinement->optical_driven_offset.saved_offset + latency_offset_ns;
+	}
 
 	LOG_TRACE(refinement,
 	          "Setting offset to %" PRId64 "ns with fudge %" PRId64 "ns and blink duration to %" PRId64 "ns",
@@ -77,11 +87,10 @@ set_centered_duration(struct t_led_sync_refinement *refinement, time_duration_ns
 	time_duration_ns new_latency_offset_ns = refinement->found_left_edge_ns;
 
 	// Set the offset so that the center of the blink is at the center of the exposure, since latency and
-	// fudge offset are added together
-	time_duration_ns new_offset_ns =
-	    ((refinement->found_right_edge_ns - refinement->found_left_edge_ns) / 2) - (blink_duration_ns / 2);
+	// fudge offset are added together.
+	time_duration_ns new_fudge_offset_ns = (refinement->exposure_time_ns / 2) - (blink_duration_ns / 2);
 
-	set_offset_duration(refinement, new_latency_offset_ns, new_offset_ns, blink_duration_ns);
+	set_offset_duration(refinement, new_latency_offset_ns, new_fudge_offset_ns, blink_duration_ns);
 }
 
 //! Gets the period to iterate over when searching for a latency offset.
@@ -103,6 +112,16 @@ get_search_period_locked(struct t_led_sync_refinement *refinement)
 	}
 }
 
+static time_duration_ns
+max_right_edge(struct t_led_sync_refinement *refinement)
+{
+	if ((refinement->options.flags & T_LED_SYNC_REFINEMENT_FLAGS_HAS_LATENCY_CAP) != 0) {
+		return refinement->options.latency_cap_ns;
+	} else {
+		return refinement->exposure_interval_ns - refinement->current_blink_duration_ns;
+	}
+}
+
 static void
 set_phase_locked(struct t_led_sync_refinement *refinement, enum t_led_sync_phase new_phase)
 {
@@ -117,16 +136,25 @@ set_phase_locked(struct t_led_sync_refinement *refinement, enum t_led_sync_phase
 
 		refinement->current_blink_duration_ns = refinement->options.initial_blink_duration_ns;
 
+		refinement->optical_driven_offset.has_saved_offset = false;
+
 		set_offset_duration(refinement, 0, 0, refinement->current_blink_duration_ns);
+
 		break;
 	}
 	case T_LED_SYNC_SEARCH_PHASE_FIND_RIGHT_EDGE: {
+		// If we're doing clock driven offset
+		if (refinement->options.flags & T_LED_SYNC_REFINEMENT_FLAGS_OPTICAL_DRIVEN_OFFSET) {
+			refinement->optical_driven_offset.has_saved_offset = true;
+			refinement->optical_driven_offset.saved_offset =
+			    refinement->optical_driven_offset.driver_host_device_clock_offset_ns;
+		}
+
 		// Left bound is the current offset
 		refinement->binary_search_state.left_bound_ns = refinement->current_blink_fudge_ns;
 		// Right bound is the start of the next exposure minus the blink duration, we don't want to blink into
 		// the next frame, rather start at zero, since latency will always be >0.
-		refinement->binary_search_state.right_bound_ns =
-		    refinement->exposure_interval_ns - refinement->current_blink_duration_ns;
+		refinement->binary_search_state.right_bound_ns = max_right_edge(refinement);
 
 		LOG_DEBUG(refinement,
 		          "Starting binary search for right edge, left bound at: %" PRId64
@@ -194,7 +222,7 @@ handle_find_initial_offset(struct t_led_sync_refinement *refinement)
 	if (refinement->frames_since_last_visually_seen > MAX_SAMPLE_LATENCY) {
 		const time_duration_ns search_period_ns = get_search_period_locked(refinement);
 		const time_duration_ns new_fudge_offset_ns =
-		    (refinement->current_blink_fudge_ns + search_period_ns) % refinement->exposure_interval_ns;
+		    (refinement->current_blink_fudge_ns + search_period_ns) % max_right_edge(refinement);
 
 		LOG_DEBUG(refinement, "Device hasn't been seen, trying offset: %" PRId64 "ns", new_fudge_offset_ns);
 
@@ -306,6 +334,18 @@ handle_find_left_edge(struct t_led_sync_refinement *refinement)
 		          refinement->binary_search_state.right_bound_ns -
 		              refinement->binary_search_state.left_bound_ns,
 		          change_good_cutoff(refinement));
+
+		// The visibility window is how much of the time window the LEDs were visible for
+		time_duration_ns visibility_window_ns =
+		    refinement->found_right_edge_ns - refinement->current_blink_fudge_ns;
+
+		// The real LED on period is the amount of time the LEDs were actually visible to the camera for
+		time_duration_ns real_led_on_window_ns = visibility_window_ns - (refinement->exposure_time_ns);
+		LOG_DEBUG(refinement,
+		          "Found left edge at offset: %" PRId64 "ns, right edge at offset: %" PRId64
+		          "ns, visibility window: %" PRId64 "ns, real LED on window: %" PRId64 "ns",
+		          refinement->found_left_edge_ns, refinement->found_right_edge_ns, visibility_window_ns,
+		          real_led_on_window_ns);
 
 		// We've found the latency offset, so if we're not optimizing blink duration, we can move to just
 		// maintaining the offset now.
@@ -488,7 +528,8 @@ t_led_sync_refinement_init(struct t_led_sync_refinement *refinement,
 	    .has_sample_for_driver = true,
 	    .sample_for_driver =
 	        {
-	            .device_host_latency_ns = 0,
+	            .timestamp.device_host_latency_ns = 0,
+	            .timestamp_mode = T_LED_SYNC_SAMPLE_TIMESTAMP_MODE_DEVICE_HOST_LATENCY,
 	            .fudge_offset_ns = 0,
 	            .blink_duration_ns = options->initial_blink_duration_ns,
 	        },
@@ -528,6 +569,7 @@ t_led_sync_refinement_init(struct t_led_sync_refinement *refinement,
 	u_var_add_ro_i64_ns(refinement, &refinement->options.max_blink_duration_ns, "max_blink_duration_ns");
 	u_var_add_ro_i64_ns(refinement, &refinement->options.time_to_resync_ns, "time_to_resync_ns");
 	u_var_add_ro_u32(refinement, &refinement->options.settle_frames, "settle_frames");
+	u_var_add_ro_i64_ns(refinement, &refinement->options.latency_cap_ns, "latency_cap_ns");
 
 	u_var_add_gui_header(refinement, NULL, "Exposure Info");
 	u_var_add_bool(refinement, &refinement->has_exposure_time, "Has Exposure Time");
@@ -536,8 +578,12 @@ t_led_sync_refinement_init(struct t_led_sync_refinement *refinement,
 
 	u_var_add_gui_header(refinement, NULL, "Driver Sample");
 	u_var_add_bool(refinement, &refinement->has_sample_for_driver, "Has Sample For Driver");
+	u_var_add_i32(refinement, (int32_t *)&refinement->sample_for_driver.timestamp_mode, "Sample Timestamp Mode");
+	u_var_add_ro_i64_ns(refinement, &refinement->sample_for_driver.timestamp.device_host_latency_ns,
+	                    "Sample Device Host Latency (ns)");
 	u_var_add_ro_i64_ns(refinement, &refinement->sample_for_driver.fudge_offset_ns, "Sample Fudge Offset (ns)");
 	u_var_add_ro_i64_ns(refinement, &refinement->sample_for_driver.blink_duration_ns, "Sample Blink Duration (ns)");
+	u_var_add_bool(refinement, &refinement->sample_applied, "Sample Applied");
 
 	u_var_add_gui_header(refinement, NULL, "State");
 	u_var_add_ro_u32(refinement, (uint32_t *)&refinement->phase, "phase");
@@ -552,6 +598,16 @@ t_led_sync_refinement_init(struct t_led_sync_refinement *refinement,
 	u_var_add_ro_i64_ns(refinement, &refinement->binary_search_state.left_bound_ns, "binary_search.left_bound_ns");
 	u_var_add_ro_i64_ns(refinement, &refinement->binary_search_state.right_bound_ns,
 	                    "binary_search.right_bound_ns");
+	u_var_add_ro_i64_ns(refinement, &refinement->blink_time_refinement_state.last_good_blink_duration_ns,
+	                    "blink_time_refinement.last_good_blink_duration_ns");
+	u_var_add_bool(refinement, &refinement->blink_time_refinement_state.backing_off,
+	               "blink_time_refinement.backing_off");
+	u_var_add_ro_i64_ns(refinement, &refinement->optical_driven_offset.driver_host_device_clock_offset_ns,
+	                    "optical_driven_offset.driver_host_device_clock_offset_ns");
+	u_var_add_bool(refinement, &refinement->optical_driven_offset.has_saved_offset,
+	               "optical_driven_offset.has_saved_offset");
+	u_var_add_ro_i64_ns(refinement, &refinement->optical_driven_offset.saved_offset,
+	                    "optical_driven_offset.saved_offset");
 
 	return 0;
 }
@@ -620,23 +676,13 @@ t_led_sync_mark_latest_sample_applied(struct t_led_sync_refinement *refinement, 
 }
 
 void
-t_led_sync_update_minimum_blink_time(struct t_led_sync_refinement *refinement, time_duration_ns new_minimum_ns)
+t_led_sync_push_host_device_clock_offset(struct t_led_sync_refinement *refinement, time_duration_ns clock_offset_ns)
 {
 	assert(refinement->initialized);
 
 	os_mutex_lock(&refinement->lock);
 	{
-		refinement->options.min_blink_duration_ns = new_minimum_ns;
-		LOG_TRACE(refinement, "Updated minimum blink duration to: %" PRId64 "ns", new_minimum_ns);
-
-		if (refinement->current_blink_duration_ns < refinement->options.min_blink_duration_ns) {
-			set_offset_duration(refinement, refinement->current_latency_offset_ns,
-			                    refinement->current_blink_fudge_ns,
-			                    refinement->options.min_blink_duration_ns);
-
-			LOG_DEBUG(refinement, "Current blink duration was below minimum, updated to: %" PRId64 "ns",
-			          refinement->options.min_blink_duration_ns);
-		}
+		refinement->optical_driven_offset.driver_host_device_clock_offset_ns = clock_offset_ns;
 	}
 	os_mutex_unlock(&refinement->lock);
 }

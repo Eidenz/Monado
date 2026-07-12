@@ -19,8 +19,41 @@
 
 
 XrResult
+oxr_handle_array_init(struct oxr_logger *log, struct oxr_handle_array *array)
+{
+#ifndef NDEBUG
+	if (array->init) {
+		return oxr_error(log, XR_ERROR_RUNTIME_FAILURE,
+		                 "Attempted to initialize an already initialized handle array");
+	}
+#endif
+
+	(*array) = (struct oxr_handle_array){
+	    .handles = NULL,
+	    .count = 0,
+	    .capacity = 0,
+	};
+
+	if (os_mutex_init(&array->mutex) != 0) {
+		return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "Failed to initialize mutex for handle array");
+	}
+
+#ifndef NDEBUG
+	array->init = true;
+#endif
+
+	return XR_SUCCESS;
+}
+
+XrResult
 oxr_handle_array_destroy(struct oxr_logger *log, struct oxr_handle_array *array, int level)
 {
+#ifndef NDEBUG
+	if (!array->init) {
+		return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "Attempted to destroy an uninitialized handle array");
+	}
+#endif
+
 	// Destroy child handles
 	for (uint32_t i = 0; i < array->count; ++i) {
 		struct oxr_handle_base *child = array->handles[i];
@@ -33,10 +66,16 @@ oxr_handle_array_destroy(struct oxr_logger *log, struct oxr_handle_array *array,
 		}
 	}
 
+	os_mutex_destroy(&array->mutex);
+
 	free(array->handles);
 	array->handles = NULL;
 	array->count = 0;
 	array->capacity = 0;
+
+#ifndef NDEBUG
+	array->init = false;
+#endif
 
 	return XR_SUCCESS;
 }
@@ -44,8 +83,12 @@ oxr_handle_array_destroy(struct oxr_logger *log, struct oxr_handle_array *array,
 bool
 oxr_handle_array_add(struct oxr_handle_array *array, struct oxr_handle_base *handle)
 {
+	assert(array->init);
+
 	// Count should never exceed capacity
 	assert(array->count <= array->capacity);
+
+	os_mutex_lock(&array->mutex);
 
 	if (array->count == array->capacity) {
 		uint32_t new_capacity = MAX(1, array->capacity * 2);
@@ -53,6 +96,8 @@ oxr_handle_array_add(struct oxr_handle_array *array, struct oxr_handle_base *han
 		U_ARRAY_REALLOC_OR_FREE(array->handles, struct oxr_handle_base *, new_capacity);
 
 		if (array->handles == NULL) {
+			os_mutex_unlock(&array->mutex);
+
 			return false;
 		}
 
@@ -63,13 +108,21 @@ oxr_handle_array_add(struct oxr_handle_array *array, struct oxr_handle_base *han
 	assert(array->count < array->capacity);
 
 	array->handles[array->count++] = handle;
+
+	os_mutex_unlock(&array->mutex);
+
 	return true;
 }
 
 bool
 oxr_handle_array_remove(struct oxr_handle_array *array, uint32_t index)
 {
+	assert(array->init);
+
+	os_mutex_lock(&array->mutex);
 	if (index >= array->count) {
+		os_mutex_unlock(&array->mutex);
+
 		assert(!"Attempted to remove handle at index greater than or equal to count");
 		return false;
 	}
@@ -80,6 +133,8 @@ oxr_handle_array_remove(struct oxr_handle_array *array, uint32_t index)
 	}
 	array->handles[array->count - 1] = NULL;
 	array->count--;
+
+	os_mutex_unlock(&array->mutex);
 
 	return true;
 }

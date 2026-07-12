@@ -48,16 +48,8 @@
 #include "psvr/psvr_interface.h"
 #endif
 
-#ifdef XRT_BUILD_DRIVER_RIFT
-#include "rift/rift_interface.h"
-#endif
-
 #ifdef XRT_BUILD_DRIVER_PSVR2
 #include "psvr2/psvr2_interface.h"
-#endif
-
-#ifdef XRT_BUILD_DRIVER_RIFT_S
-#include "rift_s/rift_s_interface.h"
 #endif
 
 #ifdef XRT_BUILD_DRIVER_ROKID
@@ -206,11 +198,6 @@ struct xrt_prober_entry target_entry_list[] = {
     {PSMV_VID, PSMV_PID_ZCM1, psmv_found, "PS Move Controller (ZCM1)", "psmv"},
     {PSMV_VID, PSMV_PID_ZCM2, psmv_found, "PS Move Controller (ZCM2)", "psmv"},
 #endif // XRT_BUILD_DRIVER_PSMV
-
-#ifdef XRT_BUILD_DRIVER_RIFT
-    {OCULUS_VR_VID, OCULUS_DK2_PID, rift_found, RIFT_DK2_PRODUCT_STRING, "rift"},
-    {OCULUS_VR_VID, OCULUS_CV1_PID, rift_found, RIFT_CV1_PRODUCT_STRING, "rift"},
-#endif // XRT_BUILD_DRIVER_RIFT
 
 #ifdef XRT_BUILD_DRIVER_BLUBUR_S1
     {BLUBUR_S1_VID, BLUBUR_S1_PID, blubur_s1_found, "Blubur S1", "blubur_s1"},

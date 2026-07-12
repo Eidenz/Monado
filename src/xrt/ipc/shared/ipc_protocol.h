@@ -153,8 +153,16 @@ struct ipc_device_info
 	enum xrt_device_name name;
 	enum xrt_device_type device_type;
 
+	/*!
+	 * The service-side @ref xrt_device_id, synchronized to IPC clients so that
+	 * @ref xrt_device::id matches across all clients connected to the same
+	 * service. This is distinct from the per-client-connection @c uint32_t
+	 * slot index used to look up devices in IPC messages.
+	 */
+	uint64_t xrt_device_id_val;
+
 	//! Which tracking system origin is this device attached to.
-	uint32_t tracking_origin_id;
+	XRT_ALIGNAS(8) uint32_t tracking_origin_id;
 
 	//! A string describing the device.
 	char str[XRT_DEVICE_NAME_LEN];

@@ -1,5 +1,6 @@
 # Copyright 2018-2024, Collabora, Ltd.
 # Copyright 2024-2026, NVIDIA CORPORATION.
+# Copyright 2026, Beyley Cardellio
 # SPDX-License-Identifier: BSL-1.0
 
 cmake_minimum_required(VERSION 3.22)
@@ -106,21 +107,24 @@ find_package(Vulkan MODULE)
 find_package(HIDAPI MODULE)
 find_package(bluetooth MODULE)
 find_package(OpenHMD MODULE)
-find_package(
-	OpenCV
-	COMPONENTS
-		core
-		calib3d
-		highgui
-		imgproc
-		imgcodecs
-		features2d
-		video
-		CONFIG
+
+set(OPENCV_COMMON_COMPONENTS
+    core
+    highgui
+    imgproc
+    imgcodecs
+    video
 	)
+
+find_package(OpenCV QUIET COMPONENTS ${OPENCV_COMMON_COMPONENTS} calib3d features2d CONFIG)
+if(NOT OpenCV_FOUND)
+	find_package(OpenCV COMPONENTS ${OPENCV_COMMON_COMPONENTS} calib features CONFIG)
+endif()
+
 find_package(Libusb1 MODULE)
 find_package(JPEG MODULE)
 find_package(realsense2 CONFIG)
+find_package(rerun_sdk CONFIG)
 find_package(depthai CONFIG)
 find_package(SDL2 CONFIG)
 find_package(ZLIB MODULE)
@@ -269,10 +273,10 @@ option_with_deps(XRT_MODULE_COMPOSITOR_MAIN "Build main compositor host function
 	XRT_MODULE_COMPOSITOR
 	XRT_HAVE_VULKAN
 	)
+option_with_deps(XRT_MODULE_AUX_RENDER "Build auxiliary render library" DEPENDS XRT_MODULE_COMPOSITOR XRT_HAVE_VULKAN)
+option_with_deps(XRT_MODULE_AUX_SHADERS "Build render shaders" DEPENDS XRT_MODULE_COMPOSITOR XRT_HAVE_VULKAN)
 option_with_deps(XRT_MODULE_COMPOSITOR_MULTI "Build multi-client compositor library" DEPENDS XRT_MODULE_COMPOSITOR)
 option_with_deps(XRT_MODULE_COMPOSITOR_NULL "Build testing null compositor" DEPENDS XRT_MODULE_COMPOSITOR XRT_HAVE_VULKAN)
-option_with_deps(XRT_MODULE_COMPOSITOR_RENDER "Build compositor render library" DEPENDS XRT_MODULE_COMPOSITOR XRT_HAVE_VULKAN)
-option_with_deps(XRT_MODULE_COMPOSITOR_SHADERS "Build compositor shaders" DEPENDS XRT_MODULE_COMPOSITOR XRT_HAVE_VULKAN)
 option_with_deps(XRT_MODULE_COMPOSITOR_UTIL "Build compositor utility library" DEPENDS XRT_MODULE_COMPOSITOR XRT_HAVE_VULKAN)
 option_with_deps(XRT_MODULE_COMPOSITOR_MOCK "Build mock compositor library" DEPENDS XRT_MODULE_COMPOSITOR)
 option_with_deps(XRT_MODULE_MERCURY_HANDTRACKING "Enable Mercury hand tracking" DEPENDS XRT_HAVE_OPENCV XRT_HAVE_ONNXRUNTIME)
@@ -281,6 +285,7 @@ option(XRT_MODULE_MONADO_CLI "Build monado-cli" ON)
 option_with_deps(XRT_MODULE_MONADO_GUI "Build monado-gui" DEPENDS XRT_HAVE_SDL2)
 option(XRT_MODULE_AUX_HTC "Build aux_htc" ON)
 option(XRT_MODULE_AUX_VIVE "Build aux_vive" ON)
+option_with_deps(XRT_MODULE_OPENVR_STATE_TRACKER "Build OpenVR State Tracker" DEPENDS XRT_HAVE_LINUX)
 option(XRT_MODULE_OPENXR_STATE_TRACKER "Build OpenXR State Tracker" ON)
 
 # Feature configuration (sorted)
@@ -288,9 +293,11 @@ option_with_deps(XRT_FEATURE_AHARDWARE_BUFFER "Enable AHardwareBuffer for XrSwap
 option_with_deps(XRT_FEATURE_COLOR_LOG "Enable logging in color on supported platforms" DEPENDS XRT_HAVE_LINUX)
 option_with_deps(XRT_FEATURE_DEBUG_GUI "Enable debug window to be used" DEPENDS XRT_HAVE_SDL2)
 option(XRT_FEATURE_NO_COMPOSITOR_FOR_HEADLESS_SESSIONS "Does headless not create a compositor" OFF)
+option_with_deps(XRT_FEATURE_OPENVR "Build OpenVR runtime target" DEPENDS XRT_MODULE_OPENVR_STATE_TRACKER "XRT_MODULE_COMPOSITOR_MAIN OR XRT_MODULE_COMPOSITOR_NULL")
 option_with_deps(XRT_FEATURE_OPENXR "Build OpenXR runtime target" DEPENDS XRT_MODULE_OPENXR_STATE_TRACKER "XRT_MODULE_COMPOSITOR_MAIN OR XRT_MODULE_COMPOSITOR_NULL")
 set(XRT_FEATURE_OPENXR_DEBUG_UTILS OFF) # Has never been enabled
 option_with_deps(XRT_FEATURE_RENDERDOC "Enable RenderDoc API" DEPENDS "RT_LIBRARY OR WIN32 OR ANDROID")
+option_with_deps(XRT_FEATURE_RERUN "Enable integration of Rerun SDK" DEFAULT OFF DEPENDS rerun_sdk_FOUND)
 option_with_deps(XRT_FEATURE_SERVICE "Enable separate service module for OpenXR runtime" DEPENDS XRT_MODULE_IPC XRT_FEATURE_OPENXR)
 option_with_deps(XRT_FEATURE_SERVICE_SYSTEMD "Enable systemd socket activation of the service" DEPENDS XRT_HAVE_SYSTEMD XRT_FEATURE_SERVICE)
 option_with_deps(XRT_FEATURE_SLAM "Enable SLAM tracking support" DEPENDS XRT_HAVE_OPENCV XRT_HAVE_LINUX)
@@ -381,6 +388,7 @@ option(XRT_BUILD_SAMPLES "Enable compiling sample code implementations that will
 set(XRT_IPC_MSG_SOCK_FILENAME monado_comp_ipc CACHE STRING "Service socket filename")
 set(XRT_IPC_SERVICE_PID_FILENAME monado.pid CACHE STRING "Service pidfile filename")
 set(XRT_OXR_RUNTIME_SUFFIX monado CACHE STRING "OpenXR client library suffix")
+set(XRT_OPENVR_STATE_TRACKER_INSTALL_DIR "share" CACHE STRING "Install the OpenVR state tracker to this directory root.")
 
 # Most users won't touch these.
 mark_as_advanced(XRT_MODULE_COMPOSITOR_MAIN XRT_MODULE_COMPOSITOR_NULL XRT_FEATURE_OPENXR)
@@ -399,10 +407,13 @@ option(XRT_FEATURE_OPENXR_HAND_TRACKING_EXT "Enable XR_EXT_hand_tracking" ON)
 option_with_deps(XRT_FEATURE_OPENXR_HAND_TRACKING_DATA_SOURCE_EXT DEPENDS XRT_FEATURE_OPENXR_HAND_TRACKING_EXT)
 option(XRT_FEATURE_OPENXR_HAPTIC_PCM "Enable XR_FB_haptic_pcm" ON)
 option(XRT_FEATURE_OPENXR_HEADLESS "Enable XR_MND_headless" ON)
+# XRT_FEATURE_OPENXR_INVERTED_ALPHA is off by default as it is only supported on the compute path in the compositor.
+option(XRT_FEATURE_OPENXR_INVERTED_ALPHA "Enable XR_EXT_composition_layer_inverted_alpha" OFF)
 option(XRT_FEATURE_OPENXR_OVERLAY "Enable XR_EXTX_overlay" ON)
 option(XRT_FEATURE_OPENXR_PERFORMANCE_SETTINGS "Enable XR_EXT_performance_settings" OFF)
 option(XRT_FEATURE_OPENXR_PLANE_DETECTION "Enable XR_EXT_plane_detection" OFF)
 option(XRT_FEATURE_OPENXR_USER_PRESENCE "Enable XR_EXT_user_presence" ON)
+option(XRT_FEATURE_OPENXR_VARJO_QUAD_VIEWS "Enable XR_VARJO_quad_views" ON)
 option(XRT_FEATURE_OPENXR_VISIBILITY_MASK "Enable XR_KHR_visibility_mask" ON)
 option(XRT_FEATURE_OPENXR_VULKAN_SWAPCHAIN_FORMAT_LIST "Enable XR_KHR_vulkan_swapchain_format_list" ON)
 option(XRT_FEATURE_OPENXR_XDEV_SPACE "Enable XR_MNDX_xdev_space" ON)
@@ -640,6 +651,7 @@ message(STATUS "#    MODULE_MERCURY_HANDTRACKING: ${XRT_MODULE_MERCURY_HANDTRACK
 message(STATUS "#    MODULE_IPC:                  ${XRT_MODULE_IPC}")
 message(STATUS "#    MODULE_MONADO_GUI:           ${XRT_MODULE_MONADO_GUI}")
 message(STATUS "#    MODULE_MONADO_CLI:           ${XRT_MODULE_MONADO_CLI}")
+message(STATUS "#    MODULE_OPENVR_STATE_TRACKER: ${XRT_MODULE_OPENVR_STATE_TRACKER}")
 message(STATUS "#    MODULE_OPENXR_STATE_TRACKER: ${XRT_MODULE_OPENXR_STATE_TRACKER}")
 message(STATUS "#")
 message(STATUS "#    FEATURE_AHARDWARE_BUFFER:                      ${XRT_FEATURE_AHARDWARE_BUFFER}")
@@ -647,8 +659,10 @@ message(STATUS "#    FEATURE_CLIENT_DEBUG_GUI:                      ${XRT_FEATUR
 message(STATUS "#    FEATURE_COLOR_LOG:                             ${XRT_FEATURE_COLOR_LOG}")
 message(STATUS "#    FEATURE_DEBUG_GUI:                             ${XRT_FEATURE_DEBUG_GUI}")
 message(STATUS "#    FEATURE_GESTURE_DETECTOR:                      ${XRT_FEATURE_GESTURE_DETECTOR}")
+message(STATUS "#    FEATURE_OPENVR:                                ${XRT_FEATURE_OPENVR}")
 message(STATUS "#    FEATURE_OPENXR:                                ${XRT_FEATURE_OPENXR}")
 message(STATUS "#    FEATURE_RENDERDOC:                             ${XRT_FEATURE_RENDERDOC}")
+message(STATUS "#    FEATURE_RERUN:                                 ${XRT_FEATURE_RERUN}")
 message(STATUS "#    FEATURE_SERVICE:                               ${XRT_FEATURE_SERVICE}")
 message(STATUS "#    FEATURE_SERVICE_SYSTEMD:                       ${XRT_FEATURE_SERVICE_SYSTEMD}")
 message(STATUS "#    FEATURE_SLAM:                                  ${XRT_FEATURE_SLAM}")
@@ -675,6 +689,7 @@ if(XRT_MODULE_OPENXR_STATE_TRACKER)
 	message(STATUS "#    FEATURE_OPENXR_HAND_TRACKING_EXT:                      ${XRT_FEATURE_OPENXR_HAND_TRACKING_EXT}")
 	message(STATUS "#    FEATURE_OPENXR_HAPTIC_PCM:                             ${XRT_FEATURE_OPENXR_HAPTIC_PCM}")
 	message(STATUS "#    FEATURE_OPENXR_HEADLESS:                               ${XRT_FEATURE_OPENXR_HEADLESS}")
+	message(STATUS "#    FEATURE_OPENXR_INVERTED_ALPHA:                         ${XRT_FEATURE_OPENXR_INVERTED_ALPHA}")
 	message(STATUS "#    FEATURE_OPENXR_INTERACTION_EXT_EYE_GAZE:               ${XRT_FEATURE_OPENXR_INTERACTION_EXT_EYE_GAZE}")
 	message(STATUS "#    FEATURE_OPENXR_INTERACTION_EXT_HAND:                   ${XRT_FEATURE_OPENXR_INTERACTION_EXT_HAND}")
 	message(STATUS "#    FEATURE_OPENXR_INTERACTION_EXT_PALM_POSE:              ${XRT_FEATURE_OPENXR_INTERACTION_EXT_PALM_POSE}")

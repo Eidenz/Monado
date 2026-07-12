@@ -69,18 +69,20 @@ destroy(struct xrt_session *xs)
 {
 	struct b_session *bs = b_session(xs);
 
+	if (bs->bsys != NULL) {
+		b_system_remove_session(bs->bsys, &bs->base, &bs->sink);
+		bs->bsys = NULL;
+	}
+
 	struct b_session_event *event = bs->events.ptr;
 	while (event) {
 		struct b_session_event *tmp = event->next;
 		free(event);
 		event = tmp;
 	}
-
 	bs->events.ptr = NULL;
 
-	if (bs->bsys != NULL) {
-		b_system_remove_session(bs->bsys, &bs->base, &bs->sink);
-	}
+	os_mutex_destroy(&bs->events.mutex);
 
 	free(xs);
 }

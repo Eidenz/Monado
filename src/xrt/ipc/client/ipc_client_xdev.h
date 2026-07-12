@@ -36,6 +36,12 @@ struct ipc_client_xdev
 
 	struct ipc_connection *ipc_c;
 
+	/*!
+	 * Per-client-connection slot index for looking up this device on the IPC
+	 * server. Passed in IPC message calls such as @c device_get_tracked_pose.
+	 * This is not the same as @ref xrt_device::id, which is synchronized from
+	 * the service via @ref ipc_device_info.
+	 */
 	uint32_t device_id;
 
 	struct xrt_binding_input_pair *all_input_pairs;

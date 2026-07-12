@@ -18,8 +18,8 @@
 
 $verify_functions
 
-struct oxr_profile_template oxr_profile_templates[$template_count] = { // array of profile_template
+struct oxr_profile_template oxr_profile_templates[$template_count] = { // array of oxr_profile_template
 $profile_templates
-}; // /array of profile_template
+}; // /array of oxr_profile_template
 
 // clang-format on

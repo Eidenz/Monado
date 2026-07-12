@@ -65,7 +65,8 @@ chl_frame_state_fini(struct chl_frame_state *frame_state)
 
 void
 chl_frame_state_gfx_set_views(struct chl_frame_state *frame_state,
-                              const struct xrt_pose world_poses[XRT_MAX_VIEWS],
+                              const struct xrt_pose world_poses_scanout_begin[XRT_MAX_VIEWS],
+                              const struct xrt_pose world_poses_scanout_end[XRT_MAX_VIEWS],
                               const struct xrt_pose eye_poses[XRT_MAX_VIEWS],
                               const struct xrt_fov fovs[XRT_MAX_VIEWS],
                               uint32_t layer_count)
@@ -91,14 +92,15 @@ chl_frame_state_gfx_set_views(struct chl_frame_state *frame_state,
 		    .h = scratch_view->info.height,
 		};
 
-		comp_render_gfx_add_squash_view( //
-		    &frame_state->data,          //
-		    &world_poses[i],             //
-		    &eye_poses[i],               //
-		    &fovs[i],                    //
-		    rsci->image,                 // squash_image
-		    rsci_rtr,                    // squash_rtr
-		    &layer_viewport_data);       // squash_viewport_data
+		comp_render_gfx_add_squash_view(   //
+		    &frame_state->data,            //
+		    &world_poses_scanout_begin[i], //
+		    &world_poses_scanout_end[i],   //
+		    &eye_poses[i],                 //
+		    &fovs[i],                      //
+		    rsci->image,                   // squash_image
+		    rsci_rtr,                      // squash_rtr
+		    &layer_viewport_data);         // squash_viewport_data
 
 		if (layer_count == 0) {
 			frame_state->scratch_state.views[i].used = false;
@@ -112,6 +114,7 @@ void
 chl_frame_state_gfx_set_target(struct chl_frame_state *frame_state,
                                struct render_gfx_target_resources *target_rtr,
                                const struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS],
+                               const render_scissor_data_t target_scissor_datas[XRT_MAX_VIEWS],
                                const struct xrt_matrix_2x2 vertex_rots[XRT_MAX_VIEWS])
 {
 	// Add the target info.
@@ -134,7 +137,8 @@ chl_frame_state_gfx_set_target(struct chl_frame_state *frame_state,
 		    sample_view,                 // squash_as_src_sample_view
 		    &layer_norm_rect,            // squash_as_src_norm_rect
 		    &vertex_rots[i],             // target_vertex_rot
-		    &target_viewport_datas[i]);  // target_viewport_data
+		    &target_viewport_datas[i],   // target_viewport_data
+		    &target_scissor_datas[i]);   // target_scissor_data
 	}
 }
 
@@ -219,6 +223,7 @@ chl_frame_state_cs_set_target(struct chl_frame_state *frame_state,
 		    &frame_state->data,         //
 		    sample_view,                // squash_as_src_sample_view
 		    &layer_norm_rect,           // squash_as_src_norm_rect
-		    &views[i]);                 // target_viewport_data
+		    &views[i],                  // target_viewport_data
+		    &views[i]);                 // target_scissor_data
 	}
 }

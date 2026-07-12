@@ -141,6 +141,9 @@ static const char *optional_device_extensions[] = {
 #ifdef VK_EXT_calibrated_timestamps
     VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME,
 #endif
+#ifdef VK_KHR_calibrated_timestamps
+    VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME,
+#endif
 #ifdef VK_EXT_robustness2
     VK_EXT_ROBUSTNESS_2_EXTENSION_NAME,
 #endif
@@ -151,6 +154,9 @@ select_instances_extensions(struct null_compositor *c,
                             struct u_extension_list_builder *required_builder,
                             struct u_extension_list_builder *optional_builder)
 {
+#ifdef VK_KHR_get_surface_capabilities2
+	u_extension_list_builder_append(optional_builder, VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+#endif
 #ifdef VK_EXT_display_surface_counter
 	u_extension_list_builder_append(optional_builder, VK_EXT_DISPLAY_SURFACE_COUNTER_EXTENSION_NAME);
 #endif

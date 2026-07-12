@@ -260,6 +260,8 @@ vk_print_swapchain_create_info(struct vk_bundle *vk, VkSwapchainCreateInfoKHR *i
 	struct u_pp_sink_stack_only sink;
 	u_pp_delegate_t dg = u_pp_sink_stack_only_init(&sink);
 	P("VkSwapchainCreateInfoKHR:");
+	PNT("flags:");
+	PRINT_BITS(i->flags, vk_swapchain_create_flag_string);
 	PNT("surface: %" PRIx64, (uint64_t)i->surface);
 	PNT("minImageCount: %u", i->minImageCount);
 	PNT("imageFormat: %s", vk_format_string(i->imageFormat));
@@ -904,6 +906,48 @@ vk_format_feature_flag_string(VkFormatFeatureFlagBits bits, bool null_on_unknown
 			return "FORMAT FEATURE: MULTIPLE BITS SET";
 		} else {
 			return null_on_unknown ? NULL : "FORMAT FEATURE: UNKNOWN BIT";
+		}
+	}
+}
+
+XRT_CHECK_RESULT const char *
+vk_swapchain_create_flag_string(VkSwapchainCreateFlagsKHR bits, bool null_on_unknown)
+{
+	switch (bits) {
+#if (defined(VK_VERSION_1_1) || defined(VK_KHR_device_group)) && defined(VK_KHR_swapchain)
+		ENUM_TO_STR(VK_SWAPCHAIN_CREATE_SPLIT_INSTANCE_BIND_REGIONS_BIT_KHR);
+#endif
+#if defined(VK_VERSION_1_1) && defined(VK_KHR_swapchain)
+		ENUM_TO_STR(VK_SWAPCHAIN_CREATE_PROTECTED_BIT_KHR);
+#endif
+#ifdef VK_KHR_swapchain_mutable_format
+		ENUM_TO_STR(VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR);
+#endif
+#ifdef VK_KHR_swapchain_maintenance1
+		ENUM_TO_STR(VK_SWAPCHAIN_CREATE_DEFERRED_MEMORY_ALLOCATION_BIT_KHR);
+#endif
+#ifdef VK_KHR_present_id2
+		ENUM_TO_STR(VK_SWAPCHAIN_CREATE_PRESENT_ID_2_BIT_KHR);
+#endif
+#ifdef VK_KHR_present_wait2
+		ENUM_TO_STR(VK_SWAPCHAIN_CREATE_PRESENT_WAIT_2_BIT_KHR);
+#endif
+#ifdef VK_EXT_multisampled_render_to_swapchain
+		ENUM_TO_STR(VK_SWAPCHAIN_CREATE_MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_BIT_EXT);
+#endif
+#ifdef VK_EXT_present_timing
+		ENUM_TO_STR(VK_SWAPCHAIN_CREATE_PRESENT_TIMING_BIT_EXT);
+#endif
+#if defined(VK_EXT_swapchain_maintenance1) && !defined(VK_KHR_swapchain_maintenance1)
+		ENUM_TO_STR(VK_SWAPCHAIN_CREATE_DEFERRED_MEMORY_ALLOCATION_BIT_EXT);
+#endif
+	default:
+		if (bits == 0) {
+			return "SWAPCHAIN CREATE: NO BITS SET";
+		} else if (bits & (bits - 1)) {
+			return "SWAPCHAIN CREATE: MULTIPLE BITS SET";
+		} else {
+			return null_on_unknown ? NULL : "SWAPCHAIN CREATE: UNKNOWN BIT";
 		}
 	}
 }

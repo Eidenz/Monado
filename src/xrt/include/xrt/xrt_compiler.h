@@ -153,6 +153,18 @@
 #endif
 
 
+/*
+ * typeof extension, until C23 is widely available. This macro may not always be available,
+ * and should be checked before usage.
+ *
+ * @todo Remove this macro when Monado is updated project-wide to C23.
+ */
+#if __STDC_VERSION__ >= 202311L
+#define XRT_TYPEOF(x) typeof(x)
+#elif defined(__GNUC__) || defined(__clang__)
+#define XRT_TYPEOF(x) __typeof__(x)
+#endif
+
 
 typedef volatile int32_t xrt_atomic_s32_t;
 

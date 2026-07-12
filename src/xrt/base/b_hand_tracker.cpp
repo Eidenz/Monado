@@ -337,9 +337,9 @@ HandTracker::setOutput(xrt_output_name name, const xrt_output_value *value)
 }
 
 void
-HandTracker::destroyHandTracker()
+HandTracker::destroyHandTracker(struct xrt_hand_tracker *xht)
 {
-	delete this;
+	delete HandTracker::fromXHT(xht);
 }
 
 

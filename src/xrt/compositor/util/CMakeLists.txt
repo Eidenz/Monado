@@ -34,5 +34,10 @@ add_library(
 target_link_libraries(
 	comp_util
 	PUBLIC xrt-interfaces comp_includes
-	PRIVATE aux_util aux_os aux_vk comp_render
+	PRIVATE
+		aux_util
+		aux_os
+		aux_vk
+		aux_render
+		aux_shaders
 	)

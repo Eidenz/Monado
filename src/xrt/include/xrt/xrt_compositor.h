@@ -131,6 +131,28 @@ enum xrt_layer_composition_flags
 	 * see XrCompositionLayerDepthTestFB.
 	 */
 	XRT_LAYER_COMPOSITION_DEPTH_TEST = 1u << 10u,
+
+	/*!
+	 * This layer has inverted alpha,
+	 * see @p XR_COMPOSITION_LAYER_INVERTED_ALPHA_BIT_EXT
+	 */
+	XRT_LAYER_COMPOSITION_INVERTED_ALPHA_BIT = 1u << 11u,
+
+	/*!
+	 * When "emulating" a quad view projection layer with two stereo
+	 * projection layers this is used to tag the context (background) layer
+	 * that the inset layer is blended with.
+	 */
+	XRT_LAYER_SPLIT_QUAD_VIEW_CONTEXT = 1u << 12u,
+
+	/*!
+	 * When "emulating" a quad view projection layer with two stereo
+	 * projection layers this is used to tag the inset layer so that the
+	 * compositor can apply blending between the two. Essentially this tells
+	 * the compositor to blend the edges of this layer with the context
+	 * layer below it.
+	 */
+	XRT_LAYER_SPLIT_QUAD_VIEW_INSET = 1u << 13u,
 };
 
 /*!
@@ -2404,6 +2426,19 @@ struct xrt_system_compositor_info
 
 	//! Whether submitting projection layers of a differing FOV from the target FOV is supported.
 	bool supports_fov_mutable;
+
+	/*!
+	 * The compositor supports emulating quad views with insets even if the
+	 * device is only a stereo device. The views are split into two stereo
+	 * projections layers by the state trackers and tagged with the correct
+	 * layer type tags.
+	 *
+	 * This only needs to be set if the compositor hasn't exposed a
+	 * view_configs with the XRT_VIEW_TYPE_QUAD type, as that will also
+	 * cause the state tracker to submit split quad views with stereo
+	 * devices.
+	 */
+	bool supports_emulated_quad_views_with_inset;
 };
 
 struct xrt_system_compositor;

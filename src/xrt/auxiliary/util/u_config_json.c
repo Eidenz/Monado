@@ -1,4 +1,5 @@
 // Copyright 2019, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -15,6 +16,7 @@
 #include "util/u_json.h"
 #include "util/u_debug.h"
 #include "util/u_pretty_print.h"
+#include "util/u_str_to_enum.h"
 
 #include "u_config_json.h"
 
@@ -23,7 +25,6 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#include "bindings/b_generated_bindings_helpers.h"
 #include <assert.h>
 
 DEBUG_GET_ONCE_OPTION(active_config, "P_OVERRIDE_ACTIVE_CONFIG", NULL)
@@ -338,7 +339,7 @@ u_config_json_get_tracking_overrides(struct u_config_json *json,
 
 		char input_name[512] = {'\0'};
 		get_obj_str(override, "xrt_input_name", input_name, 512);
-		o->input_name = xrt_input_name_enum(input_name);
+		o->input_name = u_str_to_xrt_input_name_or_default(input_name);
 
 		if (bad) {
 			*out_override_count = 0;

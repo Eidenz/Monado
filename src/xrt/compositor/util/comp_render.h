@@ -149,6 +149,13 @@ struct comp_render_view_data
 		// Distortion target viewport data (aka target).
 		struct render_viewport_data viewport_data;
 
+		/*!
+		 * Distortion target scissor data (aka target).
+		 *
+		 * Typically the scissor rect will be equal to @ref viewport_data.
+		 */
+		render_scissor_data_t scissor_data;
+
 		struct
 		{
 			//! Distortion target vertex rotation information.
@@ -285,7 +292,8 @@ static inline struct comp_render_view_data *
 comp_render_dispatch_add_target_view(struct comp_render_dispatch_data *data,
                                      VkImageView squash_as_src_sample_view,
                                      const struct xrt_normalized_rect *squash_as_src_norm_rect,
-                                     const struct render_viewport_data *target_viewport_data)
+                                     const struct render_viewport_data *target_viewport_data,
+                                     const render_scissor_data_t *target_scissor_data)
 {
 	uint32_t i = data->target.view_count++;
 
@@ -300,6 +308,7 @@ comp_render_dispatch_add_target_view(struct comp_render_dispatch_data *data,
 
 	// When writing into the target.
 	view->target.viewport_data = *target_viewport_data;
+	view->target.scissor_data = *target_scissor_data;
 
 	return view;
 }
@@ -368,7 +377,8 @@ comp_render_gfx_add_target(struct comp_render_dispatch_data *data, struct render
  */
 static inline void
 comp_render_gfx_add_squash_view(struct comp_render_dispatch_data *data,
-                                const struct xrt_pose *world_pose,
+                                const struct xrt_pose *world_pose_scanout_begin,
+                                const struct xrt_pose *world_pose_scanout_end,
                                 const struct xrt_pose *eye_pose,
                                 const struct xrt_fov *fov,
                                 VkImage squash_image,
@@ -377,8 +387,8 @@ comp_render_gfx_add_squash_view(struct comp_render_dispatch_data *data,
 {
 	struct comp_render_view_data *view = comp_render_dispatch_add_squash_view( //
 	    data,                                                                  //
-	    world_pose,                                                            //
-	    world_pose,                                                            //
+	    world_pose_scanout_begin,                                              //
+	    world_pose_scanout_end,                                                //
 	    eye_pose,                                                              //
 	    fov,                                                                   //
 	    squash_image,                                                          //
@@ -393,13 +403,15 @@ comp_render_gfx_add_target_view(struct comp_render_dispatch_data *data,
                                 VkImageView squash_as_src_sample_view,
                                 const struct xrt_normalized_rect *squash_as_src_norm_rect,
                                 const struct xrt_matrix_2x2 *target_vertex_rot,
-                                const struct render_viewport_data *target_viewport_data)
+                                const struct render_viewport_data *target_viewport_data,
+                                const render_scissor_data_t *target_scissor_data)
 {
 	struct comp_render_view_data *view = comp_render_dispatch_add_target_view( //
 	    data,                                                                  //
 	    squash_as_src_sample_view,                                             //
 	    squash_as_src_norm_rect,                                               //
-	    target_viewport_data);                                                 //
+	    target_viewport_data,                                                  //
+	    target_scissor_data);                                                  //
 
 	// When writing into the target.
 	view->target.gfx.vertex_rot = *target_vertex_rot;
@@ -570,13 +582,15 @@ static inline void
 comp_render_cs_add_target_view(struct comp_render_dispatch_data *data,
                                VkImageView squash_as_src_sample_view,
                                const struct xrt_normalized_rect *squash_as_src_norm_rect,
-                               const struct render_viewport_data *target_viewport_data)
+                               const struct render_viewport_data *target_viewport_data,
+                               const render_scissor_data_t *target_scissor_data)
 {
 	struct comp_render_view_data *view = comp_render_dispatch_add_target_view( //
 	    data,                                                                  //
 	    squash_as_src_sample_view,                                             //
 	    squash_as_src_norm_rect,                                               //
-	    target_viewport_data);                                                 //
+	    target_viewport_data,                                                  //
+	    target_scissor_data);                                                  //
 	(void)view;
 }
 

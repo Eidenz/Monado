@@ -83,7 +83,7 @@ XrResult
 oxr_future_create(struct oxr_logger *log,
                   struct oxr_session *sess,
                   struct xrt_future *xft,
-                  struct oxr_handle_base *parent_handle,
+                  struct oxr_handle_parent_base *parent_handle,
                   struct oxr_future_ext **out_oxr_future_ext)
 {
 	struct oxr_future_ext *new_future = NULL;

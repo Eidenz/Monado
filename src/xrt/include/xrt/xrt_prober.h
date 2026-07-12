@@ -67,6 +67,7 @@ enum xrt_bus_type
 	XRT_BUS_TYPE_UNKNOWN,
 	XRT_BUS_TYPE_USB,
 	XRT_BUS_TYPE_BLUETOOTH,
+	XRT_BUS_TYPE_ANY, //!< Used for searching for devices of any bus type.
 };
 
 /*!

@@ -50,6 +50,7 @@ u_prober_bus_type_to_string(enum xrt_bus_type t)
 		ENUM_TO_STR(XRT_BUS_TYPE_UNKNOWN);
 		ENUM_TO_STR(XRT_BUS_TYPE_USB);
 		ENUM_TO_STR(XRT_BUS_TYPE_BLUETOOTH);
+		ENUM_TO_STR(XRT_BUS_TYPE_ANY);
 	}
 	return "XRT_BUS_TYPE_<INVALID>";
 }

@@ -42,7 +42,6 @@
 #include <string_view>
 #include <filesystem>
 #include <istream>
-#include <thread>
 
 namespace {
 
@@ -187,11 +186,30 @@ Context::create(const std::string &steam_install,
 }
 
 Context::Context(const std::string &steam_install, const std::string &steamvr_install, u_logging_level level)
-    : settings(steam_install, steamvr_install, this), resources(level, steamvr_install), log_level(level)
+    : settings(steam_install, steamvr_install, this), resources(level, steamvr_install), log_level(level),
+      frame_thread_run(true), frame_thread([this] {
+	      while (this->frame_thread_run.load()) {
+		      using namespace std::chrono_literals;
+		      // SteamVR calls `RunFrame()` approximately every 10.1ms
+		      const std::chrono::time_point<std::chrono::steady_clock> next =
+		          std::chrono::steady_clock::now() + 10ms;
+		      // Create/activate any queued devices on this frame thread, so
+		      // Activate() callbacks don't race with the Update* callbacks
+		      // that RunFrame() triggers below (see process_pending_additions).
+		      this->process_pending_additions();
+		      for (vr::IServerTrackedDeviceProvider *const &provider : this->providers)
+			      provider->RunFrame();
+		      this->frame_thread_event.try_acquire_until(next);
+	      }
+      })
 {}
 
 Context::~Context()
 {
+	this->frame_thread_run.store(false);
+	this->frame_thread_event.release();
+	if (this->frame_thread.joinable())
+		this->frame_thread.join();
 	for (vr::IServerTrackedDeviceProvider *const &provider : providers)
 		provider->Cleanup();
 }
@@ -316,10 +334,10 @@ Context::setup_hmd(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 bool
 Context::setup_controller(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 {
-	// Defer creation to run_frame(): TrackedDeviceAdded may be called from
-	// the lighthouse driver's background threads, and creating/activating
-	// a device touches shared maps (CreateBooleanComponent etc.) that
-	// run_frame/RunFrame accesses.
+	// Defer creation to the frame thread: TrackedDeviceAdded may be called
+	// from the lighthouse driver's background threads, and creating/activating
+	// a device touches shared maps (CreateBooleanComponent etc.) that the
+	// frame thread's process_pending_additions()/RunFrame() also access.
 	std::lock_guard lk(pending_addition_mut);
 	pending_additions.push_back({serial, driver});
 	return true;
@@ -432,25 +450,6 @@ Context::append_to_xsysd(struct xrt_device *xdev)
 	__atomic_store_n(&xsysd->static_xdev_count, count + 1, __ATOMIC_RELEASE);
 }
 
-void
-Context::run_frame()
-{
-	// Same thread as RunFrame() so Activate() callbacks don't race with
-	// Update* callbacks triggered by RunFrame().
-	process_pending_additions();
-
-	for (vr::IServerTrackedDeviceProvider *const &provider : providers)
-		provider->RunFrame();
-}
-
-void
-Context::maybe_run_frame(uint64_t new_frame)
-{
-	if (new_frame > current_frame) {
-		++current_frame;
-		run_frame();
-	}
-}
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
 bool
 Context::TrackedDeviceAdded(const char *pchDeviceSerialNumber,
@@ -515,19 +514,26 @@ Context::VsyncEvent(double vsyncTimeOffsetSeconds)
 {}
 
 void
+Context::add_event_locked(vr::VREvent_t event)
+{
+	this->events.emplace_back(std::chrono::steady_clock::now(), event);
+	this->frame_thread_event.try_acquire();
+	this->frame_thread_event.release();
+}
+
+void
 Context::VendorSpecificEvent(uint32_t unWhichDevice,
                              vr::EVREventType eventType,
                              const vr::VREvent_Data_t &eventData,
                              double eventTimeOffset)
 {
 	std::lock_guard lk(event_queue_mut);
-	events.push_back({std::chrono::steady_clock::now(),
-	                  {
-	                      .eventType = eventType,
-	                      .trackedDeviceIndex = unWhichDevice,
-	                      .eventAgeSeconds = {},
-	                      .data = eventData,
-	                  }});
+	this->add_event_locked({
+	    .eventType = eventType,
+	    .trackedDeviceIndex = unWhichDevice,
+	    .eventAgeSeconds = {},
+	    .data = eventData,
+	});
 }
 
 bool
@@ -536,8 +542,8 @@ Context::IsExiting()
 	return false;
 }
 
-void
-Context::add_haptic_event(vr::VREvent_HapticVibration_t event)
+size_t
+Context::add_haptic_event(vr::VREvent_HapticVibration_t event, const size_t old_event_handle)
 {
 	vr::VREvent_t e;
 	e.eventType = vr::EVREventType::VREvent_Input_HapticVibration;
@@ -546,21 +552,36 @@ Context::add_haptic_event(vr::VREvent_HapticVibration_t event)
 	d.hapticVibration = event;
 	e.data = d;
 
-	std::lock_guard lk(event_queue_mut);
-	events.push_back({std::chrono::steady_clock::now(), e});
+	std::unique_lock lk(event_queue_mut);
+	while (events.size() >= 120) { // avoid unbounded allocation if misbehaving apps send too many events at once
+		event_popped.wait(lk);
+	}
+	const size_t old_event_index = old_event_handle - events_tail;
+	if (old_event_index < size_t(events.size())) {
+		vr::VREvent_t *const old_event = &events[old_event_index].inner;
+		if (old_event->eventType == e.eventType &&
+		    old_event->data.hapticVibration.containerHandle == e.data.hapticVibration.containerHandle &&
+		    old_event->data.hapticVibration.componentHandle == e.data.hapticVibration.componentHandle) {
+			old_event->eventType = vr::EVREventType::VREvent_None;
+		}
+	}
+	this->add_event_locked(e);
+	return events_tail + events.size() - 1;
 }
 
 bool
 Context::PollNextEvent(vr::VREvent_t *pEvent, uint32_t uncbVREvent)
 {
-	if (!events.empty()) {
+	std::lock_guard lk(event_queue_mut);
+	while (!events.empty()) {
 		assert(sizeof(vr::VREvent_t) == uncbVREvent);
-		Event e;
-		{
-			std::lock_guard lk(event_queue_mut);
-			e = events.front();
-			events.pop_front();
+		Event e = events.front();
+		events.pop_front();
+		++events_tail;
+		if (e.inner.eventType == vr::EVREventType::VREvent_None) {
+			continue;
 		}
+		event_popped.notify_all();
 		*pEvent = e.inner;
 		using float_sec = std::chrono::duration<float>;
 		float_sec event_age = std::chrono::steady_clock::now() - e.insert_time;
@@ -986,8 +1007,8 @@ get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 {
 	int head, eyes, face, left, right, gamepad;
 
-	// Devices can be appended concurrently from run_frame(): the count is
-	// published after the slot is filled, so load it once with acquire.
+	// Devices can be appended concurrently from the frame thread: the count
+	// is published after the slot is filled, so load it once with acquire.
 	uint32_t count = __atomic_load_n(&xsysd->static_xdev_count, __ATOMIC_ACQUIRE);
 	if (count > XRT_SYSTEM_MAX_DEVICES) {
 		count = XRT_SYSTEM_MAX_DEVICES;
@@ -1191,14 +1212,7 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices **out
 	// RunFrame needs to be called to detect controllers
 	using namespace std::chrono_literals;
 	auto end_time = std::chrono::steady_clock::now() + 1ms * debug_get_num_option_lh_discover_wait_ms();
-	while (true) {
-		svrs->ctx->run_frame();
-		auto cur_time = std::chrono::steady_clock::now();
-		if (cur_time > end_time) {
-			break;
-		}
-		std::this_thread::sleep_for(20ms);
-	}
+	std::this_thread::sleep_until(end_time);
 	U_LOG_IFL_I(level, "Device search time complete.");
 
 	if (out_xsysd == NULL || *out_xsysd != NULL) {
@@ -1229,8 +1243,8 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices **out
 		}
 	}
 
-	// Give context a reference to xsysd so run_frame() can append devices
-	// that are hotplugged after boot.
+	// Give context a reference to xsysd so the frame thread can append
+	// devices that are hotplugged after boot.
 	svrs->ctx->xsysd = xsysd;
 
 	// Valid generations start at 1 (clients cache starting from 0).

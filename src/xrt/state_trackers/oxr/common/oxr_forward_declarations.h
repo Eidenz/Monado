@@ -60,6 +60,7 @@ struct oxr_session_attached_actions;
 struct oxr_dpad_state;
 struct oxr_binding;
 struct oxr_interaction_profile;
+struct oxr_interaction_profile_array;
 struct oxr_action_set_ref;
 struct oxr_action_ref;
 struct oxr_hand_tracker;

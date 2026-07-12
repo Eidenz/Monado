@@ -1,5 +1,5 @@
 # Copyright 2019, Collabora, Ltd.
-# Copyright 2025, NVIDIA CORPORATION.
+# Copyright 2025-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: BSL-1.0
 
 ######
@@ -90,8 +90,7 @@ generate_openxr_runtime_manifest_buildtree(
 	)
 
 ###
-# Prepare the installable manifest: will be generated completely at install time,
-# by a script we generate now.
+# Prepare the installable manifest for the configured install layout.
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
 	# Windows: install manifest to top level
 	set(_extra_args)

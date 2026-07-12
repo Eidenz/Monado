@@ -1,5 +1,6 @@
 # Copyright 2019-2020, Collabora, Ltd.
 # Copyright 2026, NVIDIA CORPORATION.
+# Copyright 2026, Beyley Cardellio
 # SPDX-License-Identifier: BSL-1.0
 
 ######
@@ -16,6 +17,10 @@ endif()
 
 if(XRT_FEATURE_OPENXR)
 	add_subdirectory(openxr)
+endif()
+
+if(XRT_FEATURE_OPENVR)
+	add_subdirectory(openvr)
 endif()
 
 if(XRT_MODULE_MONADO_CLI)

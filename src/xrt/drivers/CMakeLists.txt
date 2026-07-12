@@ -1,4 +1,5 @@
 # Copyright 2019-2025, Collabora, Ltd.
+# Copyright 2026, NVIDIA CORPORATION.
 #
 # SPDX-License-Identifier: BSL-1.0
 
@@ -18,7 +19,7 @@ if(XRT_BUILD_DRIVER_ARDUINO)
 endif()
 
 add_library(drv_cemu STATIC ht_ctrl_emu/ht_ctrl_emu.cpp ht_ctrl_emu/ht_ctrl_emu_interface.h)
-target_link_libraries(drv_cemu PRIVATE xrt-interfaces aux_generated_bindings_helpers aux_util)
+target_link_libraries(drv_cemu PRIVATE xrt-interfaces aux_util)
 list(APPEND ENABLED_HEADSET_DRIVERS drv_cemu)
 
 if(XRT_BUILD_DRIVER_BLUBUR_S1)
@@ -326,7 +327,6 @@ if(XRT_BUILD_DRIVER_RIFT)
 		rift/rift_bindings.h
 		rift/rift_driver.c
 		rift/rift_distortion.c
-		rift/rift_prober.c
 		rift/rift_usb.c
 		rift/rift_usb.h
 		rift/rift_radio.c

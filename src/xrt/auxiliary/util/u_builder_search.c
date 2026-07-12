@@ -25,8 +25,12 @@ u_builder_find_prober_device(struct xrt_prober_device *const *xpdevs,
 	for (size_t i = 0; i < xpdev_count; i++) {
 		struct xrt_prober_device *xpdev = xpdevs[i];
 		if (xpdev->product_id != product_id || //
-		    xpdev->vendor_id != vendor_id ||   //
-		    xpdev->bus != bus_type) {
+		    xpdev->vendor_id != vendor_id) {
+			continue;
+		}
+
+		// If the bus type is not ANY, then check if it matches the device's bus type.
+		if (bus_type != XRT_BUS_TYPE_ANY && xpdev->bus != bus_type) {
 			continue;
 		}
 

@@ -30,24 +30,24 @@ bool
 ransac_pnp_pose(enum u_logging_level log_level,
                 struct xrt_pose *pose,
                 struct t_blob *blobs,
-                int num_blobs,
+                uint32_t num_blobs,
                 struct t_constellation_tracker_led_model *leds_model,
                 t_constellation_device_id_t device_id,
                 struct camera_model *calib,
-                int *num_leds_out,
-                int *num_inliers);
+                uint32_t *num_leds_out,
+                uint32_t *num_inliers);
 
 #else
 static inline bool
 ransac_pnp_pose(enum u_logging_level log_level,
                 struct xrt_pose *pose,
                 struct t_blob *blobs,
-                int num_blobs,
+                uint32_t num_blobs,
                 struct t_constellation_tracker_led_model *leds_model,
                 t_constellation_device_id_t device_id,
                 struct camera_model *calib,
-                int *num_leds_out,
-                int *num_inliers)
+                uint32_t *num_leds_out,
+                uint32_t *num_inliers)
 {
 	(void)log_level;
 	(void)pose;

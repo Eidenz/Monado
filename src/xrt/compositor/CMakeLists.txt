@@ -14,19 +14,9 @@ target_link_libraries(comp_includes INTERFACE xrt-interfaces)
 # Sub directories (order matters for some of them)
 #
 
-# Shaders library
-if(XRT_MODULE_COMPOSITOR_SHADERS)
-	add_subdirectory(shaders)
-endif()
-
 # Client library
 if(XRT_MODULE_COMPOSITOR_CLIENT)
 	add_subdirectory(client)
-endif()
-
-# Render library
-if(XRT_MODULE_COMPOSITOR_RENDER)
-	add_subdirectory(render)
 endif()
 
 # Util library

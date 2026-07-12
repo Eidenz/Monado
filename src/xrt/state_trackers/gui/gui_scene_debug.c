@@ -607,6 +607,12 @@ on_draggable_f32_var(const char *name, void *ptr)
 }
 
 static void
+on_draggable_u8_var(const char *name, void *ptr)
+{
+	struct u_var_draggable_u8 *d = (struct u_var_draggable_u8 *)ptr;
+	igDragScalar(name, ImGuiDataType_U8, d->val, d->step, &d->min, &d->max, NULL, ImGuiSliderFlags_None);
+}
+static void
 on_draggable_u16_var(const char *name, void *ptr)
 {
 	struct u_var_draggable_u16 *d = (struct u_var_draggable_u16 *)ptr;
@@ -693,6 +699,7 @@ on_elem(struct u_var_info *info, void *priv)
 	case U_VAR_KIND_U8: igDragScalar(name, ImGuiDataType_U8, ptr, drag_speed, NULL, NULL, NULL, power); break;
 	case U_VAR_KIND_U16: igDragScalar(name, ImGuiDataType_U16, ptr, drag_speed, NULL, NULL, NULL, power); break;
 	case U_VAR_KIND_U16_ARR: on_u16_arr(name, ptr); break;
+	case U_VAR_KIND_U32: igDragScalar(name, ImGuiDataType_U32, ptr, drag_speed, NULL, NULL, NULL, power); break;
 	case U_VAR_KIND_U64: igDragScalar(name, ImGuiDataType_U64, ptr, drag_speed, NULL, NULL, NULL, power); break;
 	case U_VAR_KIND_I32: igInputInt(name, (int *)ptr, 1, 10, i_flags); break;
 	case U_VAR_KIND_I64: igInputScalar(name, ImGuiDataType_S64, ptr, NULL, NULL, NULL, i_flags); break;
@@ -712,7 +719,7 @@ on_elem(struct u_var_info *info, void *priv)
 	case U_VAR_KIND_RO_U32: igInputScalar(name, ImGuiDataType_U32, ptr, NULL, NULL, NULL, ro_i_flags); break;
 	case U_VAR_KIND_RO_F32: igInputScalar(name, ImGuiDataType_Float, ptr, NULL, NULL, "%+f", ro_i_flags); break;
 	case U_VAR_KIND_RO_I64: igInputScalar(name, ImGuiDataType_S64, ptr, NULL, NULL, NULL, ro_i_flags); break;
-	case U_VAR_KIND_RO_U64: igInputScalar(name, ImGuiDataType_S64, ptr, NULL, NULL, NULL, ro_i_flags); break;
+	case U_VAR_KIND_RO_U64: igInputScalar(name, ImGuiDataType_U64, ptr, NULL, NULL, NULL, ro_i_flags); break;
 	case U_VAR_KIND_RO_F64: igInputScalar(name, ImGuiDataType_Double, ptr, NULL, NULL, "%+f", ro_i_flags); break;
 	case U_VAR_KIND_RO_I64_NS: on_ro_i64_ns(name, ptr); break;
 	case U_VAR_KIND_RO_VEC2_F32: igInputFloat2(name, (float *)ptr, "%+f", ro_i_flags); break;
@@ -732,6 +739,7 @@ on_elem(struct u_var_info *info, void *priv)
 	case U_VAR_KIND_DRAGGABLE_F32: on_draggable_f32_var(name, ptr); break;
 	case U_VAR_KIND_BUTTON: on_button_var(name, ptr); break;
 	case U_VAR_KIND_COMBO: on_combo_var(name, ptr); break;
+	case U_VAR_KIND_DRAGGABLE_U8: on_draggable_u8_var(name, ptr); break;
 	case U_VAR_KIND_DRAGGABLE_U16: on_draggable_u16_var(name, ptr); break;
 	case U_VAR_KIND_HISTOGRAM_F32: on_histogram_f32_var(name, ptr); break;
 	case U_VAR_KIND_CURVE: on_curve_var(name, ptr); break;

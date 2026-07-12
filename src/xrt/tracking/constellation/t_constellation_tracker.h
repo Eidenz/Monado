@@ -87,11 +87,23 @@ struct t_constellation_tracker_device_params
 	struct t_constellation_tracker_tracking_source *tracking_source;
 };
 
+enum t_constellation_tracker_flags
+{
+	T_CONSTELLATION_TRACKER_FLAGS_NONE = 0,
+	/*!
+	 * Whether the constellation tracker should be deterministic.
+	 * Turn this on if you require consistent results, at the cost of performance.
+	 */
+	T_CONSTELLATION_TRACKER_FLAGS_DETERMINISTIC = 1 << 0,
+};
+
 /*!
  * @public @memberof t_constellation_tracker
  */
 struct t_constellation_tracker_params
 {
+	//! Flags for the constellation tracker, see t_constellation_tracker_flags
+	enum t_constellation_tracker_flags flags;
 	struct t_constellation_tracker_camera_mosaic mosaics[XRT_CONSTELLATION_MAX_TRACKING_MOSAICS];
 	size_t num_mosaics;
 };

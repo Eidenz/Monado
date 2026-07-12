@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "xrt/xrt_config_build.h"
 #include "xrt/xrt_frame.h"
 #include "xrt/xrt_tracking.h"
 
@@ -32,6 +33,7 @@
 #include <optional>
 #include <stdexcept>
 #include <array>
+#include <fstream>
 
 #include "correspondence_search.h"
 #include "led_search_model.h"
@@ -79,10 +81,17 @@ namespace xrt::tracking::constellation {
 namespace os = xrt::auxiliary::os;
 
 // Forward-declares
-struct CameraMosaic;
-struct Device;
 struct Camera;
+struct CameraMosaic;
 struct ConstellationTracker;
+struct DataRecorder;
+struct Device;
+
+struct FoundDevicePose
+{
+	xrt_pose Tcv_cam_device XRT_POSE_IDENTITY;
+	float average_blob_brightness;
+};
 
 struct DeviceState
 {
@@ -93,7 +102,7 @@ struct DeviceState
 	std::optional<xrt_pose> Txr_world_device_prior{std::nullopt};
 
 	//! The final found pose of the device in this specific sample.
-	std::optional<xrt_pose> Tcv_cam_device_found{std::nullopt};
+	std::optional<FoundDevicePose> found_pose{std::nullopt};
 
 	//! Whether the device needs to have the slow processing thread run over it
 	bool needs_slow_processing{false};
@@ -114,11 +123,19 @@ public: // Fields
 	std::array<DeviceState, XRT_CONSTELLATION_MAX_DEVICES> device_states{};
 	uint32_t device_count{};
 
+	uint32_t mosaic_index;
+	uint32_t camera_index;
+
 public: // Methods
 	std::optional<DeviceState *>
 	GetDeviceState(t_constellation_device_id_t device_id);
 
+	DeviceState &
+	PutDeviceState(t_constellation_device_id_t device_id);
+
 	CameraSample(t_blob_observation &blobservation, Camera *camera);
+
+	CameraSample() = default;
 
 	void
 	MarkMatchingBlobs(ConstellationTracker *ct,
@@ -190,7 +207,7 @@ public: // Fields
 	size_t index;
 
 	//! Does "slow" processing for this camera when fast recovery paths fail.
-	os_thread_helper slow_processing_thread;
+	os_thread_helper slow_processing_thread{};
 	struct
 	{
 		std::optional<CameraSample> sample{std::nullopt};
@@ -204,7 +221,7 @@ public: // Fields
 	 * Does "fast" processing for this camera, trying to recover a pose quickly. It's valid for this to happen at
 	 * the same time as a slow process.
 	 */
-	os_thread_helper fast_processing_thread;
+	os_thread_helper fast_processing_thread{};
 	struct
 	{
 		std::optional<CameraSample> sample{std::nullopt};
@@ -256,17 +273,17 @@ public: // Methods (t_constellation_tracker.cpp)
 	bool
 	TryDevicePose(std::unique_ptr<Device> &device,
 	              CameraSample &sample,
+	              DeviceState &device_state,
 	              xrt_pose &Tcv_cam_world,
-	              xrt_pose &Tcv_world_device_prior,
-	              xrt_pose &Tcv_world_device_candidate,
-	              xrt_pose &Tcv_cam_device_found);
+	              std::optional<xrt_pose> &Tcv_world_device_prior,
+	              xrt_pose &Tcv_world_device_candidate);
 
 	bool
 	TryDeviceBlobRecovery(std::unique_ptr<Device> &device,
 	                      CameraSample &sample,
+	                      DeviceState &device_state,
 	                      xrt_pose &Tcv_cam_world,
-	                      xrt_pose &Tcv_world_device_prior,
-	                      xrt_pose &Tcv_cam_device_found);
+	                      std::optional<xrt_pose> &Tcv_world_device_prior);
 
 	void
 	SlowSampleProcess(CameraSample &sample);
@@ -276,11 +293,12 @@ public: // Methods (t_constellation_tracker.cpp)
 	FastSampleProcess(CameraSample &sample);
 
 	void
-	PushPose(CameraSample &sample,
+	PushPose(CameraSample &camera_sample,
+	         DeviceState &device_state,
 	         std::unique_ptr<Device> &device,
 	         pose_metrics &score,
 	         xrt_pose &Tcv_cam_device,
-	         bool optimize);
+	         bool was_optimized);
 
 public: // Public (constellation_debug_scribble.cpp)
 	void
@@ -318,8 +336,11 @@ public: // Fields
 	// @todo remove when clang-format is updated in CI
 	// clang-format off
 	t_constellation_search_model *search_model{nullptr};
+
+	// @todo These need to be pulled from the device and put into the sample. 
+	//       Right now we just hardcode them since we don't have any real sensor fusion.
 	xrt_vec3 prior_pos_error{MIN_POS_ERROR, MIN_POS_ERROR, MIN_POS_ERROR};
-	xrt_vec3 prior_rot_error{MIN_POS_ERROR, MIN_POS_ERROR, MIN_POS_ERROR};
+	xrt_vec3 prior_rot_error{MIN_ROT_ERROR, MIN_ROT_ERROR, MIN_ROT_ERROR};
 	float gravity_error_rad{MIN_ROT_ERROR}; /* Gravity vector uncertainty in radians 0..M_PI */
 
 	mutable os::Mutex data_lock;
@@ -337,9 +358,10 @@ public: // Methods
 	~Device();
 };
 
-struct ConstellationTracker
+// Separate base struct with our interface implementations so that `ConstellationTrackerBase` remains a standard layout
+// type and we can safely use `container_of` on it.
+struct ConstellationTrackerBase
 {
-public: // Fields
 	xrt_frame_node node = {
 	    .next = nullptr,
 	    .break_apart = constellation_tracker_node_break_apart,
@@ -350,7 +372,11 @@ public: // Fields
 	    .type = XRT_TRACKING_TYPE_CONSTELLATION,
 	    .initial_offset = XRT_POSE_IDENTITY,
 	};
+};
 
+struct ConstellationTracker : public ConstellationTrackerBase
+{
+public: // Fields
 	//! Whether the constellation tracker is running
 	bool running = true;
 
@@ -358,17 +384,31 @@ public: // Fields
 
 	t_constellation_tracker_params params;
 
+	bool single_threaded{false};
+
 	std::vector<std::shared_ptr<CameraMosaic>> mosaics;
 
 	std::shared_mutex device_lock;
 	std::vector<std::unique_ptr<Device>> devices;
 	t_constellation_device_id_t next_device_id{0};
 
+	std::unique_ptr<DataRecorder> data_recorder{};
+
+#ifdef XRT_FEATURE_RERUN
+	std::unique_ptr<struct RerunContext> rerun_stream{};
+#endif
+
 public: // Methods
 	static ConstellationTracker *
 	Get(xrt_frame_node *node)
 	{
-		return container_of(node, ConstellationTracker, node);
+		return static_cast<ConstellationTracker *>(container_of(node, ConstellationTrackerBase, node));
+	}
+
+	static ConstellationTracker *
+	Get(t_constellation_tracker *tracker)
+	{
+		return reinterpret_cast<ConstellationTracker *>(tracker);
 	}
 
 	ConstellationTracker(t_constellation_tracker_params *params);

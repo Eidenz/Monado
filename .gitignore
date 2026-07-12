@@ -33,8 +33,6 @@ src/xrt/targets/ctl/monado-ctl
 src/xrt/targets/gui/monado-gui
 src/xrt/targets/service/monado-service
 src/xrt/targets/openxr/active_runtime.cmake
-src/xrt/targets/openxr/intermediate_manifest.json
-src/xrt/targets/openxr/make_manifest.cmake
 src/xrt/targets/targets_enabled_drivers.h
 steamvr-monado/
 tests/tests_generic_callbacks

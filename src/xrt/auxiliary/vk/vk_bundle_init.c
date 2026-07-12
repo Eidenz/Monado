@@ -579,6 +579,10 @@ filter_device_features(struct vk_bundle *vk,
 		return;
 	}
 
+#if defined(VK_KHR_present_id) || defined(VK_KHR_present_id2)
+#define HAS_ANY_PRESENT_ID_EXTENSION
+#endif
+
 	/*
 	 * The structs
 	 */
@@ -604,11 +608,20 @@ filter_device_features(struct vk_bundle *vk,
 	};
 #endif
 
-#if defined(VK_KHR_present_id) && defined(VK_KHR_present_wait)
+#if defined(HAS_ANY_PRESENT_ID_EXTENSION) && defined(VK_KHR_present_wait)
+#ifdef VK_KHR_present_id
 	VkPhysicalDevicePresentIdFeaturesKHR present_id_info = {
 	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR,
 	    .pNext = NULL,
 	};
+#endif
+
+#ifdef VK_KHR_present_id2
+	VkPhysicalDevicePresentId2FeaturesKHR present_id2_info = {
+	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_2_FEATURES_KHR,
+	    .pNext = NULL,
+	};
+#endif
 
 	VkPhysicalDevicePresentWaitFeaturesKHR present_wait_info = {
 	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR,
@@ -663,10 +676,17 @@ filter_device_features(struct vk_bundle *vk,
 	}
 #endif
 
-#if defined(VK_KHR_present_id) && defined(VK_KHR_present_wait)
+#if defined(HAS_ANY_PRESENT_ID_EXTENSION) && defined(VK_KHR_present_wait)
 	if (vk->has_KHR_present_wait) {
+#ifdef VK_KHR_present_id
 		vk_append_to_pnext_chain((VkBaseInStructure *)&physical_device_features,
 		                         (VkBaseInStructure *)&present_id_info);
+#endif
+
+#ifdef VK_KHR_present_id2
+		vk_append_to_pnext_chain((VkBaseInStructure *)&physical_device_features,
+		                         (VkBaseInStructure *)&present_id2_info);
+#endif
 
 		vk_append_to_pnext_chain((VkBaseInStructure *)&physical_device_features,
 		                         (VkBaseInStructure *)&present_wait_info);
@@ -717,10 +737,21 @@ filter_device_features(struct vk_bundle *vk,
 	CHECK(timeline_semaphore, timeline_semaphore_info.timelineSemaphore);
 #endif
 
-#if defined(VK_KHR_present_id) && defined(VK_KHR_present_wait)
-	// we need both extensions enabled/functional
-	CHECK(present_wait, present_id_info.presentId && present_wait_info.presentWait);
+#if defined(HAS_ANY_PRESENT_ID_EXTENSION) && defined(VK_KHR_present_wait)
+
+#ifdef VK_KHR_present_id
+	CHECK(present_id, present_id_info.presentId);
 #endif
+
+#ifdef VK_KHR_present_id2
+	CHECK(present_id2, present_id2_info.presentId2);
+#endif
+
+	// we need both extensions enabled/functional
+	CHECK(present_wait,
+	      (device_features->present_id || device_features->present_id2) && present_wait_info.presentWait);
+
+#endif // defined(HAS_ANY_PRESENT_ID_EXTENSION) && defined(VK_KHR_present_wait)
 
 #ifdef VK_KHR_synchronization2
 	CHECK(synchronization_2, synchronization_2_info.synchronization2);
@@ -865,6 +896,8 @@ vk_create_device(struct vk_bundle *vk,
 	filter_device_features(vk, vk->physical_device, optional_device_features, &device_features);
 	vk->features.timeline_semaphore = device_features.timeline_semaphore;
 	vk->features.synchronization_2 = device_features.synchronization_2;
+	vk->features.present_id = device_features.present_id;
+	vk->features.present_id2 = device_features.present_id2;
 	vk->features.present_wait = device_features.present_wait;
 	vk->features.video_maintenance_1 = device_features.video_maintenance_1;
 
@@ -986,6 +1019,14 @@ vk_create_device(struct vk_bundle *vk,
 	};
 #endif
 
+#if VK_KHR_present_id2
+	VkPhysicalDevicePresentId2FeaturesKHR present_id2 = {
+	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_2_FEATURES_KHR,
+	    .pNext = NULL,
+	    .presentId2 = device_features.present_wait,
+	};
+#endif
+
 #ifdef VK_KHR_timeline_semaphore
 	VkPhysicalDeviceTimelineSemaphoreFeaturesKHR timeline_semaphore_info = {
 	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES_KHR,
@@ -1047,6 +1088,12 @@ vk_create_device(struct vk_bundle *vk,
 #ifdef VK_KHR_present_id
 	if (vk->has_KHR_present_wait) {
 		vk_append_to_pnext_chain((VkBaseInStructure *)&device_create_info, (VkBaseInStructure *)&present_id);
+	}
+#endif
+
+#ifdef VK_KHR_present_id2
+	if (vk->has_KHR_present_wait) {
+		vk_append_to_pnext_chain((VkBaseInStructure *)&device_create_info, (VkBaseInStructure *)&present_id2);
 	}
 #endif
 

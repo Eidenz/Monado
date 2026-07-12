@@ -176,7 +176,7 @@ m_clock_windowed_skew_tracker_push(struct m_clock_windowed_skew_tracker *t,
 	t->current_window_pos = (t->current_window_pos + 1) % t->max_window_samples;
 
 	/* Update the moving average skew */
-	size_t w = t->current_window_samples;
+	ssize_t w = t->current_window_samples;
 	t->current_skew = (t->current_min_skew + t->current_skew * (w - 1)) / w;
 	t->have_skew_estimate = true;
 }

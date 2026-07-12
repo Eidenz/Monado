@@ -16,10 +16,7 @@ if(BUILD_TESTING)
 endif()
 
 # OpenVR
-add_library(xrt-external-openvr INTERFACE)
-target_include_directories(
-	xrt-external-openvr SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/openvr_includes
-	)
+add_subdirectory(openvr_includes)
 
 # cJSON
 add_library(xrt-external-cjson INTERFACE)

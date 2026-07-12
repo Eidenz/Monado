@@ -201,15 +201,15 @@ Camera::DebugScribbleSample(CameraSample &sample, bool fast)
 			}
 
 			// Draw the found pose
-			if (this->scribble_settings.draw_found && device_state->Tcv_cam_device_found.has_value()) {
-				auto Tcv_cam_device = device_state->Tcv_cam_device_found.value();
+			if (this->scribble_settings.draw_found && device_state->found_pose.has_value()) {
+				auto &found_pose = device_state->found_pose.value();
 
 				scribble_led_model(frame,                           //
 				                   *this,                           //
 				                   sample,                          //
 				                   device->search_model->led_model, //
 				                   device_state->device_id,         //
-				                   Tcv_cam_device,                  //
+				                   found_pose.Tcv_cam_device,       //
 				                   colour);                         //
 			}
 		}

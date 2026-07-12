@@ -9,6 +9,7 @@ endif()
 add_library(xrt-optimized-math INTERFACE)
 
 if(MSVC)
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /experimental:c11atomics")
 	target_compile_options(xrt-optimized-math INTERFACE $<IF:$<CONFIG:Debug>,/O2 /Ob2,/O2 /Ob3>)
 else()
 	set(CMAKE_C_FLAGS

@@ -30,6 +30,7 @@ DEBUG_GET_ONCE_BOOL_OPTION(force_wayland, "XRT_COMPOSITOR_FORCE_WAYLAND", false)
 DEBUG_GET_ONCE_NUM_OPTION(force_gpu_index, "XRT_COMPOSITOR_FORCE_GPU_INDEX", -1)
 DEBUG_GET_ONCE_NUM_OPTION(force_client_gpu_index, "XRT_COMPOSITOR_FORCE_CLIENT_GPU_INDEX", -1)
 DEBUG_GET_ONCE_NUM_OPTION(desired_mode, "XRT_COMPOSITOR_DESIRED_MODE", -1)
+DEBUG_GET_ONCE_OPTION(present_mode, "XRT_COMPOSITOR_PRESENT_MODE", "fifo")
 DEBUG_GET_ONCE_NUM_OPTION(scale_percentage, "XRT_COMPOSITOR_SCALE_PERCENTAGE", 140)
 DEBUG_GET_ONCE_BOOL_OPTION(xcb_fullscreen, "XRT_COMPOSITOR_XCB_FULLSCREEN", false)
 DEBUG_GET_ONCE_NUM_OPTION(xcb_display, "XRT_COMPOSITOR_XCB_DISPLAY", -1)
@@ -50,6 +51,26 @@ add_format(struct comp_settings *s, VkFormat format)
 
 	s->formats[count++] = format;
 	s->format_count = count;
+}
+
+static VkPresentModeKHR
+get_desired_present_mode(void)
+{
+	const char *present_mode_str = debug_get_option_present_mode();
+
+	if (present_mode_str == NULL || present_mode_str[0] == '\0' || strcmp(present_mode_str, "fifo") == 0 ||
+	    strcmp(present_mode_str, "FIFO") == 0) {
+		return VK_PRESENT_MODE_FIFO_KHR;
+	} else if (strcmp(present_mode_str, "fifo_relaxed") == 0 || strcmp(present_mode_str, "FIFO_RELAXED") == 0) {
+		return VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+	} else if (strcmp(present_mode_str, "immediate") == 0 || strcmp(present_mode_str, "IMMEDIATE") == 0) {
+		return VK_PRESENT_MODE_IMMEDIATE_KHR;
+	} else if (strcmp(present_mode_str, "mailbox") == 0 || strcmp(present_mode_str, "MAILBOX") == 0) {
+		return VK_PRESENT_MODE_MAILBOX_KHR;
+	}
+
+	U_LOG_E("Unrecognized present mode: %s", present_mode_str);
+	return VK_PRESENT_MODE_FIFO_KHR;
 }
 
 
@@ -130,7 +151,7 @@ comp_settings_init(struct comp_settings *s, struct xrt_device *xdev)
 
 	s->display = debug_get_num_option_xcb_display();
 	s->color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-	s->present_mode = VK_PRESENT_MODE_FIFO_KHR;
+	s->present_mode = get_desired_present_mode();
 	s->fullscreen = debug_get_bool_option_xcb_fullscreen();
 	s->preferred.width = xdev->hmd->screens[0].w_pixels;
 	s->preferred.height = xdev->hmd->screens[0].h_pixels;

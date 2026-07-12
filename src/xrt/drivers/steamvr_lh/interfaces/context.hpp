@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <condition_variable>
 #include <unordered_map>
 #include <memory>
 #include <optional>
@@ -17,6 +18,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <thread>
 
 #include "openvr_driver.h"
 
@@ -53,8 +55,6 @@ private:
 	BlockQueue blockqueue;
 	Paths paths;
 
-	uint64_t current_frame{0};
-
 	std::vector<vr::VRInputComponentHandle_t> handles;
 	std::unordered_map<vr::VRInputComponentHandle_t, xrt_input *> handle_to_input;
 	std::unordered_map<vr::VRInputComponentHandle_t, Device *> handle_to_device;
@@ -73,11 +73,13 @@ private:
 		vr::VREvent_t inner;
 	};
 	std::deque<Event> events;
+	size_t events_tail{0};
 	std::mutex event_queue_mut;
+	std::condition_variable event_popped;
 
 	//! Device additions queued by TrackedDeviceAdded, which may be called
-	//! from the lighthouse driver's background threads. Processed during
-	//! run_frame() to avoid data races on shared maps.
+	//! from the lighthouse driver's background threads. Processed on the
+	//! frame thread to avoid data races on shared maps.
 	struct PendingAddition
 	{
 		std::string serial;
@@ -133,6 +135,15 @@ public:
 	void *device_added_ud{nullptr};
 	const u_logging_level log_level;
 
+private:
+	std::atomic<bool> frame_thread_run;
+	std::binary_semaphore frame_thread_event{0};
+	std::thread frame_thread;
+
+	void
+	add_event_locked(vr::VREvent_t event);
+
+public:
 	~Context();
 
 	[[nodiscard]] static std::shared_ptr<Context>
@@ -140,14 +151,8 @@ public:
 	       const std::string &steamvr_install,
 	       std::vector<vr::IServerTrackedDeviceProvider *> providers);
 
-	void
-	run_frame();
-
-	void
-	maybe_run_frame(uint64_t new_frame);
-
-	void
-	add_haptic_event(vr::VREvent_HapticVibration_t event);
+	size_t
+	add_haptic_event(vr::VREvent_HapticVibration_t event, size_t old_event_index);
 
 	void
 	add_vendor_event(vr::EVREventType type, const vr::VREvent_Data_t &data = {})

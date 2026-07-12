@@ -8,6 +8,7 @@
  * @ingroup xrt_iface
  */
 
+#include "xrt/xrt_config_build.h"
 #include "xrt/xrt_config_drivers.h"
 #include "xrt/xrt_prober.h"
 #include "xrt/xrt_frameserver.h"
@@ -42,14 +43,6 @@
 #include "contactglove/contactglove_interface.h"
 #endif
 
-
-// Require a pixel of this brightness to be included in a blob at all, to help filter out general noise.
-#define RIFT_SENSOR_BLOB_REQUIRED_THRESHOLD 0x40
-// On CV1, the camera tends to detect very little noise, so we can be much more lenient with what pixels are considered
-// for being a blob.
-#define RIFT_SENSOR_PIXEL_THRESHOLD_CV1 0x24
-// On DK2, the camera sees much more noise, so we need to be much stricter about what pixels get included as a blob.
-#define RIFT_SENSOR_PIXEL_THRESHOLD_DK2 0x7f
 
 /*
  *
@@ -121,6 +114,24 @@ static const char *driver_list[] = {
 #endif
 };
 
+static bool
+rift_is_oculus(struct xrt_prober *xp, struct xrt_prober_device *dev)
+{
+	unsigned char manufacturer[128] = {0};
+	int result = xrt_prober_get_string_descriptor(xp, dev, XRT_PROBER_STRING_MANUFACTURER, manufacturer,
+	                                              sizeof(manufacturer));
+	if (result < 0) {
+		return false;
+	}
+
+	// Some non-oculus devices (VR-Tek HMDs) reuse the same USB IDs as the oculus headsets, so we should check the
+	// manufacturer
+	if (strncmp((const char *)manufacturer, "Oculus VR, Inc.", sizeof(manufacturer)) != 0) {
+		return false;
+	}
+
+	return true;
+}
 
 /*
  *
@@ -171,13 +182,13 @@ rift_estimate_system(struct xrt_builder *xb,
 
 #ifdef XRT_BUILD_DRIVER_PSSENSE
 	struct xrt_prober_device *dev_controller_left =
-	    u_builder_find_prober_device(xpdevs, xpdev_count, PSSENSE_VID, PSSENSE_PID_LEFT, XRT_BUS_TYPE_BLUETOOTH);
+	    u_builder_find_prober_device(xpdevs, xpdev_count, PSSENSE_VID, PSSENSE_PID_LEFT, XRT_BUS_TYPE_ANY);
 	if (dev_controller_left != NULL) {
 		estimate->certain.left = true;
 	}
 
 	struct xrt_prober_device *dev_controller_right =
-	    u_builder_find_prober_device(xpdevs, xpdev_count, PSSENSE_VID, PSSENSE_PID_RIGHT, XRT_BUS_TYPE_BLUETOOTH);
+	    u_builder_find_prober_device(xpdevs, xpdev_count, PSSENSE_VID, PSSENSE_PID_RIGHT, XRT_BUS_TYPE_ANY);
 	if (dev_controller_right != NULL) {
 		estimate->certain.right = true;
 	}
@@ -216,7 +227,7 @@ rift_open_pssense(struct rift_builder *rb,
 	    xpdev_count,                                                     //
 	    PSSENSE_VID,                                                     //
 	    PSSENSE_PID_LEFT,                                                //
-	    XRT_BUS_TYPE_BLUETOOTH);
+	    XRT_BUS_TYPE_ANY);
 
 	if (left_xpdev != NULL) {
 		struct t_timing_event_sink *timing_sink;
@@ -240,7 +251,7 @@ rift_open_pssense(struct rift_builder *rb,
 	    xpdev_count,                                                      //
 	    PSSENSE_VID,                                                      //
 	    PSSENSE_PID_RIGHT,                                                //
-	    XRT_BUS_TYPE_BLUETOOTH);
+	    XRT_BUS_TYPE_ANY);
 
 	if (right_xpdev != NULL) {
 		struct t_timing_event_sink *timing_sink;
@@ -503,6 +514,7 @@ rift_open_system_impl(struct xrt_builder *xb,
 		rb->blobwatch_debug_sinks = U_TYPED_ARRAY_CALLOC(struct u_sink_debug, sensor_count);
 
 		struct t_constellation_tracker_params constellation_tracker_params = {
+		    .flags = T_CONSTELLATION_TRACKER_FLAGS_NONE,
 		    .num_mosaics = 1,
 		};
 
@@ -521,10 +533,10 @@ rift_open_system_impl(struct xrt_builder *xb,
 
 			mosaic->cameras[mosaic->num_cameras++] = (struct t_constellation_tracker_camera){
 			    .calibration = calibration,
-			    // HACK: set concrete pose of "facing Z+" until we have real room calibration (Z+ so that
-			    // user faces Z-)
+			    // HACK: set concrete pose of "facing Z+" until we have real room calibration
+			    //       (Z+ so that user faces Z-)
 			    .has_concrete_pose = true,
-			    .pose_in_origin = {.position = XRT_VEC3_ZERO,
+			    .pose_in_origin = {.position = {.x = 0, .y = 1.0f, .z = 0},
 			                       .orientation = {.x = 0, .y = 1, .z = 0, .w = 0}},
 			};
 
@@ -561,16 +573,21 @@ rift_open_system_impl(struct xrt_builder *xb,
 
 			struct xrt_frame_sink *frame_sink;
 			struct t_rift_blobwatch_params params = {
-			    .pixel_threshold = variant == RIFT_VARIANT_CV1 ? RIFT_SENSOR_PIXEL_THRESHOLD_CV1
-			                                                   : RIFT_SENSOR_PIXEL_THRESHOLD_DK2,
-			    .blob_required_threshold = RIFT_SENSOR_BLOB_REQUIRED_THRESHOLD,
-			    .max_match_dist = 50.0f,
+			    .pixel_threshold = variant == RIFT_VARIANT_CV1 ? RIFT_BLOBWATCH_PIXEL_THRESHOLD_CV1
+			                                                   : RIFT_BLOBWATCH_PIXEL_THRESHOLD_DK2,
+			    .blob_required_threshold = RIFT_BLOBWATCH_BLOB_REQUIRED_THRESHOLD,
+			    .max_match_dist = RIFT_BLOBWATCH_DEFAULT_MAX_MATCH_DIST,
+			    .max_blob_width = RIFT_BLOBWATCH_DEFAULT_MAX_BLOB_WIDTH,
 			};
 			ret = t_rift_blobwatch_create(&params, xfctx, blob_sink, &frame_sink, blobwatch);
 			if (ret != 0) {
 				RIFT_WARN(rb, "Failed to create Rift blobwatch for sensor %u with code %d", i, ret);
 				continue;
 			}
+
+#ifdef XRT_FEATURE_RERUN
+			t_rift_blobwatch_set_rerun_data(*blobwatch, rb->constellation_tracker, 0, rb->num_sensors);
+#endif
 
 			u_sink_create_format_converter(xfctx, XRT_FORMAT_L8, frame_sink, &frame_sink);
 

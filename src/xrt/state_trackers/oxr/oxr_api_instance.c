@@ -220,7 +220,7 @@ oxr_xrDestroyInstance(XrInstance instance)
 	struct oxr_logger log;
 	OXR_VERIFY_INSTANCE_AND_INIT_LOG(&log, instance, inst, "xrDestroyInstance");
 
-	return oxr_handle_destroy(&log, &inst->handle);
+	return oxr_handle_parent_destroy(&log, &inst->handle);
 }
 
 XRAPI_ATTR XrResult XRAPI_CALL

@@ -1857,6 +1857,9 @@ ipc_handle_tracking_origin_get_info(volatile struct ipc_client_state *ics,
 static void
 fill_device_info(struct xrt_device *xdev, uint32_t tracking_origin_id, struct ipc_device_info *out_info)
 {
+	// Synchronize the stable device ID to IPC clients.
+	out_info->xrt_device_id_val = xdev->id.val;
+
 	// Fill in basic device info
 	out_info->name = xdev->name;
 	out_info->device_type = xdev->device_type;

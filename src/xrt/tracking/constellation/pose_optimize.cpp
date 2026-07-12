@@ -20,10 +20,16 @@
 
 #include "camera_model.h"
 
-#include <opencv2/calib3d/calib3d.hpp>
+#include <opencv2/core/version.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
-#if CV_MAJOR_VERSION >= 4
+#if CV_MAJOR_VERSION >= 5
+#include <opencv2/geometry/3d.hpp>
+#else
+#include <opencv2/calib3d/calib3d.hpp>
+#endif
+
+#if CV_MAJOR_VERSION >= 4 && CV_MAJOR_VERSION < 5
 #include <opencv2/calib3d/calib3d_c.h>
 #endif
 
@@ -48,40 +54,20 @@ bool
 ransac_pnp_pose(enum u_logging_level log_level,
                 struct xrt_pose *pose,
                 struct t_blob *blobs,
-                int num_blobs,
+                uint32_t num_blobs,
                 struct t_constellation_tracker_led_model *leds_model,
                 t_constellation_device_id_t device_id,
                 struct camera_model *calib,
-                int *num_leds_out,
-                int *num_inliers)
+                uint32_t *num_leds_out,
+                uint32_t *num_inliers)
 {
-	int i, j;
-	int num_leds = 0;
-	uint64_t taken = 0;
-	int flags = cv::SOLVEPNP_SQPNP;
-	cv::Mat inliers;
-	int iterationsCount = 100;
-	float confidence = 0.99;
-	cv::Mat dummyK = cv::Mat::eye(3, 3, CV_64FC1);
-	cv::Mat dummyD = cv::Mat::zeros(4, 1, CV_64FC1);
-	cv::Mat rvec = cv::Mat::zeros(3, 1, CV_64FC1);
-	cv::Mat tvec = cv::Mat::zeros(3, 1, CV_64FC1);
-	cv::Mat R = cv::Mat::zeros(3, 3, CV_64FC1);
-
-	tvec.at<double>(0) = pose->position.x;
-	tvec.at<double>(1) = pose->position.y;
-	tvec.at<double>(2) = pose->position.z;
-
-	// convert the input pose to a rotation vector for the PnP solver
-	rvec.at<double>(0) = pose->orientation.x;
-	rvec.at<double>(1) = pose->orientation.y;
-	rvec.at<double>(2) = pose->orientation.z;
-	rvec = 2 * acosf(pose->orientation.w) * rvec / cv::norm(rvec);
-
 	// std::cout << "R = " << R << ", rvec = " << rvec << std::endl;
 
+	uint64_t taken = 0;
+	uint32_t num_leds = 0;
+
 	// Count identified leds
-	for (i = 0; i < num_blobs; i++) {
+	for (uint32_t i = 0; i < num_blobs; i++) {
 		t_constellation_device_id_t blob_device_id = blobs[i].matched_device_id;
 		t_constellation_led_id_it blob_led_id = blobs[i].matched_device_led_id;
 
@@ -97,8 +83,10 @@ ransac_pnp_pose(enum u_logging_level log_level,
 		taken |= (1ULL << blob_led_id);
 		num_leds++;
 	}
-	if (num_leds_out)
+
+	if (num_leds_out) {
 		*num_leds_out = num_leds;
+	}
 
 	if (num_leds < 4) {
 		U_LOG_IFL_D(log_level, "Not enough LEDs for PnP: %d", num_leds);
@@ -110,7 +98,8 @@ ransac_pnp_pose(enum u_logging_level log_level,
 	std::vector<cv::Point2f> list_points2d_undistorted(num_leds);
 
 	taken = 0;
-	for (i = 0, j = 0; i < num_blobs && j < num_leds; i++) {
+	uint32_t j = 0;
+	for (uint32_t i = 0; i < num_blobs && j < num_leds; i++) {
 		t_constellation_device_id_t blob_device_id = blobs[i].matched_device_id;
 		t_constellation_led_id_it blob_led_id = blobs[i].matched_device_led_id;
 
@@ -152,8 +141,29 @@ ransac_pnp_pose(enum u_logging_level log_level,
 	// 3 pixel reprojection threshold
 	float reprojectionError = 3.0 / calib->calib.fx;
 
+	// Dummy values for the camera matrix
+	cv::Mat dummyK = cv::Mat::eye(3, 3, CV_64FC1);
+	cv::Mat dummyD = cv::Mat::zeros(4, 1, CV_64FC1);
+	// Initial guess vectors
+	cv::Mat rvec = cv::Mat::zeros(3, 1, CV_64FC1);
+	cv::Mat tvec = cv::Mat::zeros(3, 1, CV_64FC1);
+
+	tvec.at<double>(0) = pose->position.x;
+	tvec.at<double>(1) = pose->position.y;
+	tvec.at<double>(2) = pose->position.z;
+
+	// convert the input pose to a rotation vector for the PnP solver
+	rvec.at<double>(0) = pose->orientation.x;
+	rvec.at<double>(1) = pose->orientation.y;
+	rvec.at<double>(2) = pose->orientation.z;
+	rvec = 2 * acosf(pose->orientation.w) * rvec / cv::norm(rvec);
+
+	cv::Mat inliers;
+	int flags = cv::SOLVEPNP_ITERATIVE;
+	int iterationsCount = 100;
+	float confidence = 0.99;
 #if 1
-	if (!cv::solvePnPRansac(list_points3d, list_points2d_undistorted, dummyK, dummyD, rvec, tvec, false,
+	if (!cv::solvePnPRansac(list_points3d, list_points2d_undistorted, dummyK, dummyD, rvec, tvec, true,
 	                        iterationsCount, reprojectionError, confidence, inliers, flags)) {
 		return false;
 	}
@@ -161,8 +171,9 @@ ransac_pnp_pose(enum u_logging_level log_level,
 	cv::solvePnPRefineLM(list_points3d, list_points2d_undistorted, dummyK, dummyD, rvec, tvec);
 #endif
 
-	if (num_inliers)
-		*num_inliers = inliers.rows;
+	if (num_inliers) {
+		*num_inliers = static_cast<uint32_t>(inliers.rows);
+	}
 
 	struct xrt_vec3 v;
 	double angle = sqrt(rvec.dot(rvec));

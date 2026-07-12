@@ -199,6 +199,12 @@ struct vk_bundle
 		//! Was synchronization2 requested, available, and enabled?
 		bool synchronization_2;
 
+		//! Was KHR_present_id requested, available, and enabled?
+		bool present_id;
+
+		//! Was KHR_present_id2 requested, available, and enabled?
+		bool present_id2;
+
 		//! Was KHR_present_wait requested, available, and enabled?
 		bool present_wait;
 
@@ -398,6 +404,13 @@ vk_append_to_pnext_chain(VkBaseInStructure *head, VkBaseInStructure *new_struct)
  */
 XRT_CHECK_RESULT const char *
 vk_format_feature_flag_string(VkFormatFeatureFlagBits bits, bool null_on_unknown);
+
+/*!
+ * Returns the swapchain create flag if one valid bit is set,
+ * if multiple bits are set, will return 'MULTIPLE BIT SET'.
+ */
+XRT_CHECK_RESULT const char *
+vk_swapchain_create_flag_string(VkSwapchainCreateFlagsKHR bits, bool null_on_unknown);
 
 /*!
  * Returns the image usage flag if one valid bit is set,
@@ -757,6 +770,8 @@ struct vk_device_features
 	bool synchronization_2;
 	bool ext_fmt_resolve;
 	bool storage_buffer_8bit_access;
+	bool present_id;
+	bool present_id2;
 	bool present_wait;
 	bool video_maintenance_1;
 };
@@ -1326,7 +1341,7 @@ vk_create_timeline_semaphore_from_native(struct vk_bundle *vk, xrt_graphics_sync
  *
  */
 
-#if defined(VK_EXT_calibrated_timestamps) || defined(XRT_DOXYGEN)
+#if defined(VK_EXT_calibrated_timestamps) || defined(VK_KHR_calibrated_timestamps) || defined(XRT_DOXYGEN)
 /*!
  * Convert timestamps in GPU ticks (as return by VkQueryPool timestamp queries)
  * into host CPU nanoseconds, same time domain as @ref os_monotonic_get_ns.

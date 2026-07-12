@@ -37,8 +37,14 @@ struct vk_surface_info
 	VkSurfaceCapabilities2EXT caps2;
 #endif
 
-#if defined(VK_KHR_get_surface_capabilities2) && defined(VK_KHR_shared_presentable_image)
+#ifdef VK_KHR_get_surface_capabilities2
+#ifdef VK_KHR_present_id2
+	VkSurfaceCapabilitiesPresentId2KHR present_id2_caps;
+#endif
+
+#ifdef VK_KHR_shared_presentable_image
 	VkSharedPresentSurfaceCapabilitiesKHR shared_present_caps;
+#endif
 #endif
 };
 

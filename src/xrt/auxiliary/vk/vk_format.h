@@ -20,17 +20,6 @@ extern "C" {
 
 
 /*!
- * A pair of a UNORM and sRGB format.
- *
- * @ingroup aux_vk
- */
-struct vk_srgb_format_pair
-{
-	VkFormat unorm;
-	VkFormat srgb;
-};
-
-/*!
  * Given a UNORM format, return the corresponding sRGB format.
  *
  * @param unorm The UNORM format to convert.

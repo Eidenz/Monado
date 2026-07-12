@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
 # Copyright 2020-2025, Collabora, Ltd.
-# Copyright 2024-2025, NVIDIA CORPORATION.
+# Copyright 2024-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: BSL-1.0
-"""Parse a JSON file describing interaction profiles and
-bindings and write misc utility functions."""
+"""Parse a JSON file describing interaction profiles and bindings."""
 
-import argparse
 import json
 import copy
 from operator import attrgetter
-
-from string import Template
 
 def wl(f, *args, endNewLine=True):
     """Write lines"""
@@ -560,75 +556,3 @@ header = '''// Copyright 2020-2025, Collabora, Ltd.
  * @ingroup {group}
  */
 '''
-
-
-def generate_bindings_helpers_c(template, file, b):
-    """Generate the bindings helpers."""
-
-    inputs = set()
-    outputs = set()
-    for profile in b.profiles:
-        component: Component
-        for idx, component in enumerate(profile.components):
-
-            if not component.monado_binding:
-                continue
-
-            if component.subpath_type == "vibration":
-                outputs.add(component.monado_binding)
-            else:
-                inputs.add(component.monado_binding)
-
-    # special cased bindings that are never directly used in the input profiles
-    inputs.add("XRT_INPUT_GENERIC_HEAD_POSE")
-    inputs.add("XRT_INPUT_GENERIC_HEAD_DETECT")
-    inputs.add("XRT_INPUT_HT_UNOBSTRUCTED_LEFT")
-    inputs.add("XRT_INPUT_HT_UNOBSTRUCTED_RIGHT")
-    inputs.add("XRT_INPUT_HT_CONFORMING_LEFT")
-    inputs.add("XRT_INPUT_HT_CONFORMING_RIGHT")
-    inputs.add("XRT_INPUT_GENERIC_TRACKER_POSE")
-
-    xrt_input_name_enum_content = '\n'.join(
-        [f'\tif(strcmp("{input}", input) == 0) return {input};' for input in sorted(inputs)]
-    )
-    xrt_input_name_enum_content += f'\n\treturn XRT_INPUT_GENERIC_TRACKER_POSE;'
-
-    xrt_output_name_enum_content = '\n'.join(
-        [f'\tif(strcmp("{output}", output) == 0) return {output};' for output in sorted(outputs)]
-    )
-    xrt_output_name_enum_content += f'\n\treturn XRT_OUTPUT_NAME_SIMPLE_VIBRATION;'
-
-    with open(template, "r") as f:
-        src = Template(f.read())
-
-
-    with open(file, "w") as f:
-        filled = src.substitute(
-            xrt_input_name_enum_content=xrt_input_name_enum_content,
-            xrt_output_name_enum_content=xrt_output_name_enum_content
-        )
-        f.write(filled)
-
-
-def main():
-    """Handle command line and generate a file."""
-    parser = argparse.ArgumentParser(description='Bindings helper generator.')
-    parser.add_argument(
-        'bindings', help='Bindings file to use')
-    parser.add_argument(
-        'template', type=str, nargs='+',
-        help='Template File')
-    parser.add_argument(
-        'output', type=str, nargs='+',
-        help='Output file, uses the name to choose output type')
-    args = parser.parse_args()
-
-    bindings = Bindings.load_and_parse(args.bindings)
-
-    for output in args.output:
-        if output.endswith("generated_bindings_helpers.c"):
-            generate_bindings_helpers_c(args.template[0], output, bindings)
-
-
-if __name__ == "__main__":
-    main()

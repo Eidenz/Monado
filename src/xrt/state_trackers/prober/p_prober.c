@@ -864,7 +864,8 @@ print_system_devices(u_pp_delegate_t dg, struct xrt_system_devices *xsysd)
 	u_pp(dg, "\n\tGot devices:");
 
 	for (uint32_t i = 0; i < xsysd->static_xdev_count; i++) {
-		u_pp(dg, "\n\t\t%u: %s", i, xsysd->static_xdevs[i]->str);
+		struct xrt_device *xdev = xsysd->static_xdevs[i];
+		u_pp(dg, "\n\t\t%2u: '%s' (id=%" PRIu64 ")", i, xdev->str, xdev->id.val);
 	}
 
 	u_pp(dg, "\n\tIn roles:");

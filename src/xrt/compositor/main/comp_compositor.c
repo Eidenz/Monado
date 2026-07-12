@@ -523,6 +523,9 @@ static const char *optional_instance_extensions[] = {
 #ifdef VK_EXT_swapchain_colorspace
     VK_EXT_SWAPCHAIN_COLORSPACE_EXTENSION_NAME,
 #endif
+#ifdef VK_KHR_get_surface_capabilities2
+    VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,
+#endif
 #ifdef VK_EXT_display_surface_counter
     VK_EXT_DISPLAY_SURFACE_COUNTER_EXTENSION_NAME,
 #endif
@@ -593,6 +596,9 @@ static const char *optional_device_extensions[] = {
 #ifdef VK_KHR_present_id
     VK_KHR_PRESENT_ID_EXTENSION_NAME,
 #endif
+#ifdef VK_KHR_present_id2
+    VK_KHR_PRESENT_ID_2_EXTENSION_NAME,
+#endif
 #ifdef VK_KHR_present_wait
     VK_KHR_PRESENT_WAIT_EXTENSION_NAME,
 #endif
@@ -617,6 +623,9 @@ static const char *optional_device_extensions[] = {
 #ifdef VK_EXT_calibrated_timestamps
     VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME,
 #endif
+#ifdef VK_KHR_calibrated_timestamps
+    VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME,
+#endif
 #ifdef VK_EXT_robustness2
     VK_EXT_ROBUSTNESS_2_EXTENSION_NAME,
 #endif
@@ -635,8 +644,7 @@ select_instances_extensions(struct comp_compositor *c,
 {
 #ifdef XRT_FEATURE_WINDOW_PEEK
 	if (!comp_window_peek_get_vk_instance_exts(required_builder)) {
-		COMP_ERROR(c, "Failed to get required vulkan instance extensions for peek window.");
-		return false;
+		COMP_WARN(c, "Failed to get vulkan instance extensions for peek window.");
 	}
 #endif
 	return true;
@@ -1213,6 +1221,11 @@ comp_main_create_system_compositor(struct xrt_device *xdev,
 	c->view_configs[0].view_count = view_count;
 	sys_info->view_types[0] = c->view_configs[0].view_type;
 	c->view_config_count = sys_info->view_type_count = 1; // Only one view config for now.
+
+	if (c->settings.use_compute && // Only compute for now.
+	    view_type == XRT_VIEW_TYPE_STEREO) {
+		sys_info->supports_emulated_quad_views_with_inset = true;
+	}
 
 	// If we can add e.g. video pass-through capabilities, we may need to change (augment) this list.
 	// Just copying it directly right now.

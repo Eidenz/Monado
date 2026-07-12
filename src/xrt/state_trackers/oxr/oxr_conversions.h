@@ -1,5 +1,5 @@
 // Copyright 2018-2024, Collabora, Ltd.
-// Copyright 2024-2025, NVIDIA CORPORATION.
+// Copyright 2024-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -365,6 +365,7 @@ xrt_view_type_to_xr(enum xrt_view_type view_type)
 	switch (view_type) {
 	case XRT_VIEW_TYPE_MONO: return XR_VIEW_CONFIGURATION_TYPE_PRIMARY_MONO;
 	case XRT_VIEW_TYPE_STEREO: return XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+	case XRT_VIEW_TYPE_QUAD: return XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO_WITH_FOVEATED_INSET;
 	}
 
 	// Used as default, to get warnings.

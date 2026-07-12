@@ -7,7 +7,14 @@
  * @ingroup tracking
  */
 
+#include "xrt/xrt_config_build.h"
+
 #include "t_constellation_tracker_internal.hpp"
+#include "t_constellation_tracker_dataset.hpp"
+
+#ifdef XRT_FEATURE_RERUN
+#include "constellation_tracker_rerun.hpp"
+#endif
 
 #include <string>
 
@@ -15,6 +22,13 @@
 namespace xrt::tracking::constellation {
 
 DEBUG_GET_ONCE_LOG_OPTION(constellation_tracker_log, "CONSTELLATION_TRACKER_LOG", U_LOGGING_WARN)
+DEBUG_GET_ONCE_OPTION(constellation_tracker_data_recorder_output, "CONSTELLATION_TRACKER_DATA_RECORDER_OUTPUT", "")
+
+// Unconditionally present to allow warning that the feature is not enabled.
+DEBUG_GET_ONCE_BOOL_OPTION(constellation_tracker_enable_rerun, "CONSTELLATION_TRACKER_RERUN_ENABLE", false)
+#ifdef XRT_FEATURE_RERUN
+DEBUG_GET_ONCE_BOOL_OPTION(constellation_tracker_rerun_spawn, "CONSTELLATION_TRACKER_RERUN_SPAWN", true)
+#endif
 
 /*
  *
@@ -22,14 +36,30 @@ DEBUG_GET_ONCE_LOG_OPTION(constellation_tracker_log, "CONSTELLATION_TRACKER_LOG"
  *
  */
 
+//! Gets the gravity vector of a pose, in the pose's local frame.
 static void
-get_pose_gravity_vector(xrt_pose &pose, xrt_vec3 &gravity)
+get_pose_gravity_vector(xrt_pose &T_world_pose, xrt_vec3 &gravity)
 {
 	// Extract the gravity vector from the pose's orientation
-	gravity.x = 0.0f;
-	gravity.y = 1.0f;
-	gravity.z = 0.0f;
-	math_quat_rotate_vec3(&pose.orientation, &gravity, &gravity);
+	gravity = XRT_VEC3_UNIT_Y;
+
+	xrt_quat T_pose_world_orientation;
+	math_quat_invert(&T_world_pose.orientation, &T_pose_world_orientation);
+
+	math_quat_rotate_vec3(&T_pose_world_orientation, &gravity, &gravity);
+}
+
+static uint32_t
+num_blobs_for_device(CameraSample &sample, t_constellation_device_id_t device_id)
+{
+	uint32_t out_num_blobs = 0;
+	for (uint32_t i = 0; i < sample.blob_count; i++) {
+		t_blob &b = sample.blobs[i];
+		if (b.matched_device_id == device_id) {
+			out_num_blobs++;
+		}
+	}
+	return out_num_blobs;
 }
 
 /*
@@ -50,6 +80,23 @@ CameraSample::GetDeviceState(t_constellation_device_id_t device_id)
 	return std::nullopt;
 }
 
+DeviceState &
+CameraSample::PutDeviceState(t_constellation_device_id_t device_id)
+{
+	assert(this->device_count < XRT_CONSTELLATION_MAX_DEVICES);
+
+	DeviceState &new_device_state = this->device_states[this->device_count++];
+	new_device_state = {
+	    .device_id = device_id,
+	    .Txr_world_device_prior = std::nullopt,
+	    .found_pose = std::nullopt,
+	    .needs_slow_processing = false,
+	};
+
+	return new_device_state;
+}
+
+
 CameraSample::CameraSample(t_blob_observation &blobservation, Camera *camera)
 {
 	// Copy the blob observation into this sample, since we need the data to be safe.
@@ -64,6 +111,12 @@ CameraSample::CameraSample(t_blob_observation &blobservation, Camera *camera)
 
 	this->device_states = {};
 	this->device_count = 0;
+
+	auto mosaic = camera->mosaic.lock();
+	U_ASSERT_WEAK_PTR_THROW(mosaic, "Camera's mosaic was destroyed while we still had a sample referencing it");
+
+	this->mosaic_index = mosaic->index;
+	this->camera_index = camera->index;
 }
 
 void
@@ -75,10 +128,9 @@ CameraSample::MarkMatchingBlobs(ConstellationTracker *ct,
 	// First clear existing blob labels for this device
 	for (uint32_t i = 0; i < this->blob_count; i++) {
 		t_blob &b = this->blobs[i];
-		t_constellation_device_id_t led_object_id = b.matched_device_id;
 
 		// Skip blobs which already have an ID not belonging to this device
-		if (led_object_id != device_id) {
+		if (b.matched_device_id != device_id) {
 			continue;
 		}
 
@@ -144,18 +196,22 @@ Camera::Camera(ConstellationTracker *tracker,
 	this->slow_processing_thread_data.cs = correspondence_search_new(log_level_ptr, &this->model);
 	this->fast_processing_thread_data.cs = correspondence_search_new(log_level_ptr, &this->model);
 
-	if (os_thread_helper_init(&this->slow_processing_thread) < 0) {
-		throw std::runtime_error("Slow processing thread failed to init");
-	}
-	if (os_thread_helper_init(&this->fast_processing_thread) < 0) {
-		throw std::runtime_error("Fast processing thread failed to init");
-	}
+	if (!this->tracker->single_threaded) {
+		if (os_thread_helper_init(&this->slow_processing_thread) < 0) {
+			throw std::runtime_error("Slow processing thread failed to init");
+		}
+		if (os_thread_helper_init(&this->fast_processing_thread) < 0) {
+			throw std::runtime_error("Fast processing thread failed to init");
+		}
 
-	if (os_thread_helper_start(&this->slow_processing_thread, constellation_tracker_camera_slow_thread, this) < 0) {
-		throw std::runtime_error("Starting slow processing thread failed");
-	}
-	if (os_thread_helper_start(&this->fast_processing_thread, constellation_tracker_camera_fast_thread, this) < 0) {
-		throw std::runtime_error("Starting fast processing thread failed");
+		if (os_thread_helper_start(&this->slow_processing_thread, constellation_tracker_camera_slow_thread,
+		                           this) < 0) {
+			throw std::runtime_error("Starting slow processing thread failed");
+		}
+		if (os_thread_helper_start(&this->fast_processing_thread, constellation_tracker_camera_fast_thread,
+		                           this) < 0) {
+			throw std::runtime_error("Starting fast processing thread failed");
+		}
 	}
 
 	u_sink_debug_init(&this->slow_processing_thread_data.debug_sink);
@@ -222,26 +278,36 @@ Camera::DeferSampleToSlowThread(CameraSample &sample)
 bool
 Camera::TryDevicePose(std::unique_ptr<Device> &device,
                       CameraSample &sample,
+                      DeviceState &device_state,
                       xrt_pose &Tcv_cam_world,
-                      xrt_pose &Tcv_world_device_prior,
-                      xrt_pose &Tcv_world_device_candidate,
-                      xrt_pose &Tcv_cam_device_found)
+                      std::optional<xrt_pose> &Tcv_world_device_prior,
+                      xrt_pose &Tcv_world_device_candidate)
 {
-	xrt_pose Tcv_cam_device_prior;
-	math_pose_transform(&Tcv_cam_world, &Tcv_world_device_prior, &Tcv_cam_device_prior);
-
 	xrt_pose Tcv_cam_device_candidate;
 	math_pose_transform(&Tcv_cam_world, &Tcv_world_device_candidate, &Tcv_cam_device_candidate);
 
 	pose_metrics score;
-	pose_metrics_evaluate_pose_with_prior(&score, &Tcv_cam_device_candidate, false, &Tcv_cam_device_prior,
-	                                      &device->prior_pos_error, &device->prior_rot_error, sample.blobs,
-	                                      sample.blob_count, &device->params.led_model, device->id, &this->model,
-	                                      NULL);
+	if (Tcv_world_device_prior.has_value()) {
+		xrt_pose Tcv_cam_device_prior;
+		math_pose_transform(&Tcv_cam_world, &Tcv_world_device_prior.value(), &Tcv_cam_device_prior);
+
+		pose_metrics_evaluate_pose_with_prior(&score, &Tcv_cam_device_candidate, false, &Tcv_cam_device_prior,
+		                                      &device->prior_pos_error, &device->prior_rot_error, sample.blobs,
+		                                      sample.blob_count, &device->params.led_model, device->id,
+		                                      &this->model, NULL);
+	} else {
+		pose_metrics_evaluate_pose(&score, &Tcv_cam_device_candidate, sample.blobs, sample.blob_count,
+		                           &device->params.led_model, device->id, &this->model, NULL);
+	}
+
 
 	if (POSE_HAS_FLAGS(&score, POSE_MATCH_GOOD | POSE_MATCH_LED_IDS)) {
-		this->PushPose(sample, device, score, Tcv_cam_device_candidate, true);
-		Tcv_cam_device_found = Tcv_cam_device_candidate;
+		this->PushPose(sample,                   //
+		               device_state,             //
+		               device,                   //
+		               score,                    //
+		               Tcv_cam_device_candidate, //
+		               false);                   //
 		return true;
 	}
 
@@ -251,9 +317,9 @@ Camera::TryDevicePose(std::unique_ptr<Device> &device,
 bool
 Camera::TryDeviceBlobRecovery(std::unique_ptr<Device> &device,
                               CameraSample &sample,
+                              DeviceState &device_state,
                               xrt_pose &Tcv_cam_world,
-                              xrt_pose &Tcv_world_device_prior,
-                              xrt_pose &Tcv_cam_device_found)
+                              std::optional<xrt_pose> &Tcv_world_device_prior)
 {
 	auto tracker = this->tracker;
 
@@ -274,7 +340,12 @@ Camera::TryDeviceBlobRecovery(std::unique_ptr<Device> &device,
 	}
 
 	xrt_pose Tcv_cam_device_prior;
-	math_pose_transform(&Tcv_cam_world, &Tcv_world_device_prior, &Tcv_cam_device_prior);
+	if (Tcv_world_device_prior.has_value()) {
+		math_pose_transform(&Tcv_cam_world, &Tcv_world_device_prior.value(), &Tcv_cam_device_prior);
+	} else {
+		// The RANSAC should still be able to run with an identity pose.
+		Tcv_cam_device_prior = XRT_POSE_IDENTITY;
+	}
 
 	// RANSAC-PnP with the matched blobs
 	xrt_pose Tcv_cam_device = Tcv_cam_device_prior;
@@ -285,17 +356,27 @@ Camera::TryDeviceBlobRecovery(std::unique_ptr<Device> &device,
 		return false;
 	}
 
-	// Evaluate the pose
 	pose_metrics score;
-	pose_metrics_evaluate_pose_with_prior(
-	    &score, &Tcv_cam_device, true, &Tcv_cam_device_prior, &device->prior_pos_error, &device->prior_rot_error,
-	    sample.blobs, sample.blob_count, &device->params.led_model, device->id, &this->model, NULL);
+	// Evaluate the pose, using the prior if available
+	if (Tcv_world_device_prior.has_value()) {
+		pose_metrics_evaluate_pose_with_prior(&score, &Tcv_cam_device, true, &Tcv_cam_device_prior,
+		                                      &device->prior_pos_error, &device->prior_rot_error, sample.blobs,
+		                                      sample.blob_count, &device->params.led_model, device->id,
+		                                      &this->model, NULL);
+	} else {
+		pose_metrics_evaluate_pose(&score, &Tcv_cam_device, sample.blobs, sample.blob_count,
+		                           &device->params.led_model, device->id, &this->model, NULL);
+	}
 
 	if (POSE_HAS_FLAGS(&score, POSE_MATCH_GOOD)) {
 		CT_DEBUG(tracker, "Camera %p RANSAC-PnP recovered pose for device %d from %u blobs", (void *)this,
 		         device->id, sample.blob_count);
-		this->PushPose(sample, device, score, Tcv_cam_device, false);
-		Tcv_cam_device_found = Tcv_cam_device;
+		this->PushPose(sample,         //
+		               device_state,   //
+		               device,         //
+		               score,          //
+		               Tcv_cam_device, //
+		               true);          //
 
 		return true;
 	}
@@ -329,38 +410,50 @@ Camera::SlowSampleProcess(CameraSample &sample)
 		correspondence_search_flags search_flags =
 		    (correspondence_search_flags)(CS_FLAG_STOP_FOR_STRONG_MATCH | CS_FLAG_DEEP_SEARCH);
 
-		xrt_pose Tcv_cam_device = XRT_POSE_IDENTITY;
-		auto maybe_device_state = sample.GetDeviceState(device->id);
-		if (maybe_device_state.has_value()) {
-			auto device_state = *maybe_device_state;
-			if (!device_state->needs_slow_processing) {
-				continue; // we already did a fast process for this device and it succeeded, no need to
-				          // do a slow one
-			}
+		auto device_state = sample.GetDeviceState(device->id).value_or(nullptr);
+		// If there was no device state in the sample, that means this device appeared after the constellation
+		// tracker started this sample, so we need to fill out the device state here.
+		if (device_state == nullptr) {
+			device_state = &sample.PutDeviceState(device->id);
 
-			if (device_state->Txr_world_device_prior.has_value() && Txr_world_cam.has_value()) {
-				xrt_pose Txr_cam_world;
-				math_pose_invert(&Txr_world_cam.value(), &Txr_cam_world);
-
-				xrt_pose Txr_cam_device;
-				math_pose_transform(&Txr_cam_world, &device_state->Txr_world_device_prior.value(),
-				                    &Txr_cam_device);
-
-				math_pose_convert_opencv(&Txr_cam_device, &Tcv_cam_device);
-
-				search_flags = (correspondence_search_flags)(search_flags | CS_FLAG_HAVE_POSE_PRIOR);
-			}
+			// we need to do a slow process for this device since it wasn't present in the fast processing
+			device_state->needs_slow_processing = true;
 		}
 
-		xrt_vec3 camera_gravity_vector = {0.0, 1.0, 0.0};
-		if ((search_flags & CS_FLAG_HAVE_POSE_PRIOR) != 0) {
-			std::unique_lock<os::Mutex> lock(this->processing_lock);
+		if (!device_state->needs_slow_processing) {
+			continue; // we already did a fast process for this device and it succeeded, no need to
+			          // do a slow one
+		}
 
+		xrt_pose Tcv_cam_device = XRT_POSE_IDENTITY;
+		if (device_state->Txr_world_device_prior.has_value() && Txr_world_cam.has_value()) {
+			xrt_pose Txr_cam_world;
+			math_pose_invert(&Txr_world_cam.value(), &Txr_cam_world);
+
+			xrt_pose Txr_cam_device;
+			math_pose_transform(&Txr_cam_world, &device_state->Txr_world_device_prior.value(),
+			                    &Txr_cam_device);
+
+			math_pose_convert_opencv(&Txr_cam_device, &Tcv_cam_device);
+
+			search_flags = (correspondence_search_flags)(search_flags | CS_FLAG_HAVE_POSE_PRIOR);
+		}
+
+		// Arbitrary threshold to prevent trusting a gravity vector if the device itself isn't confident in it's
+		// own gravity.
+		const float gravity_error_threshold_deg = 25.f;
+
+		xrt_vec3 cv_camera_gravity_vector = {0.0, 1.0, 0.0};
+		if ((search_flags & CS_FLAG_HAVE_POSE_PRIOR) != 0 &&
+		    device->gravity_error_rad < DEG_TO_RAD(gravity_error_threshold_deg)) {
 			// If we have a pose for the camera and we have a prior pose
 			// (required by correspondence for search gravity matching)
 			if (Txr_world_cam.has_value()) {
+				xrt_pose Tcv_world_cam;
+				math_pose_convert_opencv(&Txr_world_cam.value(), &Tcv_world_cam);
+
 				// Acquire the camera's gravity vector under the processing lock
-				get_pose_gravity_vector(Txr_world_cam.value(), camera_gravity_vector);
+				get_pose_gravity_vector(Tcv_world_cam, cv_camera_gravity_vector);
 
 				// Add in to check gravity
 				search_flags = (correspondence_search_flags)(search_flags | CS_FLAG_MATCH_GRAVITY);
@@ -375,21 +468,33 @@ Camera::SlowSampleProcess(CameraSample &sample)
 		    &Tcv_cam_device,                                   //
 		    &device->prior_pos_error,                          //
 		    &device->prior_rot_error,                          //
-		    &camera_gravity_vector,                            //
+		    &cv_camera_gravity_vector,                         //
 		    device->gravity_error_rad,                         //
 		    &score);                                           //
 		if (found_pose) {
-			this->PushPose(sample, device, score, Tcv_cam_device, true);
+			this->PushPose(sample,         //
+			               *device_state,  //
+			               device,         //
+			               score,          //
+			               Tcv_cam_device, //
+			               false);         //
 
 			// We found a pose for this device in this sample
-			if (maybe_device_state.has_value()) {
-				maybe_device_state.value()->needs_slow_processing = false;
-				maybe_device_state.value()->Tcv_cam_device_found = Tcv_cam_device;
-			}
+			device_state->needs_slow_processing = false;
+		} else {
+			CT_TRACE(tracker, "Camera %p slow processing for device %d failed to find a pose", (void *)this,
+			         device->id);
 		}
 	}
 
 	this->DebugScribbleSample(sample, false);
+
+#ifdef XRT_FEATURE_RERUN
+	// If a slow sample was triggered by the fast processing thread, we always want to log the sample.
+	if (tracker->rerun_stream) {
+		tracker->rerun_stream->LogSample(*tracker, sample);
+	}
+#endif
 }
 
 bool
@@ -417,40 +522,44 @@ Camera::FastSampleProcess(CameraSample &sample)
 	xrt_pose Tcv_cam_world;
 	math_pose_invert(&Tcv_world_cam, &Tcv_cam_world);
 
-	xrt_vec3 gravity_vector;
-	get_pose_gravity_vector(Txr_world_cam.value(), gravity_vector);
-
-	bool need_full_search = false;
+	bool need_slow_search = false;
 	std::shared_lock lock(tracker->device_lock);
 	for (std::unique_ptr<Device> &device : tracker->devices) {
 		xrt_space_relation device_predicted_relation = XRT_SPACE_RELATION_ZERO; //< AKA "the prior"
-		t_constellation_tracker_tracking_source_get_tracked_pose(
-		    device->params.tracking_source, sample.timestamp_ns, &device_predicted_relation);
 
+		if (device->params.tracking_source != nullptr) {
+			t_constellation_tracker_tracking_source_get_tracked_pose(
+			    device->params.tracking_source, sample.timestamp_ns, &device_predicted_relation);
+		}
+
+		std::optional<xrt_pose> Tcv_world_device_predicted = std::nullopt; //< AKA "the prior"
 		// Whether the prior pose is actually valid
-		bool prior_valid =
-		    (device_predicted_relation.relation_flags &
+		if ((device_predicted_relation.relation_flags &
 		     (XRT_SPACE_RELATION_POSITION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_VALID_BIT)) ==
-		    (XRT_SPACE_RELATION_POSITION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_VALID_BIT);
+		    (XRT_SPACE_RELATION_POSITION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_VALID_BIT)) {
+			Tcv_world_device_predicted.emplace(xrt_pose{}); // initialize it to a value
+			math_pose_convert_opencv(&device_predicted_relation.pose, &Tcv_world_device_predicted.value());
+		}
 
-		auto &device_state = sample.device_states[sample.device_count++] = {
-		    .device_id = device->id,
-		    .Txr_world_device_prior =
-		        prior_valid ? std::optional<xrt_pose>(device_predicted_relation.pose) : std::nullopt,
-		    .needs_slow_processing = false,
-		};
+		auto &device_state = sample.PutDeviceState(device->id);
+		device_state.Txr_world_device_prior = Tcv_world_device_predicted.has_value()
+		                                          ? std::optional<xrt_pose>(device_predicted_relation.pose)
+		                                          : std::nullopt;
 
-		xrt_pose Tcv_world_device_predicted; //< AKA "the prior"
-		math_pose_convert_opencv(&device_predicted_relation.pose, &Tcv_world_device_predicted);
-
-		xrt_pose Tcv_cam_device_found;
+		bool wipe_blob_associations = false;
+		if (this->TryDeviceBlobRecovery(device, sample, device_state, Tcv_cam_world,
+		                                Tcv_world_device_predicted)) {
+			CT_DEBUG(tracker, "Fast processing for device %d succeeded with blob recovery", device->id);
+			continue; // try the next device, we found a pose!
+		} else {
+			wipe_blob_associations = true;
+		}
 
 		// if we have a valid prior pose, try to use it for fast matching
-		if (prior_valid && this->TryDevicePose(device, sample, Tcv_cam_world, Tcv_world_device_predicted,
-		                                       Tcv_world_device_predicted, Tcv_cam_device_found)) {
+		if (Tcv_world_device_predicted.has_value() &&
+		    this->TryDevicePose(device, sample, device_state, Tcv_cam_world, Tcv_world_device_predicted,
+		                        Tcv_world_device_predicted.value())) {
 			CT_DEBUG(tracker, "Fast processing for device %d succeeded", device->id);
-			device_state.Tcv_cam_device_found = Tcv_cam_device_found;
-
 			continue; // try the next device, we found a pose!
 		}
 
@@ -467,56 +576,75 @@ Camera::FastSampleProcess(CameraSample &sample)
 			}
 		}
 
-		if (has_last_known && this->TryDevicePose(device, sample, Tcv_cam_world, Tcv_world_device_predicted,
-		                                          Tcv_world_device_last_known, Tcv_cam_device_found)) {
+		if (has_last_known && this->TryDevicePose(device, sample, device_state, Tcv_cam_world,
+		                                          Tcv_world_device_predicted, Tcv_world_device_last_known)) {
 			CT_DEBUG(tracker, "Fast processing for device %d succeeded with last known pose", device->id);
-			device_state.Tcv_cam_device_found = Tcv_cam_device_found;
-
 			continue; // try the next device, we found a pose!
 		}
 
-		if (this->TryDeviceBlobRecovery(device, sample, Tcv_cam_world, Tcv_world_device_predicted,
-		                                Tcv_cam_device_found)) {
-			CT_DEBUG(tracker, "Fast processing for device %d succeeded with blob recovery", device->id);
-			device_state.Tcv_cam_device_found = Tcv_cam_device_found;
-
-			continue; // try the next device, we found a pose!
+		if (wipe_blob_associations) {
+			// Blob-based recovery failed, unmark all blobs for this device.
+			for (uint32_t i = 0; i < sample.blob_count; i++) {
+				t_blob &b = sample.blobs[i];
+				if (b.matched_device_id == device->id) {
+					b.matched_device_led_id = XRT_CONSTELLATION_INVALID_LED_ID;
+					b.matched_device_id = XRT_CONSTELLATION_INVALID_DEVICE_ID;
+				}
+			}
 		}
 
 		device_state.needs_slow_processing = true;
 
-		need_full_search = true;
+		need_slow_search = true;
 	}
 
 	this->DebugScribbleSample(sample, true);
 
-	return need_full_search;
+	// Only save samples on the fast processing thread, since the slow processing thread is *triggered* by the fast
+	// processing thread.
+	if (tracker->data_recorder) {
+		tracker->data_recorder->RecordSample(sample);
+	}
+
+#ifdef XRT_FEATURE_RERUN
+	// We only want to log this sample to rerun if we aren't about to do a full search
+	if (!need_slow_search && tracker->rerun_stream) {
+		tracker->rerun_stream->LogSample(*tracker, sample);
+	}
+#endif
+
+	return need_slow_search;
 }
 
 void
 Camera::PushPose(CameraSample &camera_sample,
+                 DeviceState &device_state,
                  std::unique_ptr<Device> &device,
                  pose_metrics &score,
                  xrt_pose &Tcv_cam_device,
-                 bool optimize)
+                 bool was_optimized)
 {
+	// We should never find two poses for the same device in a single frame
+	assert(device_state.found_pose.has_value() == false);
+
 	ConstellationTracker *tracker = this->tracker;
 
-	{ // Match visible blobs to the pose we found
-		pose_metrics_blob_match_info blob_match_info;
-		pose_metrics_match_pose_to_blobs(&Tcv_cam_device, camera_sample.blobs, camera_sample.blob_count,
-		                                 &device->params.led_model, device->id, &this->model, &blob_match_info);
+	uint32_t blobs_marked_before_update = num_blobs_for_device(camera_sample, device->id);
 
-		camera_sample.MarkMatchingBlobs(tracker, device->params.led_model, device->id, blob_match_info);
+	// Match visible blobs to the pose we found
+	pose_metrics_blob_match_info blob_match_info;
+	pose_metrics_match_pose_to_blobs(&Tcv_cam_device, camera_sample.blobs, camera_sample.blob_count,
+	                                 &device->params.led_model, device->id, &this->model, &blob_match_info);
 
-		auto tbo = camera_sample.ToBlobObservation();
-		t_blobwatch_mark_blob_device(camera_sample.source, &tbo, device->id);
-	}
+	// Mark all the new blobs using the match info
+	camera_sample.MarkMatchingBlobs(tracker, device->params.led_model, device->id, blob_match_info);
 
-	// Try to optimize the pose
-	if (optimize) {
-		int num_leds_out;
-		int num_inliers;
+	// Only do an optimization if we haven't already optimized, or we marked new blobs.
+	// This prevents us from optimizing a pose multiple times in a single frame.
+	if (!was_optimized || num_blobs_for_device(camera_sample, device->id) > blobs_marked_before_update) {
+		// Try to optimize the pose again, unmarking outliers
+		uint32_t num_leds_out;
+		uint32_t num_inliers;
 		if (!ransac_pnp_pose(tracker->log_level, &Tcv_cam_device, camera_sample.blobs, camera_sample.blob_count,
 		                     &device->params.led_model, device->id, &this->model, &num_leds_out,
 		                     &num_inliers)) {
@@ -527,14 +655,22 @@ Camera::PushPose(CameraSample &camera_sample,
 		} else {
 			CT_DEBUG(tracker,
 			         "Camera %d (group %d) RANSAC-PnP refinement for device %d from %u "
-			         "blobs had "
-			         "%d LEDs with %d inliers. Produced pose %f,%f,%f,%f pos %f,%f,%f",
+			         "blobs had %d LEDs with %d inliers. Produced pose %f,%f,%f,%f pos %f,%f,%f",
 			         0, 0, device->id, camera_sample.blob_count, num_leds_out, num_inliers,
 			         Tcv_cam_device.orientation.x, Tcv_cam_device.orientation.y,
 			         Tcv_cam_device.orientation.z, Tcv_cam_device.orientation.w, Tcv_cam_device.position.x,
 			         Tcv_cam_device.position.y, Tcv_cam_device.position.z);
 		}
+
+		// We need to re-evaluate the pose after optimization, since the reprojection error may have changed.
+		pose_metrics_evaluate_pose(&score, &Tcv_cam_device, camera_sample.blobs, camera_sample.blob_count,
+		                           &device->params.led_model, device->id, &this->model, NULL);
 	}
+
+	// Call back to the blobwatch to update the blobs for this device. Done after pose optimization since the RANSAC
+	// process will unlabel any outliers.
+	auto tbo = camera_sample.ToBlobObservation();
+	t_blobwatch_mark_blob_device(camera_sample.source, &tbo, device->id);
 
 	// Move to OpenXR space
 	xrt_pose Txr_cam_device;
@@ -549,15 +685,6 @@ Camera::PushPose(CameraSample &camera_sample,
 	                      "Camera mosaic was destroyed while processing a sample, this should never happen since "
 	                      "the mosaic owns the camera");
 
-	auto Txr_world_cam = camera_sample.Txr_world_cam;
-	if (!Txr_world_cam.has_value()) {
-		// Can't do anything if we can't locate the camera in the world.
-		return;
-	}
-
-	xrt_pose Txr_world_device;
-	math_pose_transform(&Txr_world_cam.value(), &Txr_cam_device, &Txr_world_device);
-
 	float average_brightness = 0.0f;
 	uint32_t used_blobs = 0;
 	for (uint32_t i = 0; i < camera_sample.blob_count; i++) {
@@ -567,11 +694,34 @@ Camera::PushPose(CameraSample &camera_sample,
 			used_blobs++;
 		}
 	}
+
 	if (used_blobs > 0) {
 		average_brightness /= used_blobs;
 	} else {
 		average_brightness = 1.0f;
 	}
+
+	// Mark that we found a pose
+	device_state.found_pose = {
+	    .Tcv_cam_device = Tcv_cam_device,
+	    .average_blob_brightness = average_brightness,
+	};
+
+	auto Txr_world_cam = camera_sample.Txr_world_cam;
+	if (!Txr_world_cam.has_value()) {
+		// Can't do anything if we can't locate the camera in the world.
+		return;
+	}
+
+	xrt_pose Txr_world_device;
+	math_pose_transform(&Txr_world_cam.value(), &Txr_cam_device, &Txr_world_device);
+
+	// Compute the metrics
+	t_constellation_tracker_sample_metrics metrics = {
+	    .matched_blob_count = score.matched_blobs,
+	    .visible_led_count = score.visible_leds,
+	    .reprojection_error = score.matched_blobs > 0 ? sqrtf(score.reprojection_error / score.matched_blobs) : 0.0,
+	};
 
 	// Push the sample to the device
 	t_constellation_tracker_sample sample = {
@@ -580,6 +730,7 @@ Camera::PushPose(CameraSample &camera_sample,
 	    .mosaic_index = mosaic->index,
 	    .camera_index = this->index,
 	    .average_brightness = average_brightness, // @todo compute this
+	    .metrics = metrics,
 	};
 	t_constellation_tracker_device_push_sample(device->device, &sample);
 
@@ -680,6 +831,11 @@ Device::~Device()
 
 ConstellationTracker::ConstellationTracker(t_constellation_tracker_params *params)
 {
+	// If the deterministic flag is set, we force single-threaded processing.
+	if ((params->flags & T_CONSTELLATION_TRACKER_FLAGS_DETERMINISTIC) != 0) {
+		this->single_threaded = true;
+	}
+
 	this->log_level = debug_get_log_option_constellation_tracker_log();
 
 	this->mosaics.reserve(params->num_mosaics);
@@ -717,6 +873,28 @@ ConstellationTracker::ConstellationTracker(t_constellation_tracker_params *param
 	}
 
 	this->params = *params;
+
+	std::string data_recorder_output = debug_get_option_constellation_tracker_data_recorder_output();
+	if (!data_recorder_output.empty()) {
+		this->data_recorder = std::make_unique<DataRecorder>(this, data_recorder_output);
+		CT_INFO(this, "Constellation tracker data recorder enabled, outputting to %s",
+		        data_recorder_output.c_str());
+	}
+
+	if (debug_get_bool_option_constellation_tracker_enable_rerun()) {
+#ifdef XRT_FEATURE_RERUN
+		this->rerun_stream = std::make_unique<RerunContext>();
+		CT_INFO(this, "Constellation tracker Rerun stream enabled, outputting to constellation_tracker.rerun");
+
+		if (debug_get_bool_option_constellation_tracker_rerun_spawn()) {
+			this->rerun_stream->stream->spawn().exit_on_failure();
+		} else {
+			this->rerun_stream->stream->connect_grpc().exit_on_failure();
+		}
+#else
+		CT_ERROR(this, "Rerun stream requested but XRT_FEATURE_RERUN is not enabled");
+#endif
+	}
 
 	CT_DEBUG(this, "Created constellation tracker with %zu mosaics", this->mosaics.size());
 }
@@ -770,6 +948,10 @@ ConstellationTracker::AddDevice(t_constellation_tracker_device_params *params, t
 	this->devices.push_back(std::make_unique<Device>(params, device, id));
 
 	CT_DEBUG(this, "Added device with ID %d to constellation tracker", id);
+
+	if (this->data_recorder) {
+		this->data_recorder->RecordDeviceInfo(*this->devices.back());
+	}
 
 	return id;
 }
@@ -867,11 +1049,24 @@ constellation_tracker_camera_push_blobs(t_blob_sink *tbs, t_blob_observation *tb
 		return;
 	}
 
-	// Send to the fast thread
-	os_thread_helper_lock(&camera->fast_processing_thread);
-	camera->fast_processing_thread_data.sample = CameraSample(*tbo, camera);
-	os_thread_helper_signal_locked(&camera->fast_processing_thread);
-	os_thread_helper_unlock(&camera->fast_processing_thread);
+	if (tracker->single_threaded) {
+		auto sample = CameraSample(*tbo, camera);
+
+		// If we're in single-threaded mode, just process the sample immediately on the fast thread
+		if (camera->FastSampleProcess(sample)) {
+			CT_TRACE(tracker,
+			         "Fast processing for camera %p failed in single-threaded mode, doing slow processing",
+			         (void *)camera);
+
+			camera->SlowSampleProcess(sample);
+		}
+	} else {
+		// Send to the fast thread
+		os_thread_helper_lock(&camera->fast_processing_thread);
+		camera->fast_processing_thread_data.sample = CameraSample(*tbo, camera);
+		os_thread_helper_signal_locked(&camera->fast_processing_thread);
+		os_thread_helper_unlock(&camera->fast_processing_thread);
+	}
 }
 
 void
@@ -939,7 +1134,7 @@ t_constellation_tracker_add_device(t_constellation_tracker *raw_tracker,
                                    t_constellation_tracker_device *device,
                                    t_constellation_device_id_t *out_device_id)
 {
-	ConstellationTracker *tracker = (ConstellationTracker *)raw_tracker;
+	ConstellationTracker *tracker = ConstellationTracker::Get(raw_tracker);
 
 	try {
 		t_constellation_device_id_t device_id = tracker->AddDevice(params, device);
@@ -955,12 +1150,12 @@ t_constellation_tracker_add_device(t_constellation_tracker *raw_tracker,
 int
 t_constellation_tracker_remove_device(t_constellation_tracker *raw_tracker, t_constellation_device_id_t device)
 {
-	ConstellationTracker *tracker = (ConstellationTracker *)raw_tracker;
+	ConstellationTracker *tracker = ConstellationTracker::Get(raw_tracker);
 
 	try {
 		tracker->RemoveDevice(device);
 	} catch (const std::exception &e) {
-		CT_ERROR(tracker, "Failed to add device to constellation tracker: %s", e.what());
+		CT_ERROR(tracker, "Failed to remove device from constellation tracker: %s", e.what());
 		return -1;
 	}
 
@@ -970,7 +1165,7 @@ t_constellation_tracker_remove_device(t_constellation_tracker *raw_tracker, t_co
 xrt_tracking_origin *
 t_constellation_tracker_get_tracking_origin(t_constellation_tracker *raw_tracker)
 {
-	ConstellationTracker *tracker = (ConstellationTracker *)raw_tracker;
+	ConstellationTracker *tracker = ConstellationTracker::Get(raw_tracker);
 
 	return &tracker->tracking_origin;
 }

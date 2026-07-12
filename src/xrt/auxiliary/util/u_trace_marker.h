@@ -1,5 +1,6 @@
 // Copyright 2020-2022, Collabora, Ltd.
 // Copyright 2024-2025, NVIDIA CORPORATION.
+// Copyright 2026, Beyley Cardellio
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -61,6 +62,7 @@ enum u_trace_which
 {
 	U_TRACE_WHICH_SERVICE,
 	U_TRACE_WHICH_OPENXR,
+	U_TRACE_WHICH_OPENVR,
 };
 
 /*!

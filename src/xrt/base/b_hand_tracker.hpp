@@ -51,8 +51,8 @@ public: // Methods
 	xrt_result_t
 	setOutput(xrt_output_name name, const xrt_output_value *value);
 
-	void
-	destroyHandTracker();
+	static void
+	destroyHandTracker(struct xrt_hand_tracker *xht);
 
 
 private: // Types

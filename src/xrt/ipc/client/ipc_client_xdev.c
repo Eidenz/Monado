@@ -471,6 +471,8 @@ ipc_client_xdev_init(struct ipc_client_xdev *icx,
 
 	// Important fields.
 	icx->ipc_c = ipc_c;
+
+	// Slot index for IPC server lookups; not the same as xrt_device::id.
 	icx->device_id = device_id;
 
 	/*
@@ -513,6 +515,7 @@ ipc_client_xdev_init(struct ipc_client_xdev *icx,
 	IPC_CHK_WITH_GOTO(ipc_c, xret, "ipc_receive_device_get_info_locked", out_free_and_unlock);
 
 	// Copying the information from the info.
+	icx->base.id.val = info.xrt_device_id_val;
 	icx->base.device_type = info.device_type;
 	icx->base.supported = info.supported;
 	icx->base.name = info.name;

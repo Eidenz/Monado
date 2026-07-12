@@ -16,6 +16,8 @@ add_library(
 	pose_optimize.h
 	t_constellation_tracker.cpp
 	t_constellation_tracker.h
+	t_constellation_tracker_dataset.cpp
+	t_constellation_tracker_dataset.hpp
 	t_constellation_tracker_internal.hpp
 	t_led_sync_refinement.c
 	t_led_sync_refinement.h
@@ -44,4 +46,14 @@ if(XRT_HAVE_OPENCV)
 	target_include_directories(constellation PRIVATE ${OpenCV_INCLUDE_DIRS})
 	target_link_libraries(constellation PRIVATE ${OpenCV_LIBRARIES})
 	target_sources(constellation PRIVATE pose_optimize.cpp)
+endif()
+
+if(XRT_FEATURE_RERUN)
+	target_link_libraries(constellation PRIVATE rerun_sdk)
+
+	target_sources(
+		constellation
+		PRIVATE constellation_tracker_rerun.cpp constellation_tracker_rerun.hpp
+			constellation_tracker_rerun_blobwatch.h
+		)
 endif()

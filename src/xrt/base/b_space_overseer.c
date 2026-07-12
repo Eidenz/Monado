@@ -21,9 +21,11 @@
 #include "util/u_misc.h"
 #include "util/u_hashmap.h"
 #include "util/u_logging.h"
+#include "util/u_pretty_print.h"
 #include "b_space_overseer.h"
 
 #include <assert.h>
+#include <inttypes.h>
 #include <math.h>
 #include <pthread.h>
 
@@ -215,7 +217,7 @@ static struct u_space *
 find_xdev_space_read_locked(struct b_space_overseer *uso, struct xrt_device *xdev)
 {
 	void *ptr = NULL;
-	uint64_t key = (uint64_t)(intptr_t)xdev;
+	uint64_t key = xdev->id.val;
 	u_hashmap_int_find(uso->xdev_map, key, &ptr);
 
 	if (ptr == NULL) {
@@ -1317,17 +1319,18 @@ b_space_overseer_link_space_to_device(struct b_space_overseer *uso, struct xrt_s
 	pthread_rwlock_wrlock(&uso->lock);
 
 	void *ptr = NULL;
-	uint64_t key = (uint64_t)(intptr_t)xdev;
+	uint64_t key = xdev->id.val;
 	u_hashmap_int_find(uso->xdev_map, key, &ptr);
 	if (ptr != NULL) {
-		U_LOG_W("Device '%s' already have a space attached!", xdev->str);
+		U_LOG_W("Device '%s' (name=%s, id=%" PRIu64 ") already has a space attached!", xdev->str,
+		        u_str_xrt_device_name(xdev->name), xdev->id.val);
 	}
 
 	// Each xdev needs to add a reference to the space.
 	struct xrt_space *new_space = NULL;
 	xrt_space_reference(&new_space, xs);
 
-	u_hashmap_int_insert(uso->xdev_map, (uint64_t)(intptr_t)xdev, new_space);
+	u_hashmap_int_insert(uso->xdev_map, key, new_space);
 
 	pthread_rwlock_unlock(&uso->lock);
 

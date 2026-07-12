@@ -66,3 +66,8 @@ endif()
 if(XRT_HAVE_ONNXRUNTIME)
 	add_subdirectory(onnx)
 endif()
+
+# Render library
+if(XRT_MODULE_AUX_RENDER)
+	add_subdirectory(render)
+endif()

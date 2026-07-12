@@ -40,6 +40,7 @@ add_library(
 	st_gui STATIC
 	gui_prober.c
 	gui_scene_calibrate.c
+	gui_scene_constellation_tracker_test.cpp
 	gui_scene_hand_tracking_demo.c
 	gui_scene_main_menu.c
 	gui_scene_record.c
@@ -52,15 +53,17 @@ add_library(
 target_link_libraries(
 	st_gui
 	PRIVATE
+		xrt-external-imgui
 		xrt-external-stb
+		tracking-includes
+		drv_includes
 		aux_util
 		aux_util_sink
 		aux_os
 		aux_ogl
-		st_gui_base
-		drv_includes
 		base
-		xrt-external-imgui
+		constellation
+		st_gui_base
 	)
 target_include_directories(st_gui INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 

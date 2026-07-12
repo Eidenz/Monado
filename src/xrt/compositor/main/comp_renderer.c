@@ -941,6 +941,7 @@ dispatch_graphics(struct comp_renderer *r,
 	    layers,                           //
 	    layer_count,                      //
 	    world_poses_scanout_begin,        //
+	    world_poses_scanout_end,          //
 	    eye_poses,                        //
 	    fovs,                             //
 	    rtr,                              //

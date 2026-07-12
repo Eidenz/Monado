@@ -1031,7 +1031,7 @@ rift_devices_create(struct os_hid_device *hmd_dev,
 	}
 
 	m_imu_3dof_init(&hmd->fusion, M_IMU_3DOF_USE_GRAVITY_DUR_20MS);
-	hmd->clock_tracker = m_clock_windowed_skew_tracker_alloc(64);
+	hmd->clock_tracker = m_clock_windowed_skew_tracker_alloc(2048);
 
 	result = os_thread_helper_init(&hmd->sensor_thread);
 

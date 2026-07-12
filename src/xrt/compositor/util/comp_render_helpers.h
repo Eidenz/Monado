@@ -114,6 +114,18 @@ is_layer_unpremultiplied(const struct xrt_layer_data *data)
 	return (data->flags & XRT_LAYER_COMPOSITION_UNPREMULTIPLIED_ALPHA_BIT) != 0;
 }
 
+static inline bool
+is_layer_alpha_inverted(const struct xrt_layer_data *data)
+{
+#ifndef XRT_FEATURE_OPENXR_INVERTED_ALPHA
+	return false;
+#else
+	// The layers without source alpha bit flag are sent to comp with alpha 1.0, so they don't need to be inverted.
+	return (data->flags & XRT_LAYER_COMPOSITION_BLEND_TEXTURE_SOURCE_ALPHA_BIT) != 0 &&
+	       (data->flags & XRT_LAYER_COMPOSITION_INVERTED_ALPHA_BIT) != 0;
+#endif
+}
+
 static inline void
 set_post_transform_rect(const struct xrt_layer_data *data,
                         const struct xrt_normalized_rect *src_norm_rect,

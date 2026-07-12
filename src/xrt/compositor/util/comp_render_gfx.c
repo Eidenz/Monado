@@ -543,7 +543,13 @@ crg_distortion_common(struct render_gfx *render,
 			    &md->views[i].src_pose,                //
 			    &md->views[i].src_fov,                 //
 			    &d->views[i].world_pose_scanout_begin, //
-			    &data.transform);                      //
+			    &data.transform_scanout_begin);        //
+
+			render_calc_time_warp_matrix(            //
+			    &md->views[i].src_pose,              //
+			    &md->views[i].src_fov,               //
+			    &d->views[i].world_pose_scanout_end, //
+			    &data.transform_scanout_end);        //
 		}
 
 		ret = render_gfx_mesh_alloc_and_write( //
@@ -571,10 +577,13 @@ crg_distortion_common(struct render_gfx *render,
 		// Convenience.
 		const struct render_viewport_data *viewport_data = &d->views[i].target.viewport_data;
 
+		const render_scissor_data_t *scissor_data = &d->views[i].target.scissor_data;
+
 		render_gfx_begin_view( //
 		    render,            //
 		    i,                 // view_index
-		    viewport_data);    //
+		    viewport_data,     //
+		    scissor_data);     //
 
 		render_gfx_mesh_draw(      //
 		    render,                //
@@ -619,10 +628,9 @@ crg_distortion_after_squash(struct render_gfx *render, const struct comp_render_
 		    src_image_view);       //
 	}
 
-	// We are passing in the same old and new poses.
 	crg_distortion_common( //
 	    render,            //
-	    false,             // do_timewarp
+	    d->do_timewarp,    //
 	    &md,               //
 	    d);                //
 }
@@ -826,7 +834,8 @@ comp_render_gfx_layers(struct render_gfx *render,
 		render_gfx_begin_view( //
 		    render,            //
 		    view,              // view_index
-		    viewport_data);    // viewport_data
+		    viewport_data,     // viewport_data
+		    viewport_data);    // scissor_data
 
 		// Only source for data here, read only.
 		const struct gfx_layer_view_state *state = &ls.views[view];

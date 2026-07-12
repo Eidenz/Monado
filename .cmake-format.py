@@ -8,7 +8,9 @@ with section("parse"):
     additional_commands = {
         "generate_openxr_runtime_manifest_at_install": {
             "kwargs": {
+                "COMPONENT": 1,
                 "DESTINATION": 1,
+                "LIBMONADO": 1,
                 "MANIFEST_TEMPLATE": 1,
                 "OUT_FILENAME": 1,
                 "RELATIVE_RUNTIME_DIR": 1,
@@ -18,7 +20,12 @@ with section("parse"):
             "pargs": {"flags": ["ABSOLUTE_RUNTIME_PATH"], "nargs": "*"},
         },
         "generate_openxr_runtime_manifest_buildtree": {
-            "kwargs": {"MANIFEST_TEMPLATE": 1, "OUT_FILE": 1, "RUNTIME_TARGET": 1},
+            "kwargs": {
+                "LIBMONADO": 1,
+                "MANIFEST_TEMPLATE": 1,
+                "OUT_FILE": 1,
+                "RUNTIME_TARGET": 1,
+            },
             "pargs": {"flags": [], "nargs": "*"},
         },
         "generate_macro_lists": {

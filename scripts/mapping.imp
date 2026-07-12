@@ -85,6 +85,7 @@
 { symbol: ["XRT_FEATURE_OPENXR_VISIBILITY_MASK", "public", "\"xrt/xrt_config_build.h\"", "public"] },
 { symbol: ["XRT_FEATURE_OPENXR_VULKAN_SWAPCHAIN_FORMAT_LIST", "public", "\"xrt/xrt_config_build.h\"", "public"] },
 { symbol: ["XRT_FEATURE_OPENXR_XDEV_SPACE", "public", "\"xrt/xrt_config_build.h\"", "public"] },
+{ symbol: ["XRT_FEATURE_OPENXR_INVERTED_ALPHA", "public", "\"xrt/xrt_config_build.h\"", "public"] },
 { symbol: ["XRT_FEATURE_RENDERDOC", "public", "\"xrt/xrt_config_build.h\"", "public"] },
 { symbol: ["XRT_FEATURE_SERVICE", "public", "\"xrt/xrt_config_build.h\"", "public"] },
 { symbol: ["XRT_FEATURE_SERVICE_SYSTEMD", "public", "\"xrt/xrt_config_build.h\"", "public"] },

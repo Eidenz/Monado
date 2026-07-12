@@ -25,9 +25,9 @@
 #define NS_TO_IMU_TICKS(ns) (((uint64_t)(ns) * 3) / 1000)
 #define IMU_TICKS_TO_NS(ticks) (((uint64_t)(ticks) * 1000) / 3)
 
-#define PERIOD_ID_TO_DURATION_NS(period_id) (time_duration_ns)(IMU_TICKS_TO_NS(150LLU * (uint64_t)period_id + 1250))
+#define PERIOD_ID_TO_DURATION_NS(period_id) (time_duration_ns)(IMU_TICKS_TO_NS(150LLU * (uint64_t)period_id))
 // @note: the +1 is to ensure things round correctly when dealing with converting to and back
-#define DURATION_NS_TO_PERIOD_ID(duration_ns) (uint8_t)(((NS_TO_IMU_TICKS(duration_ns + 1) - 1250) / 150LLU) & 0xFF)
+#define DURATION_NS_TO_PERIOD_ID(duration_ns) (uint8_t)(((NS_TO_IMU_TICKS(duration_ns + 1)) / 150LLU) & 0xFF)
 // clang-format on
 
 #define STABLE_MIN_PERIOD_ID 20
@@ -38,10 +38,13 @@
 #define PCM_SAMPLE_RATE 3000
 #define PCM_HAPTIC_BUF_SIZE 32
 
-const uint8_t INPUT_REPORT_ID = 0x31;
-const uint8_t OUTPUT_REPORT_ID = 0x31;
-const uint8_t OUTPUT_REPORT_TAG = 0x10;
-const uint8_t CALIBRATION_DATA_FEATURE_REPORT_ID = 0x05;
+#define INPUT_REPORT_ID_USB 0x01
+#define INPUT_REPORT_ID_BLUETOOTH 0x31
+
+#define OUTPUT_REPORT_ID_BLUETOOTH 0x31
+#define OUTPUT_REPORT_TAG 0x10
+
+#define CALIBRATION_DATA_FEATURE_REPORT_ID 0x05
 
 #define CALIBRATION_DATA_PART_ID_1 0
 #define CALIBRATION_DATA_PART_ID_2 0x81
@@ -50,11 +53,6 @@ const uint8_t INPUT_REPORT_CRC32_SEED = 0xa1;
 const uint8_t OUTPUT_REPORT_CRC32_SEED = 0xa2;
 const uint8_t FEATURE_REPORT_CRC32_SEED = 0xa3;
 
-//! Gyro read value range is +-32768.
-const double PSSENSE_GYRO_SCALE_DEG = 180.0 / 1024;
-//! Accelerometer read value range is +-32768 and covers +-8 g.
-const double PSSENSE_ACCEL_SCALE = MATH_GRAVITY_M_S2 / 4096;
-
 const uint8_t CHARGE_STATE_DISCHARGING = 0x00;
 const uint8_t CHARGE_STATE_CHARGING = 0x01;
 const uint8_t CHARGE_STATE_FULL = 0x02;
@@ -62,14 +60,11 @@ const uint8_t CHARGE_STATE_ABNORMAL_VOLTAGE = 0x0A;
 const uint8_t CHARGE_STATE_ABNORMAL_TEMP = 0x0B;
 const uint8_t CHARGE_STATE_CHARGING_ERROR = 0x0F;
 
-#define INPUT_REPORT_LENGTH 78
-/*!
- * HID input report data packet.
- */
-struct pssense_input_report
+#define INPUT_REPORT_BLUETOOTH_LENGTH 78
+#define INPUT_REPORT_USB_LENGTH 64
+
+struct pssense_input_report_common
 {
-	uint8_t report_id;
-	uint8_t bt_header;
 	uint8_t thumbstick_x;
 	uint8_t thumbstick_y;
 	uint8_t trigger_value;
@@ -86,20 +81,37 @@ struct pssense_input_report
 	uint8_t unknown3[7];
 	uint8_t trigger_feedback_state;
 	uint8_t trigger_feedback_mode;
-	uint8_t battery_state; // High bits charge level 0x00-0x0a, low bits battery state
+	uint8_t battery_state; // Low nibble charge level 0x00-0x0a, high nibble battery state
 	uint8_t plug_state;    // Flags for USB data and/or power connected
 	__le32 host_timestamp;
 	__le32 device_timestamp_ticks;
 	uint8_t unknown4[4];
 	uint8_t aes_cmac[8];
+};
+
+struct pssense_usb_input_report
+{
+	uint8_t report_id;
+	struct pssense_input_report_common common;
+};
+static_assert(sizeof(struct pssense_usb_input_report) == INPUT_REPORT_USB_LENGTH,
+              "Incorrect input report struct length");
+
+/*!
+ * HID input report data packet.
+ */
+struct pssense_bluetooth_input_report
+{
+	uint8_t report_id;
+	uint8_t bt_header;
+	struct pssense_input_report_common common;
 	uint8_t unknown5;
 	uint8_t crc_failure_count;
 	uint8_t padding[7];
 	__le32 crc;
 };
-static_assert(sizeof(struct pssense_input_report) == INPUT_REPORT_LENGTH, "Incorrect input report struct length");
-
-#define PS5_OUTPUT_REPORT_LENGTH 78
+static_assert(sizeof(struct pssense_bluetooth_input_report) == INPUT_REPORT_BLUETOOTH_LENGTH,
+              "Incorrect input report struct length");
 
 enum pssense_output_settings_flag1
 {
@@ -226,6 +238,9 @@ struct pssense_output_settings
 };
 static_assert(sizeof(struct pssense_output_settings) == 38, "Incorrect output settings struct length");
 
+#define OUTPUT_REPORT_LENGTH_PS5 78
+#define OUTPUT_REPORT_LENGTH_USB 39
+
 /**
  * HID output report data packet matching the PS5 layout, with PCM haptics.
  *
@@ -242,7 +257,19 @@ struct pssense_ps5_output_report
 	uint8_t haptics[PCM_HAPTIC_BUF_SIZE];
 	__le32 crc;
 };
-static_assert(sizeof(struct pssense_ps5_output_report) == PS5_OUTPUT_REPORT_LENGTH,
+static_assert(sizeof(struct pssense_ps5_output_report) == OUTPUT_REPORT_LENGTH_PS5,
+              "Incorrect output report struct length");
+
+struct pssense_usb_output_report
+{
+	// @note: There appears to be no dedicated report ID field here. Setting this report ID to
+	//        any non-zero number seems to work, though. Zero doesn't work.
+	//        I believe this controller just expects strange report IDs over USB.
+	//        If USB breaks when using hidapi, this is the first place to check.
+	uint8_t seq_no_mode;
+	struct pssense_output_settings settings;
+};
+static_assert(sizeof(struct pssense_usb_output_report) == OUTPUT_REPORT_LENGTH_USB,
               "Incorrect output report struct length");
 
 #define FEATURE_REPORT_LENGTH 64
@@ -259,5 +286,40 @@ struct pssense_feature_report
 	__le32 crc;
 };
 static_assert(sizeof(struct pssense_feature_report) == FEATURE_REPORT_LENGTH, "Incorrect feature report struct length");
+
+struct pssense_calibration_data
+{
+	int16_t accel_plus_x;  // 0x00
+	uint8_t _pad0[4];      // 0x02-0x05
+	int16_t accel_minus_x; // 0x06
+	uint8_t _pad1[6];      // 0x08-0x0D
+	int16_t accel_plus_y;  // 0x0E
+	uint8_t _pad2[4];      // 0x10-0x13
+	int16_t accel_minus_y; // 0x14
+	uint8_t _pad3[6];      // 0x16-0x1B
+	int16_t accel_plus_z;  // 0x1C
+	uint8_t _pad4[4];      // 0x1E-0x21
+	int16_t accel_minus_z; // 0x22
+	uint8_t _pad5[6];      // 0x24-0x29
+	int16_t gyro_plus_y;   // 0x2A
+	uint8_t _pad6[4];      // 0x2C-0x2F
+	int16_t gyro_minus_y;  // 0x30
+	uint8_t _pad7[6];      // 0x32-0x37
+	int16_t gyro_plus_z;   // 0x38
+
+	uint8_t _pad8[4];        // 0x3A-0x3D
+	int16_t gyro_minus_z;    // 0x3E
+	int16_t gyro_bias_x;     // 0x40
+	int16_t gyro_bias_y;     // 0x42
+	int16_t gyro_bias_z;     // 0x44
+	int16_t gyro_plus_x;     // 0x46
+	uint8_t _pad9[4];        // 0x48-0x4B
+	int16_t gyro_minus_x;    // 0x4C
+	int16_t gyro_speed_ref1; // 0x4E
+	int16_t gyro_speed_ref2; // 0x50
+	uint8_t _pad_end[34];    // 0x52-0x73
+};
+static_assert(sizeof(struct pssense_calibration_data) == CALIBRATION_DATA_LENGTH,
+              "Incorrect calibration data struct length");
 
 #pragma pack(pop)

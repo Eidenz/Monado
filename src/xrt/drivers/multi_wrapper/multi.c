@@ -1,4 +1,5 @@
 // Copyright 2021, Collabora, Ltd.
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -13,6 +14,7 @@
 #include "util/u_misc.h"
 #include "util/u_debug.h"
 #include "util/u_device.h"
+#include "util/u_device_id.h"
 #include "util/u_var.h"
 
 #include "multi.h"
@@ -271,6 +273,9 @@ multi_create_tracking_override(enum xrt_tracking_override_type override_type,
 
 	// mimic the tracking override target
 	d->base = *tracking_override_target;
+
+	// The wrapper is a new device and needs its own per-process unique ID.
+	u_device_id_assign(&d->base);
 
 	// but take orientation and position tracking capabilities from tracker
 	d->base.supported.orientation_tracking = tracking_override_tracker->supported.orientation_tracking;

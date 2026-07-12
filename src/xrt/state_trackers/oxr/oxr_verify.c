@@ -438,6 +438,66 @@ oxr_verify_extensions(struct oxr_logger *log, const struct oxr_extension_status 
 }
 
 XrResult
+oxr_verify_action_sets_array(struct oxr_logger *log,
+                             uint32_t countActionSets,
+                             const XrActionSet *actionSets,
+                             const char *variable_name)
+{
+	if (countActionSets == 0 || actionSets == NULL) {
+		return oxr_error(log, XR_ERROR_VALIDATION_FAILURE,
+		                 "(%s) countActionSets must be > 0 and actionSets must be non-NULL", variable_name);
+	}
+
+	for (uint32_t i = 0; i < countActionSets; i++) {
+		if (actionSets[i] == XR_NULL_HANDLE) {
+			return oxr_error(log, XR_ERROR_HANDLE_INVALID, "(%s[%u]) is XR_NULL_HANDLE", variable_name, i);
+		}
+		struct oxr_action_set *act_set = XRT_CAST_OXR_HANDLE_TO_PTR(struct oxr_action_set *, actionSets[i]);
+		if (act_set->handle.base.debug != OXR_XR_DEBUG_ACTIONSET) {
+			return oxr_error(log, XR_ERROR_HANDLE_INVALID, "(%s[%u]) is not a valid XrActionSet",
+			                 variable_name, i);
+		}
+		if (act_set->handle.base.state != OXR_HANDLE_STATE_LIVE) {
+			return oxr_error(log, XR_ERROR_HANDLE_INVALID, "(%s[%u]) is not live", variable_name, i);
+		}
+	}
+
+	return XR_SUCCESS;
+}
+
+XrResult
+oxr_verify_active_action_sets_sync(struct oxr_logger *log,
+                                   const struct oxr_instance *inst,
+                                   uint32_t countActiveActionSets,
+                                   const XrActiveActionSet *activeActionSets,
+                                   const char *variable_name)
+{
+	for (uint32_t i = 0; i < countActiveActionSets; i++) {
+		if (activeActionSets[i].actionSet == XR_NULL_HANDLE) {
+			return oxr_error(log, XR_ERROR_HANDLE_INVALID, "(%s[%u].actionSet) is XR_NULL_HANDLE",
+			                 variable_name, i);
+		}
+		struct oxr_action_set *act_set =
+		    XRT_CAST_OXR_HANDLE_TO_PTR(struct oxr_action_set *, activeActionSets[i].actionSet);
+		if (act_set->handle.base.debug != OXR_XR_DEBUG_ACTIONSET) {
+			return oxr_error(log, XR_ERROR_HANDLE_INVALID, "(%s[%u].actionSet) is not a valid XrActionSet",
+			                 variable_name, i);
+		}
+		if (act_set->handle.base.state != OXR_HANDLE_STATE_LIVE) {
+			return oxr_error(log, XR_ERROR_HANDLE_INVALID, "(%s[%u].actionSet) is not live", variable_name,
+			                 i);
+		}
+
+		XrResult res = oxr_verify_subaction_path_sync(log, inst, act_set, activeActionSets[i].subactionPath, i);
+		if (res != XR_SUCCESS) {
+			return res;
+		}
+	}
+
+	return XR_SUCCESS;
+}
+
+XrResult
 oxr_verify_view_config_type(struct oxr_logger *log,
                             struct oxr_instance *inst,
                             XrViewConfigurationType view_conf,
@@ -455,6 +515,12 @@ oxr_verify_view_config_type(struct oxr_logger *log,
 			return XR_SUCCESS;
 		}
 	}
+
+#if defined(OXR_HAVE_VARJO_quad_views)
+	if (inst->extensions.VARJO_quad_views && view_conf == XR_VIEW_CONFIGURATION_TYPE_PRIMARY_QUAD_VARJO) {
+		return XR_SUCCESS;
+	}
+#endif
 
 	return oxr_error(log, XR_ERROR_VALIDATION_FAILURE, "(%s == 0x%08x) invalid view configuration type",
 	                 view_conf_name, view_conf);

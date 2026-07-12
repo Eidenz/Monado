@@ -11,6 +11,17 @@
 #include "vk_format.h"
 
 
+/*!
+ * A pair of a UNORM and sRGB format.
+ *
+ * @ingroup aux_vk
+ */
+struct vk_srgb_format_pair
+{
+	VkFormat unorm;
+	VkFormat srgb;
+};
+
 /*
  * All known UNORM/sRGB format pairs.
  *

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
- * @brief  PlayStation Sense controller LED models
+ * @brief  PlayStation Sense controller LED models. Data extracted from Sony's PC driver.
  * @author Beyley Cardellio <ep1cm1n10n123@gmail.com>
  * @ingroup drv_pssense
  */
@@ -14,11 +14,27 @@
 #include "math/m_api.h"
 
 
-static const float LED_RADIUS_M = 0.004f;
+static const float LED_RADIUS_M = 0.004f; // 4mm
 static const float LED_VISIBILITY_ANGLE = DEG_TO_RAD(90);
 
+//! Rotation on X axis from LED -> IMU.
+const float pssense_imu_angle = DEG_TO_RAD(50.27f);
+
+//! The offset from the LED origin -> IMU origin, for the left controller
+static struct xrt_vec3 T_led_imu_left = {
+    .x = 0.0093727f,
+    .y = -0.0122481f,
+    .z = -0.0060039f,
+};
+//! The offset from the LED origin -> IMU origin, for the right controller
+static struct xrt_vec3 T_led_imu_right = {
+    .x = -0.0200727f,
+    .y = -0.0122481f,
+    .z = -0.0060039f,
+};
+
 /*
- * Data dumped from Sony's PC driver, intercepted at address 0xdde10, within a vector in the first
+ * Intercepted at address 0xdde10 in the driver, within a vector in the first
  * parameter object.
  */
 static struct t_constellation_tracker_led pssense_left_leds[] = {

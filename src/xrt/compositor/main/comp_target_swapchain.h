@@ -44,6 +44,9 @@ struct comp_target_swapchain
 	//! If we should use display timing.
 	enum comp_target_display_timing_usage timing_usage;
 
+	//! Whether to use VK_KHR_present_id2 over VK_KHR_present_id.
+	bool present_id2_supported;
+
 	//! Also works as a frame index.
 	int64_t current_frame_id;
 

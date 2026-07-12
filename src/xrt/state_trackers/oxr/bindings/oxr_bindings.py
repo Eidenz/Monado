@@ -176,7 +176,7 @@ def generate_profile_template_entry(profile):
 
     binding_count = len(profile.components)
     lines.extend([
-        '\t{ // profile_template',
+        '\t{ // oxr_profile_template',
         f'\t\t.name = {profile.monado_device_enum},',
         f'\t\t.path = "{profile.name}",',
         f'\t\t.localized_name = "{profile.localized_name}",',

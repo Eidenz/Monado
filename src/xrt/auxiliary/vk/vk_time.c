@@ -15,7 +15,7 @@
 #include "vk/vk_helpers.h"
 
 
-#ifdef VK_EXT_calibrated_timestamps
+#if defined(VK_EXT_calibrated_timestamps) || defined(VK_KHR_calibrated_timestamps)
 
 /*
  *
@@ -52,11 +52,6 @@ vk_convert_timestamps_to_host_ns(struct vk_bundle *vk, uint32_t count, uint64_t 
 {
 	VkResult ret;
 
-	if (!vk->has_EXT_calibrated_timestamps) {
-		VK_ERROR(vk, "VK_EXT_calibrated_timestamps not enabled");
-		return VK_ERROR_EXTENSION_NOT_PRESENT;
-	}
-
 #if defined(XRT_OS_LINUX) || defined(XRT_OS_OSX)
 #define CPU_TIME_DOMAIN VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT
 #elif defined(XRT_OS_WINDOWS)
@@ -79,20 +74,42 @@ vk_convert_timestamps_to_host_ns(struct vk_bundle *vk, uint32_t count, uint64_t 
 	    },
 	};
 
-	assert(vk->vkGetCalibratedTimestampsEXT != NULL);
-
 	uint64_t timestamps[2];
 	uint64_t max_deviation;
 
-	ret = vk->vkGetCalibratedTimestampsEXT( //
-	    vk->device,                         // device
-	    2,                                  // timestampCount
-	    timestamp_info,                     // pTimestampInfos
-	    timestamps,                         // pTimestamps
-	    &max_deviation);                    // pMaxDeviation
-	if (ret != VK_SUCCESS) {
-		VK_ERROR(vk, "vkGetCalibratedTimestampsEXT: %s", vk_result_string(ret));
-		return ret;
+#ifdef VK_KHR_calibrated_timestamps
+	if (vk->has_KHR_calibrated_timestamps) {
+		assert(vk->vkGetCalibratedTimestampsKHR != NULL);
+		ret = vk->vkGetCalibratedTimestampsKHR( //
+		    vk->device,                         // device
+		    2,                                  // timestampCount
+		    timestamp_info,                     // pTimestampInfos
+		    timestamps,                         // pTimestamps
+		    &max_deviation);                    // pMaxDeviation
+		if (ret != VK_SUCCESS) {
+			VK_ERROR(vk, "vkGetCalibratedTimestampsKHR: %s", vk_result_string(ret));
+			return ret;
+		}
+	} else
+#endif
+#ifdef VK_EXT_calibrated_timestamps
+	    if (vk->has_EXT_calibrated_timestamps) {
+		assert(vk->vkGetCalibratedTimestampsEXT != NULL);
+		ret = vk->vkGetCalibratedTimestampsEXT( //
+		    vk->device,                         // device
+		    2,                                  // timestampCount
+		    timestamp_info,                     // pTimestampInfos
+		    timestamps,                         // pTimestamps
+		    &max_deviation);                    // pMaxDeviation
+		if (ret != VK_SUCCESS) {
+			VK_ERROR(vk, "vkGetCalibratedTimestampsEXT: %s", vk_result_string(ret));
+			return ret;
+		}
+	} else
+#endif
+	{
+		VK_ERROR(vk, "VK_{EXT,KHR}_calibrated_timestamps not enabled");
+		return VK_ERROR_EXTENSION_NOT_PRESENT;
 	}
 
 	uint64_t now_ticks = timestamps[0];
@@ -138,4 +155,4 @@ vk_convert_timestamps_to_host_ns(struct vk_bundle *vk, uint32_t count, uint64_t 
 	return VK_SUCCESS;
 }
 
-#endif /* VK_EXT_calibrated_timestamps */
+#endif /* defined(VK_EXT_calibrated_timestamps) || defined(VK_KHR_calibrated_timestamps) */

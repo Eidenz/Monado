@@ -302,6 +302,16 @@ t_constellation_tracker_led_model_compute_led_visibility(struct t_constellation_
 }
 
 
+struct t_constellation_tracker_sample_metrics
+{
+	//! The amount of blobs that were matched
+	uint32_t matched_blob_count;
+	//! The amount of LEDs that should be visible
+	uint32_t visible_led_count;
+	//! The reprojection error of the solve's LEDs to the blobs, in pixels.
+	double reprojection_error;
+};
+
 struct t_constellation_tracker_sample
 {
 	//! The time the original blobservation was made.
@@ -314,6 +324,8 @@ struct t_constellation_tracker_sample
 	size_t camera_index;
 	//! Average brightness of the detected blobs, from 0 (black) to 1 (pure white).
 	float average_brightness;
+	//! Metrics about the sample, such as reprojection error and matched LED count.
+	struct t_constellation_tracker_sample_metrics metrics;
 };
 
 /*!

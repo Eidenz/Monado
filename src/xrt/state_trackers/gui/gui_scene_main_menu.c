@@ -92,6 +92,11 @@ scene_render(struct gui_scene *scene, struct gui_program *p)
 		gui_scene_resampler_test(p);
 	}
 
+	if (igButton("Constellation Tracker Dataset Playback", button_dims)) {
+		gui_scene_delete_me(p, scene);
+		gui_scene_constellation_tracker_test(p);
+	}
+
 	igSeparator();
 
 	if (igButton("Exit", button_dims)) {

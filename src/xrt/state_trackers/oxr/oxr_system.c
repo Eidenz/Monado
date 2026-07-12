@@ -37,6 +37,32 @@ DEBUG_GET_ONCE_NUM_OPTION(scale_percentage, "OXR_VIEWPORT_SCALE_PERCENTAGE", 100
 
 
 
+static bool
+allowed_to_expose_quad_views(const struct oxr_system *sys)
+{
+	const struct oxr_instance *inst = sys->inst;
+
+	// App has been quirked to not be given quad views.
+	if (inst->quirks.disable_quad_views) {
+		return false;
+	}
+
+	// Valid in OpenXR 1.1 and forward.
+	if (inst->openxr_version.major_minor >= XR_MAKE_VERSION(1, 1, 0)) {
+		return true;
+	}
+
+#if defined(OXR_HAVE_VARJO_quad_views)
+	// The extension that introduced it.
+	if (inst->extensions.VARJO_quad_views) {
+		return true;
+	}
+#endif
+
+	// The app hasn't enabled an extensions that introduces the enum.
+	return false;
+}
+
 static struct oxr_view_config_properties *
 get_view_config_properties(struct oxr_system *sys, XrViewConfigurationType view_config_type)
 {
@@ -121,6 +147,27 @@ fill_in_view_config_properties(struct oxr_logger *log,
 	fill_in_view_config_properties_view_config_type(props, view_config->view_type);
 	fill_in_view_config_properties_views(log, props->views, view_config);
 	props->view_count = view_config->view_count;
+}
+
+static void
+fill_in_view_emulated_quadview_config_properties(struct oxr_logger *log,
+                                                 struct oxr_view_config_properties *props,
+                                                 const struct xrt_system_compositor_info *info,
+                                                 const struct xrt_view_config *stereo_view_config)
+{
+	static_assert(ARRAY_SIZE(props->views) >= 4, "Not enough space for quad views");
+	assert(stereo_view_config->view_count == 2);
+
+	fill_in_view_config_properties_blend_modes(props, info);
+	fill_in_view_config_properties_view_config_type(props, XRT_VIEW_TYPE_QUAD);
+
+	// First two views are context views copied from stereo config.
+	fill_in_view_config_properties_views(log, props->views, stereo_view_config);
+
+	// Last two views are inset views copied from stereo config.
+	fill_in_view_config_properties_views(log, props->views + 2, stereo_view_config);
+
+	props->view_count = 4;
 }
 
 static bool
@@ -257,6 +304,8 @@ XrResult
 oxr_system_fill_in(
     struct oxr_logger *log, struct oxr_instance *inst, XrSystemId systemId, uint32_t view_count, struct oxr_system *sys)
 {
+	xrt_result_t xret = XRT_SUCCESS;
+
 	//! @todo handle other subaction paths?
 
 	sys->inst = inst;
@@ -275,13 +324,36 @@ oxr_system_fill_in(
 	if (sys->xsysc != NULL) {
 		const struct xrt_system_compositor_info *info = &sys->xsysc->info;
 
+		if (info->view_type_count == 0) {
+			return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "Unexpected condition having no view configs");
+		}
+
+		// Cache these.
+		struct xrt_view_config view_configs[XRT_MAX_COMPOSITOR_VIEW_CONFIGS_COUNT];
 		for (uint32_t i = 0; i < info->view_type_count; i++) {
 			const enum xrt_view_type view_type = info->view_types[i];
 
-			struct xrt_view_config view_config;
-			if (xrt_syscomp_get_view_config(sys->xsysc, view_type, &view_config) != XRT_SUCCESS) {
-				oxr_warn(log, "Getting view configuration failed for an expected reason.");
-				continue;
+			xret = xrt_syscomp_get_view_config(sys->xsysc, view_type, &view_configs[i]);
+			if (xret != XRT_SUCCESS) {
+				return oxr_error(log, XR_ERROR_RUNTIME_FAILURE,
+				                 "Getting view configuration failed for an expected reason.");
+			}
+		}
+
+		bool has_quad_config = false;
+		const struct xrt_view_config *stereo_view_config = NULL;
+
+		for (uint32_t i = 0; i < info->view_type_count; i++) {
+			const struct xrt_view_config *view_config = &view_configs[i];
+			if (view_config->view_type == XRT_VIEW_TYPE_QUAD) {
+				if (!allowed_to_expose_quad_views(sys)) {
+					oxr_log(log, "System has quad views but it is not allowed to expose them.");
+					continue;
+				}
+				has_quad_config = true;
+			}
+			if (view_config->view_type == XRT_VIEW_TYPE_STEREO) {
+				stereo_view_config = view_config;
 			}
 
 			assert(sys->view_config_count < XRT_MAX_COMPOSITOR_VIEW_CONFIGS_COUNT);
@@ -289,12 +361,23 @@ oxr_system_fill_in(
 			    log,                                        //
 			    &sys->view_configs[sys->view_config_count], //
 			    info,                                       //
-			    &view_config);                              //
+			    view_config);                               //
 			sys->view_config_count++;
 		}
 
-		if (sys->view_config_count == 0) {
-			return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "Unexpected condition having no view configs");
+		// If system does not natively expose quad views then emulate quad view config from stereo config.
+		if (!has_quad_config &&                                         //
+		    stereo_view_config != NULL &&                               //
+		    allowed_to_expose_quad_views(sys) &&                        //
+		    sys->xsysc->info.supports_emulated_quad_views_with_inset) { //
+
+			assert(sys->view_config_count < XRT_MAX_COMPOSITOR_VIEW_CONFIGS_COUNT);
+			fill_in_view_emulated_quadview_config_properties( //
+			    log,                                          //
+			    &sys->view_configs[sys->view_config_count],   //
+			    info,                                         //
+			    stereo_view_config);                          //
+			sys->view_config_count++;
 		}
 	} else {
 		// Headless path, view configs contain no views but still need blend modes and view types.
@@ -306,6 +389,13 @@ oxr_system_fill_in(
 		fill_in_view_config_properties_blend_modes(&sys->view_configs[0], NULL);
 		fill_in_view_config_properties_view_config_type(&sys->view_configs[0], view_type);
 		sys->view_config_count++;
+
+		// Second headless config: simulated foveated stereo when allowed
+		if (view_count == 2 && allowed_to_expose_quad_views(sys)) {
+			fill_in_view_config_properties_blend_modes(&sys->view_configs[1], NULL);
+			fill_in_view_config_properties_view_config_type(&sys->view_configs[1], XRT_VIEW_TYPE_QUAD);
+			sys->view_config_count++;
+		}
 	}
 
 

@@ -122,3 +122,20 @@ u_visibility_mask_get_default(enum xrt_visibility_mask_type type,
 out:
 	*out_mask = mask; // Always NULL or allocated data.
 }
+
+void
+u_visibility_mask_get_noop(enum xrt_visibility_mask_type type, struct xrt_visibility_mask **out_mask)
+{
+	struct xrt_visibility_mask *mask = U_TYPED_CALLOC(struct xrt_visibility_mask);
+	if (mask == NULL) {
+		U_LOG_E("failed to allocate out xrt_visibility_mask");
+		*out_mask = NULL;
+		return;
+	}
+
+	mask->type = type;
+	mask->index_count = 0;
+	mask->vertex_count = 0;
+
+	*out_mask = mask;
+}

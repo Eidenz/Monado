@@ -84,7 +84,7 @@ oxr_xrDestroySession(XrSession session)
 	}
 	*link = sess->next;
 
-	return oxr_handle_destroy(&log, &sess->handle);
+	return oxr_handle_parent_destroy(&log, &sess->handle);
 }
 
 XRAPI_ATTR XrResult XRAPI_CALL

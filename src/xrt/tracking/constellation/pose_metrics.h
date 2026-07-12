@@ -23,6 +23,8 @@ extern "C" {
 
 #define MAX_OBJECT_LEDS 64
 
+#define WORST_REPROJECTION_ERROR 10.0
+
 struct pose_rect
 {
 	double left;
@@ -61,23 +63,25 @@ struct pose_metrics
 {
 	enum pose_match_flags match_flags;
 
-	int matched_blobs;
-	int unmatched_blobs;
-	int visible_leds;
+	uint32_t matched_blobs;
+	uint32_t unmatched_blobs;
+	uint32_t visible_leds;
 
 	double reprojection_error;
 
-	struct xrt_vec3 orient_error; /* Rotation error (compared to a prior) */
-	struct xrt_vec3 pos_error;    /* Translation error (compared to a prior) */
+	//! Rotation error (compared to a prior)
+	struct xrt_vec3 orient_error;
+	//! Translation error (compared to a prior)
+	struct xrt_vec3 pos_error;
 };
 
 struct pose_metrics_visible_led_info
 {
 	struct t_constellation_tracker_led *led;
-	double led_radius_px;   /* Expected max size of the LED in pixels at that distance */
-	struct xrt_vec2 pos_px; /* Projected position of the LED (pixels) */
-	struct xrt_vec3 pos_m;  /* Projected physical position of the LED (metres) */
-	double facing_dot;      /* Dot product between LED and camera */
+	double led_radius_px;   //< Expected max size of the LED in pixels at that distance
+	struct xrt_vec2 pos_px; //< Projected position of the LED (pixels)
+	struct xrt_vec3 pos_m;  //< Projected physical position of the LED (metres)
+	double facing_dot;      //< Dot product between LED and camera
 	struct t_blob *matched_blob;
 };
 
@@ -87,8 +91,8 @@ struct pose_metrics_blob_match_info
 	int num_visible_leds;
 
 	bool all_led_ids_matched;
-	int matched_blobs;
-	int unmatched_blobs;
+	uint32_t matched_blobs;
+	uint32_t unmatched_blobs;
 
 	double reprojection_error;
 	struct pose_rect bounds;

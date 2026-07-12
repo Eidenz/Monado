@@ -43,12 +43,15 @@
 const char *
 oxr_handle_state_to_string(enum oxr_handle_state state)
 {
+	const char *state_str = "<UNKNOWN>";
+
 	switch (state) {
-	case OXR_HANDLE_STATE_UNINITIALIZED: return "UNINITIALIZED";
-	case OXR_HANDLE_STATE_LIVE: return "LIVE";
-	case OXR_HANDLE_STATE_DESTROYED: return "DESTROYED";
-	default: return "<UNKNOWN>";
+	case OXR_HANDLE_STATE_UNINITIALIZED: state_str = "UNINITIALIZED"; break;
+	case OXR_HANDLE_STATE_LIVE: state_str = "LIVE"; break;
+	case OXR_HANDLE_STATE_DESTROYED: state_str = "DESTROYED"; break;
 	}
+
+	return state_str;
 }
 
 
@@ -57,7 +60,7 @@ oxr_handle_init(struct oxr_logger *log,
                 struct oxr_handle_base *hb,
                 uint64_t debug,
                 oxr_handle_destroyer destroy,
-                struct oxr_handle_base *parent)
+                struct oxr_handle_parent_base *parent)
 {
 	assert(log != NULL);
 	assert(hb != NULL);
@@ -66,14 +69,13 @@ oxr_handle_init(struct oxr_logger *log,
 
 	HANDLE_LIFECYCLE_LOG(log, "[init %p] Initializing handle, parent handle = %p", (void *)hb, (void *)parent);
 
-
 	hb->state = OXR_HANDLE_STATE_UNINITIALIZED;
 
 	if (parent != NULL) {
-		if (parent->state != OXR_HANDLE_STATE_LIVE) {
+		if (parent->base.state != OXR_HANDLE_STATE_LIVE) {
 			return oxr_error(log, XR_ERROR_RUNTIME_FAILURE,
 			                 "Handle %p given parent %p in invalid state: %s", (void *)parent, (void *)hb,
-			                 oxr_handle_state_to_string(parent->state));
+			                 oxr_handle_state_to_string(parent->base.state));
 		}
 
 		if (!oxr_handle_array_add(&parent->children, hb)) {
@@ -90,11 +92,31 @@ oxr_handle_init(struct oxr_logger *log,
 }
 
 XrResult
+oxr_handle_parent_init(struct oxr_logger *log,
+                       struct oxr_handle_parent_base *hpb,
+                       uint64_t debug,
+                       oxr_handle_destroyer destroy,
+                       struct oxr_handle_parent_base *parent)
+{
+	XrResult result = oxr_handle_init(log, &hpb->base, debug, destroy, parent);
+	if (result != XR_SUCCESS) {
+		return result;
+	}
+
+	result = oxr_handle_array_init(log, &hpb->children);
+	if (result != XR_SUCCESS) {
+		return result;
+	}
+
+	return XR_SUCCESS;
+}
+
+XrResult
 oxr_handle_allocate_and_init(struct oxr_logger *log,
                              size_t size,
                              uint64_t debug,
                              oxr_handle_destroyer destroy,
-                             struct oxr_handle_base *parent,
+                             struct oxr_handle_parent_base *parent,
                              void **out)
 {
 	/*
@@ -112,18 +134,39 @@ oxr_handle_allocate_and_init(struct oxr_logger *log,
 }
 
 XrResult
+oxr_handle_parent_allocate_and_init(struct oxr_logger *log,
+                                    size_t size,
+                                    uint64_t debug,
+                                    oxr_handle_destroyer destroy,
+                                    struct oxr_handle_parent_base *parent,
+                                    void **out)
+{
+	/*
+	 * This allocation call, taking a size, not a type, is why this
+	 * function isn't recommended for direct use.
+	 */
+	struct oxr_handle_parent_base *hpb = U_CALLOC_WITH_CAST(struct oxr_handle_parent_base, size);
+	XrResult result = oxr_handle_parent_init(log, hpb, debug, destroy, parent);
+	if (result != XR_SUCCESS) {
+		free(hpb);
+		return result;
+	}
+	*out = (void *)hpb;
+	return result;
+}
+
+XrResult
 oxr_handle_destroy_internal(struct oxr_logger *log, struct oxr_handle_base *hb, int level)
 {
-
 	HANDLE_LIFECYCLE_LOG(log,
 	                     "[%d: destroying %p] Destroying handle and all "
 	                     "contained handles (recursively)",
 	                     level, (void *)hb);
 
-	/* Remove from parent, if any. */
+	// Remove from parent, if any.
 	if (hb->parent != NULL) {
 		bool found = false;
-		struct oxr_handle_base *parent = hb->parent;
+		struct oxr_handle_parent_base *parent = hb->parent;
 
 		for (uint32_t i = 0; i < parent->children.count; ++i) {
 			if (parent->children.handles[i] == hb) {
@@ -145,24 +188,18 @@ oxr_handle_destroy_internal(struct oxr_logger *log, struct oxr_handle_base *hb, 
 			return oxr_error(log, XR_ERROR_RUNTIME_FAILURE, "Parent handle does not refer to this handle");
 		}
 
-		/* clear parent pointer */
+		// clear parent pointer
 		hb->parent = NULL;
 	}
 
-	/* Destroy child handles */
-	XrResult result = oxr_handle_array_destroy(log, &hb->children, level);
-	if (result != XR_SUCCESS) {
-		return result;
-	}
-
-	/* Might destroy instance, which log needs, so use secured variant */
+	// Might destroy instance, which log needs, so use secured variant
 	HANDLE_LIFECYCLE_LOG_SCOPED_BEGIN(log)
 	{
-		/* Destroy self */
+		// Destroy self
 		HANDLE_LIFECYCLE_LOG_SCOPED(log, "[%d: destroying %p] Calling handle object destructor", level,
 		                            (void *)hb);
 		hb->state = OXR_HANDLE_STATE_DESTROYED;
-		result = hb->destroy(log, hb);
+		XrResult result = hb->destroy(log, hb);
 		if (result != XR_SUCCESS) {
 			return result;
 		}
@@ -174,12 +211,24 @@ oxr_handle_destroy_internal(struct oxr_logger *log, struct oxr_handle_base *hb, 
 }
 
 XrResult
+oxr_handle_parent_destroy_internal(struct oxr_logger *log, struct oxr_handle_parent_base *hpb, int level)
+{
+	// Destroy child handles
+	XrResult result = oxr_handle_array_destroy(log, &hpb->children, level);
+	if (result != XR_SUCCESS) {
+		return result;
+	}
+
+	return oxr_handle_destroy_internal(log, &hpb->base, level);
+}
+
+XrResult
 oxr_handle_destroy(struct oxr_logger *log, struct oxr_handle_base *hb)
 {
 	assert(log != NULL);
 	assert(hb != NULL);
 
-	/* Might destroy instance, which log needs, so use secured variant */
+	// Might destroy instance, which log needs, so use secured variant
 	HANDLE_LIFECYCLE_LOG_SCOPED_BEGIN(log)
 	{
 		HANDLE_LIFECYCLE_LOG_SCOPED(log, "[~: destroying %p] oxr_handle_destroy starting", (void *)hb);
@@ -187,6 +236,26 @@ oxr_handle_destroy(struct oxr_logger *log, struct oxr_handle_base *hb)
 		XrResult result = oxr_handle_destroy_internal(log, hb, 0);
 
 		HANDLE_LIFECYCLE_LOG_SCOPED(log, "[~: destroying %p] oxr_handle_destroy finished", (void *)hb);
+
+		return result;
+	}
+	HANDLE_LIFECYCLE_LOG_SCOPED_END;
+}
+
+XrResult
+oxr_handle_parent_destroy(struct oxr_logger *log, struct oxr_handle_parent_base *hpb)
+{
+	assert(log != NULL);
+	assert(hpb != NULL);
+
+	// Might destroy instance, which log needs, so use secured variant
+	HANDLE_LIFECYCLE_LOG_SCOPED_BEGIN(log)
+	{
+		HANDLE_LIFECYCLE_LOG_SCOPED(log, "[~: destroying %p] oxr_handle_parent_destroy starting", (void *)hpb);
+
+		XrResult result = oxr_handle_parent_destroy_internal(log, hpb, 0);
+
+		HANDLE_LIFECYCLE_LOG_SCOPED(log, "[~: destroying %p] oxr_handle_parent_destroy finished", (void *)hpb);
 
 		return result;
 	}

@@ -27,6 +27,20 @@ enum t_led_sync_refinement_flags
 	T_LED_SYNC_REFINEMENT_FLAGS_NONE = 0,
 	//! Whether to try to optimize the blink duration after finding an offset, to lessen power usage.
 	T_LED_SYNC_REFINEMENT_FLAGS_BLINK_DURATION = 1 << 0,
+	/*!
+	 * Whether to lock in a clock offset and have it be driven entirely by the sync refinement, utilizing the
+	 * optical samples to measure clock skew/offset between the device and host, rather than the driver's normal
+	 * remote clock synchronization.
+	 *
+	 * Use this flag when the driver's clock tracking is very noisy and is causing LED sync to be unreliable. But
+	 * currently will cause LED sync to eventually drift as clock skew between the devices takes effect.
+	 */
+	T_LED_SYNC_REFINEMENT_FLAGS_OPTICAL_DRIVEN_OFFSET = 1 << 1,
+	/*!
+	 * Whether the device has specified a maximum latency cap. This prevents the sync refinement from searching
+	 * parts of the exposure that aren't possible, which can cause refinement to sometimes take longer.
+	 */
+	T_LED_SYNC_REFINEMENT_FLAGS_HAS_LATENCY_CAP = 1 << 2,
 };
 
 //! Options for the LED sync refinement.
@@ -47,13 +61,31 @@ struct t_led_sync_refinement_options
 	time_duration_ns time_to_resync_ns;
 	//! Frames to wait after the sample was applied to let the device settle.
 	uint32_t settle_frames;
+
+	//! The maximum latency offset to use, if using a latency cap.
+	time_duration_ns latency_cap_ns;
+};
+
+enum t_led_sync_sample_timestamp_mode
+{
+	T_LED_SYNC_SAMPLE_TIMESTAMP_MODE_INVALID = 0,
+	//! Used when the LED sync refinement is just computing a basic latency offset.
+	T_LED_SYNC_SAMPLE_TIMESTAMP_MODE_DEVICE_HOST_LATENCY = 1,
+	//! Used when the LED sync refinement is fully deriving the clock offset, latency included.
+	T_LED_SYNC_SAMPLE_TIMESTAMP_MODE_HOST_DEVICE_CLOCK_OFFSET = 2,
 };
 
 //! A sample read out from the driver, to pass to the device in question.
 struct t_led_sync_sample
 {
-	//! The latency offset from the device timestamps to the host.
-	time_duration_ns device_host_latency_ns;
+	union {
+		//! The latency offset from the device timestamps to the host.
+		time_duration_ns device_host_latency_ns;
+
+		//! The clock offset from the host timestamp to the device.
+		time_duration_ns host_device_clock_offset_ns;
+	} timestamp;
+	enum t_led_sync_sample_timestamp_mode timestamp_mode;
 
 	//! The latency offset to apply to fudge the blink to line up as best as possible with the exposure.
 	time_duration_ns fudge_offset_ns;
@@ -154,6 +186,15 @@ struct t_led_sync_refinement
 		//! Whether we're currently trying to back off a lower blink duration.
 		bool backing_off;
 	} blink_time_refinement_state;
+
+	struct
+	{
+		//! The latest estimated host->device clock offset from the driver.
+		time_duration_ns driver_host_device_clock_offset_ns;
+
+		bool has_saved_offset;
+		time_duration_ns saved_offset;
+	} optical_driven_offset;
 };
 
 int
@@ -177,5 +218,11 @@ t_led_sync_get_sample(struct t_led_sync_refinement *refinement, struct t_led_syn
 void
 t_led_sync_mark_latest_sample_applied(struct t_led_sync_refinement *refinement, timepoint_ns apply_time_ns);
 
+/*!
+ * Pushes a clock offset to the refinement routine, this is the offset *from* the host *to* the device.
+ *
+ * To convert a timestamp from host -> device domain, you would do:
+ * `device_timestamp = host_timestamp + clock_offset_ns`
+ */
 void
-t_led_sync_update_minimum_blink_time(struct t_led_sync_refinement *refinement, time_duration_ns new_minimum_ns);
+t_led_sync_push_host_device_clock_offset(struct t_led_sync_refinement *refinement, time_duration_ns clock_offset_ns);

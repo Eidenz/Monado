@@ -2417,6 +2417,7 @@ enum xrt_view_type
 {
 	XRT_VIEW_TYPE_MONO = 1,
 	XRT_VIEW_TYPE_STEREO = 2,
+	XRT_VIEW_TYPE_QUAD = 3,
 };
 
 /*!

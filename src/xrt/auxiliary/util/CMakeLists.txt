@@ -33,6 +33,8 @@ add_library(
 	u_deque.h
 	u_device.c
 	u_device.h
+	u_device_id.c
+	u_device_id.h
 	u_device_ni.c
 	u_device_ni.h
 	u_distortion.c
@@ -96,6 +98,8 @@ add_library(
 	u_prober.h
 	u_resampler.c
 	u_resampler.h
+	u_str_to_enum.c
+	u_str_to_enum.h
 	u_extension_list.cpp
 	u_extension_list.h
 	u_extension_list.hpp
@@ -138,7 +142,6 @@ target_link_libraries(
 		xrt-external-metrics
 		xrt-external-bcdec
 		aux-includes
-		aux_generated_bindings_helpers
 		aux_os
 		aux_math
 	)

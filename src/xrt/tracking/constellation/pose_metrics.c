@@ -298,19 +298,21 @@ pose_metrics_match_pose_to_blobs(const struct xrt_pose *pose,
 
 	// Iterate the blobs and see which ones are within the bounding box and have a matching LED
 	bool all_led_ids_matched = true;
+	int blobs_outside_bounds = 0;
 
 	for (int i = 0; i < num_blobs; i++) {
 		struct t_blob *b = blobs + i;
 		t_constellation_device_id_t led_object_id = b->matched_device_id;
 
 		// Skip blobs which already have an ID not belonging to this device
-		if (led_object_id != XRT_CONSTELLATION_INVALID_LED_ID && led_object_id != device_id) {
+		if (led_object_id != XRT_CONSTELLATION_INVALID_DEVICE_ID && led_object_id != device_id) {
 			continue;
 		}
 
 		// Ignore blobs that are outside the pose bounding box
 		if (b->center.x < bounds->left || b->center.y < bounds->top || b->center.x > bounds->right ||
 		    b->center.y > bounds->bottom) {
+			blobs_outside_bounds++;
 			continue;
 		}
 
@@ -345,6 +347,12 @@ pose_metrics_match_pose_to_blobs(const struct xrt_pose *pose,
 	}
 
 	match_info->all_led_ids_matched = all_led_ids_matched;
+
+	// If blobs were outside the pose bounding box, this is a degenerate P3P solution that doesn't explain all
+	// observations. Penalize it with worst error to prevent selection
+	if (blobs_outside_bounds > 0 && match_info->matched_blobs <= 3) {
+		match_info->reprojection_error = WORST_REPROJECTION_ERROR;
+	}
 }
 
 void
@@ -428,11 +436,17 @@ pose_metrics_evaluate_pose_with_prior(struct pose_metrics *score,
 			if (error_per_led < 1.5) {
 				score->match_flags |= POSE_MATCH_STRONG;
 			}
+		} else {
+			LOG_SPEW("Failed prior match within pos (%f, %f, %f) rot (%f, %f, %f)", pos_error_thresh->x,
+			         pos_error_thresh->y, pos_error_thresh->z, rot_error_thresh->x, rot_error_thresh->y,
+			         rot_error_thresh->z);
 		}
 	} else if (prior_must_match) {
+		LOG_SPEW("Pose doesn't match prior, but we require it to do so");
+
 		// If we must match the prior and failed, bail out
 		goto done;
-	} else if (score->visible_leds > 6 && score->matched_blobs > 6 && error_per_led < 3.0 &&
+	} else if (score->visible_leds > 4 && score->matched_blobs > 4 && error_per_led < 3.0 &&
 	           (score->unmatched_blobs * 4 <= score->matched_blobs ||
 	            (2 * score->visible_leds <= 3 * score->matched_blobs))) {
 		/*
@@ -447,12 +461,20 @@ pose_metrics_evaluate_pose_with_prior(struct pose_metrics *score,
 		if (pose_prior == NULL && error_per_led < 1.5) {
 			score->match_flags |= POSE_MATCH_STRONG;
 		}
+
+		LOG_SPEW("Got good match with %d visible LEDs, %d matched blobs, %d unmatched blobs, error per LED %f",
+		         score->visible_leds, score->matched_blobs, score->unmatched_blobs, error_per_led);
+	} else {
+		LOG_SPEW(
+		    "Failed to get good match with %d visible LEDs, %d matched blobs, %d unmatched blobs, error per "
+		    "LED %f",
+		    score->visible_leds, score->matched_blobs, score->unmatched_blobs, error_per_led);
 	}
 
+done:
 	LOG_SPEW("score for pose is %u matched %u unmatched %u visible %f error", score->matched_blobs,
 	         score->unmatched_blobs, score->visible_leds, score->reprojection_error);
 
-done:
 	if (out_bounds) {
 		*out_bounds = blob_match_info.bounds;
 	}
@@ -472,7 +494,7 @@ pose_metrics_score_is_better_pose(struct pose_metrics *old_score, struct pose_me
 	}
 
 	double new_error_per_led = new_score->reprojection_error / new_score->matched_blobs;
-	double best_error_per_led = 10.0;
+	double best_error_per_led = WORST_REPROJECTION_ERROR;
 
 	if (old_score->matched_blobs > 0) {
 		best_error_per_led = old_score->reprojection_error / old_score->matched_blobs;
@@ -495,9 +517,13 @@ pose_metrics_score_is_better_pose(struct pose_metrics *old_score, struct pose_me
 	}
 
 	// If both scores have pose priors, prefer the one where the orientation better matches the prior
+	// BUT only if reprojection error is comparable (within 20%)
 	if (POSE_HAS_FLAGS(old_score, POSE_HAD_PRIOR) && POSE_HAS_FLAGS(new_score, POSE_HAD_PRIOR)) {
-		if (m_vec3_len(new_score->orient_error) < m_vec3_len(old_score->orient_error)) {
-			return true;
+		if (old_score->matched_blobs == new_score->matched_blobs &&
+		    new_score->reprojection_error < old_score->reprojection_error * 1.2) {
+			if (m_vec3_len(new_score->orient_error) < m_vec3_len(old_score->orient_error)) {
+				return true;
+			}
 		}
 	}
 

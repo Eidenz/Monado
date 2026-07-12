@@ -54,6 +54,7 @@ DEBUG_GET_ONCE_BOOL_OPTION(debug_bindings, "OXR_DEBUG_BINDINGS", false)
 DEBUG_GET_ONCE_BOOL_OPTION(lifecycle_verbose, "OXR_LIFECYCLE_VERBOSE", false)
 DEBUG_GET_ONCE_TRISTATE_OPTION(parallel_views, "OXR_PARALLEL_VIEWS")
 DEBUG_GET_ONCE_TRISTATE_OPTION(no_texture_source_alpha, "OXR_NO_TEXTURE_SOURCE_ALPHA")
+DEBUG_GET_ONCE_TRISTATE_OPTION(disable_quad_views, "OXR_DISABLE_QUAD_VIEWS")
 DEBUG_GET_ONCE_BOOL_OPTION(map_stage_to_local_floor, "OXR_RECENTER_STAGE", false)
 
 
@@ -203,6 +204,7 @@ apply_quirks(struct oxr_logger *log, struct oxr_instance *inst, const XrInstance
 	inst->quirks.skip_end_session = false;
 	inst->quirks.disable_vulkan_format_depth = false;
 	inst->quirks.disable_vulkan_format_depth_stencil = false;
+	inst->quirks.disable_quad_views = false;
 	inst->quirks.no_validation_error_in_create_ref_space = false;
 	inst->quirks.parallel_views = false;
 	inst->quirks.no_texture_source_alpha = false;
@@ -230,6 +232,7 @@ apply_quirks(struct oxr_logger *log, struct oxr_instance *inst, const XrInstance
 
 	enum debug_tristate_option parallel_view = debug_get_tristate_option_parallel_views();
 	enum debug_tristate_option no_texture_source_alpha = debug_get_tristate_option_no_texture_source_alpha();
+	enum debug_tristate_option disable_quad_views = debug_get_tristate_option_disable_quad_views();
 
 	// Only override hardcoded quirks when explicitly enabling or disabling, not on auto.
 	if (parallel_view == DEBUG_TRISTATE_OFF) {
@@ -243,6 +246,13 @@ apply_quirks(struct oxr_logger *log, struct oxr_instance *inst, const XrInstance
 	} else if (no_texture_source_alpha == DEBUG_TRISTATE_ON) {
 		inst->quirks.no_texture_source_alpha = true;
 	}
+
+	if (disable_quad_views == DEBUG_TRISTATE_OFF) {
+		inst->quirks.disable_quad_views = false;
+	} else if (disable_quad_views == DEBUG_TRISTATE_ON) {
+		inst->quirks.disable_quad_views = true;
+	}
+
 
 	inst->quirks.map_stage_to_local_floor = debug_get_bool_option_map_stage_to_local_floor();
 }
@@ -259,7 +269,7 @@ oxr_instance_create(struct oxr_logger *log,
 	xrt_result_t xret;
 	XrResult ret;
 
-	OXR_ALLOCATE_HANDLE_OR_RETURN(log, inst, OXR_XR_DEBUG_INSTANCE, oxr_instance_destroy, NULL);
+	OXR_ALLOCATE_HANDLE_PARENT_OR_RETURN(log, inst, OXR_XR_DEBUG_INSTANCE, oxr_instance_destroy, NULL);
 
 	inst->extensions = *extensions; // Sets the enabled extensions.
 	inst->openxr_version.major_minor = major_minor;
@@ -373,7 +383,7 @@ oxr_instance_create(struct oxr_logger *log,
 	xret = xrt_instance_create(&i_info, &inst->xinst);
 	if (xret != XRT_SUCCESS) {
 		ret = oxr_error(log, XR_ERROR_RUNTIME_UNAVAILABLE, "Failed to create instance '%i'", xret);
-		oxr_instance_destroy(log, &inst->handle);
+		oxr_instance_destroy(log, &inst->handle.base);
 		return ret;
 	}
 
@@ -411,6 +421,7 @@ oxr_instance_create(struct oxr_logger *log,
 	        "\tappinfo.detected.engine.version: %i.%i.%i\n"
 	        "\tquirks.disable_vulkan_format_depth: %s\n"
 	        "\tquirks.disable_vulkan_format_depth_stencil: %s\n"
+	        "\tquirks.disable_quad_views: %s\n"
 	        "\tquirks.no_validation_error_in_create_ref_space: %s\n"
 	        "\tquirks.skip_end_session: %s\n"
 	        "\tquirks.parallel_views: %s\n"
@@ -429,6 +440,7 @@ oxr_instance_create(struct oxr_logger *log,
 	        inst->appinfo.detected.engine.patch,                                        //
 	        inst->quirks.disable_vulkan_format_depth ? "true" : "false",                //
 	        inst->quirks.disable_vulkan_format_depth_stencil ? "true" : "false",        //
+	        inst->quirks.disable_quad_views ? "true" : "false",                         //
 	        inst->quirks.no_validation_error_in_create_ref_space ? "true" : "false",    //
 	        inst->quirks.skip_end_session ? "true" : "false",                           //
 	        inst->quirks.parallel_views ? "true" : "false",                             //

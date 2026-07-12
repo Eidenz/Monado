@@ -27,6 +27,28 @@ struct xrt_tracking;
 
 
 /*!
+ * A unique identifier for an @ref xrt_device instance.
+ *
+ * Each device is assigned a 64-bit ID when it is created in the Monado service
+ * process, or in the application process for in-process setups. For
+ * out-of-process clients the ID is synchronized over the IPC layer, so every
+ * client connected to the same service refers to a given device by the same
+ * value.
+ *
+ * The ID is intended for hash maps, caches, and similar lookups. Unlike a
+ * memory pointer it is never reused after the device is destroyed.
+ *
+ * A value of zero is invalid and means the device ID has not been assigned,
+ * matching the zero-initialized state of the struct.
+ *
+ * @ingroup xrt_iface
+ */
+struct xrt_device_id
+{
+	uint64_t val;
+};
+
+/*!
  * A per-lens/display view information.
  *
  * @ingroup xrt_iface
@@ -298,6 +320,13 @@ struct xrt_device_supported
 
 	bool planes;
 	enum xrt_plane_detection_capability_flags_ext plane_capability_flags;
+
+	/*!
+	 * The device itself only has 2 views but is aware of quad views, has
+	 * better knowledge of which fovs to use for quad views to stereo views
+	 * emulation. So it supports retrieving quad views from get_views.
+	 */
+	bool get_views_quad;
 };
 
 /*!
@@ -309,6 +338,9 @@ struct xrt_device_supported
  */
 struct xrt_device
 {
+	//! Instance identifier, see @ref xrt_device_id.
+	struct xrt_device_id id;
+
 	//! Enum identifier of the device.
 	enum xrt_device_name name;
 	enum xrt_device_type device_type;

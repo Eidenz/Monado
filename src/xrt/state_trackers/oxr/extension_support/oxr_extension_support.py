@@ -69,6 +69,7 @@ EXTENSIONS = (
     ['XR_KHR_win32_convert_performance_counter_time', 'XR_USE_PLATFORM_WIN32'],
     # EXT extensions, sorted alphabetically.
     ['XR_EXT_active_action_set_priority', 'XRT_FEATURE_OPENXR_ACTIVE_ACTION_SET_PRIORITY'],
+    ['XR_EXT_composition_layer_inverted_alpha', 'XRT_FEATURE_OPENXR_INVERTED_ALPHA'],
     ['XR_EXT_debug_utils', 'XRT_FEATURE_OPENXR_DEBUG_UTILS'],
     ['XR_EXT_dpad_binding'],
     ['XR_EXT_eye_gaze_interaction', 'XRT_FEATURE_OPENXR_INTERACTION_EXT_EYE_GAZE'],
@@ -114,6 +115,7 @@ EXTENSIONS = (
     ['XR_MSFT_hand_interaction', 'XRT_FEATURE_OPENXR_INTERACTION_MSFT_HAND'],
     ['XR_MSFT_unbounded_reference_space', 'XRT_FEATURE_OPENXR_SPACE_UNBOUNDED'],
     ['XR_OPPO_controller_interaction', 'XRT_FEATURE_OPENXR_INTERACTION_OPPO'],
+    ['XR_VARJO_quad_views', 'XRT_FEATURE_OPENXR_VARJO_QUAD_VIEWS'],
     # Experimental extensions, sorted alphabetically.
     ['XR_EXTX_overlay', 'XRT_FEATURE_OPENXR_OVERLAY'],
     ['XR_HTCX_vive_tracker_interaction', 'ALWAYS_DISABLED'],

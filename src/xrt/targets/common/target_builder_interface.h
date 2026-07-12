@@ -47,6 +47,10 @@
 #define T_BUILDER_RIFT
 #endif
 
+#if defined(XRT_BUILD_DRIVER_RIFT_S) || defined(XRT_DOXYGEN)
+#define T_BUILDER_RIFT_S
+#endif
+
 #if defined(XRT_BUILD_DRIVER_PSMV) || defined(XRT_BUILD_DRIVER_PSVR) || defined(XRT_DOXYGEN)
 #define T_BUILDER_RGB_TRACKING
 #endif
@@ -116,6 +120,14 @@ t_builder_psvr2_create(void);
  */
 struct xrt_builder *
 rift_builder_create(void);
+#endif
+
+#ifdef T_BUILDER_RIFT_S
+/*!
+ * The Rift S driver builder.
+ */
+struct xrt_builder *
+rift_s_builder_create(void);
 #endif
 
 #ifdef T_BUILDER_QWERTY

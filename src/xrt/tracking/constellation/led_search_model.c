@@ -11,6 +11,8 @@
 
 #include "math/m_api.h"
 
+#include "util/u_logging.h"
+
 #include "led_search_model.h"
 
 
@@ -18,7 +20,11 @@
  * 1 to use orthographic projected (undistorted) 2D distance
  * with the anchor LED is forward-facing */
 #define PROJECTED_DISTANCE 0
+
+// @note: These should never be set to 1 when upstreamed!
 #define DUMP_FULL_DEBUG 0
+// Check if some combo of LEDs are neighbours of each other.
+#define CHECK_NEIGHBOURS 0
 
 struct led_candidate_sort_entry
 {
@@ -104,8 +110,9 @@ t_constellation_search_led_candidate_new(struct t_constellation_tracker_led *led
 			continue;
 		}
 
-		// Normals are more than 90 degrees apart - these are mutually exclusive LEDs
-		if (m_vec3_dot(led->normal, cur->normal) <= 0) {
+		// Normals are more apart than the sum of the visibility angles of the LEDs
+		float angle_between_leds_rad = acosf(m_vec3_dot(led->normal, cur->normal));
+		if (angle_between_leds_rad > (led->visibility_angle + cur->visibility_angle)) {
 			continue;
 		}
 
@@ -178,6 +185,53 @@ t_constellation_search_model_new(t_constellation_device_id_t device_id,
 	for (size_t i = 0; i < led_model->led_count; i++) {
 		m->points[i] = t_constellation_search_led_candidate_new(led_model->leds + i, led_model);
 	}
+
+#if CHECK_NEIGHBOURS
+	{
+		const t_constellation_led_id_it target_ids[] = {6, 0, 1, 2};
+		const int num_targets = 4;
+
+		for (int ti = 0; ti < num_targets; ti++) {
+			t_constellation_led_id_it anchor_id = target_ids[ti];
+			struct t_constellation_search_led_candidate *anchor_c = NULL;
+
+			for (size_t i = 0; i < led_model->led_count; i++) {
+				if (led_model->leds[i].id == anchor_id) {
+					anchor_c = m->points[i];
+					break;
+				}
+			}
+
+			if (!anchor_c) {
+				U_LOG_D("[combo-check] LED %u not found in model", anchor_id);
+				continue;
+			}
+
+			U_LOG_D("[combo-check] LED %u has %u neighbours:", anchor_id, anchor_c->num_neighbours);
+			for (int j = 0; j < num_targets; j++) {
+				if (target_ids[j] == anchor_id) {
+					continue;
+				}
+				bool found = false;
+				int depth = -1;
+				for (uint8_t k = 0; k < anchor_c->num_neighbours; k++) {
+					if (anchor_c->neighbours[k]->id == target_ids[j]) {
+						found = true;
+						depth = k + 1;
+						break;
+					}
+				}
+				if (found) {
+					U_LOG_D("[combo-check]   -> LED %u found at neighbour depth %d", target_ids[j],
+					        depth);
+				} else {
+					U_LOG_D("[combo-check]   -> LED %u NOT in neighbour list (angle-filtered out?)",
+					        target_ids[j]);
+				}
+			}
+		}
+	}
+#endif
 
 	return m;
 }

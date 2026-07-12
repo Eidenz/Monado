@@ -1,5 +1,5 @@
 // Copyright 2019-2024, Collabora, Ltd.
-// Copyright 2025, NVIDIA CORPORATION.
+// Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -26,7 +26,7 @@
 
 #include "render/render_interface.h"
 
-#include "shaders/layer_defines.inc.glsl"
+#include "layer_defines.inc.glsl"
 
 #include "util/comp_render.h"
 #include "util/comp_render_helpers.h"
@@ -69,7 +69,14 @@ xrt_layer_to_cs_layer_type(const struct xrt_layer_data *data)
 	case XRT_LAYER_CYLINDER: return LAYER_COMP_TYPE_CYLINDER;
 	case XRT_LAYER_EQUIRECT2: return LAYER_COMP_TYPE_EQUIRECT2;
 	case XRT_LAYER_PROJECTION:
-	case XRT_LAYER_PROJECTION_DEPTH: return LAYER_COMP_TYPE_PROJECTION;
+	case XRT_LAYER_PROJECTION_DEPTH:
+		if ((data->flags & XRT_LAYER_SPLIT_QUAD_VIEW_CONTEXT) != 0) {
+			return LAYER_COMP_TYPE_CONTEXT;
+		} else if ((data->flags & XRT_LAYER_SPLIT_QUAD_VIEW_INSET) != 0) {
+			return LAYER_COMP_TYPE_INSET;
+		} else {
+			return LAYER_COMP_TYPE_PROJECTION;
+		}
 	default: U_LOG_E("Invalid layer type! %u", data->type); return LAYER_COMP_TYPE_NOOP;
 	}
 }
@@ -705,8 +712,20 @@ comp_render_cs_layer(struct render_compute *render,
 			continue;
 		}
 
-		ubo_data->layers[cur_layer].layer_data.layer_type = xrt_layer_to_cs_layer_type(data);
+		// Shared with shader source, no enums there.
+		uint32_t cs_layer_type = xrt_layer_to_cs_layer_type(data);
+
+		// Context should always have a layer after it.
+		assert((cs_layer_type != LAYER_COMP_TYPE_CONTEXT || cur_layer < (layer_count - 1)) &&
+		       "Context should always have a layer after it.");
+
+		// Inset should always have a layer before it.
+		assert((cs_layer_type != LAYER_COMP_TYPE_INSET || cur_layer >= 1) &&
+		       "Inset should always have a layer before it.");
+
+		ubo_data->layers[cur_layer].layer_data.layer_type = cs_layer_type;
 		ubo_data->layers[cur_layer].layer_data.unpremultiplied_alpha = is_layer_unpremultiplied(data);
+		ubo_data->layers[cur_layer].layer_data.inverted_alpha = is_layer_alpha_inverted(data);
 
 		apply_bias_and_scale_from_layer(data, &ubo_data->layers[cur_layer].color_scale,
 		                                &ubo_data->layers[cur_layer].color_bias);

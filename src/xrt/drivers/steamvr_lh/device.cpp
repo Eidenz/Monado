@@ -1,4 +1,5 @@
 // Copyright 2023, Shawn Wallace
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -17,6 +18,7 @@
 
 #include "util/u_debug.h"
 #include "util/u_device.h"
+#include "util/u_device_id.h"
 #include "util/u_hand_tracking.h"
 #include "util/u_logging.h"
 #include "util/u_json.hpp"
@@ -311,6 +313,8 @@ Device::set_driver(vr::ITrackedDeviceServerDriver *new_driver)
 
 Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx), driver(builder.driver)
 {
+	u_device_id_assign(this);
+
 	m_relation_history_create(&relation_hist);
 	std::strncpy(this->serial, builder.serial, XRT_DEVICE_NAME_LEN - 1);
 	this->serial[XRT_DEVICE_NAME_LEN - 1] = 0;
@@ -323,7 +327,7 @@ Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx),
 	this->supported.battery_status = true;
 	this->supported.brightness_control = true;
 
-	this->xrt_device::update_inputs = &device_bouncer<Device, &Device::update_inputs, xrt_result_t>;
+	this->xrt_device::update_inputs = u_device_noop_update_inputs;
 #define SETUP_MEMBER_FUNC(name) this->xrt_device::name = &device_bouncer<Device, &Device::name>
 	SETUP_MEMBER_FUNC(get_tracked_pose);
 	SETUP_MEMBER_FUNC(get_battery_status);
@@ -701,14 +705,6 @@ ControllerDevice::init_output()
 }
 
 xrt_result_t
-Device::update_inputs()
-{
-	std::lock_guard<std::mutex> lock(frame_mutex);
-	ctx->maybe_run_frame(++current_frame);
-	return XRT_SUCCESS;
-}
-
-xrt_result_t
 ControllerDevice::get_hand_tracking(enum xrt_input_name name,
                                     int64_t desired_timestamp_ns,
                                     struct xrt_hand_joint_set *out_value,
@@ -919,7 +915,8 @@ ControllerDevice::set_output(xrt_output_name name, const xrt_output_value *value
 	event.fFrequency = frequency;
 	event.fAmplitude = vib.amplitude;
 
-	ctx->add_haptic_event(event);
+	// `latest_haptic_event` assumes single haptic component per device
+	this->latest_haptic_event = ctx->add_haptic_event(event, this->latest_haptic_event);
 	return XRT_SUCCESS;
 }
 

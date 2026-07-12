@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include "os/os_threading.h"
+
 
 struct oxr_handle_base;
 
@@ -17,10 +19,21 @@ struct oxr_handle_base;
  */
 struct oxr_handle_array
 {
+	struct os_mutex mutex;
+
 	struct oxr_handle_base **handles;
 	uint32_t count;
 	uint32_t capacity;
+#ifndef NDEBUG
+	bool init;
+#endif
 };
+
+/*!
+ * Initializes the array, must be called before adding handles to it.
+ */
+XrResult
+oxr_handle_array_init(struct oxr_logger *log, struct oxr_handle_array *array);
 
 /*!
  * Destroys all handles in the array, and the array itself.

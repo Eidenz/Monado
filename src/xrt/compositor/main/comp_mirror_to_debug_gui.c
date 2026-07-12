@@ -608,22 +608,21 @@ comp_mirror_blit_to_frame(struct comp_mirror_to_debug_gui *m,
 	}
 
 	// Copy arguments.
-	struct vk_cmd_copy_image_info copy_info = {
-	    .src.old_layout = old_layout,
-	    .src.src_access_mask = src_access_mask,
-	    .src.src_stage_mask = src_stage_mask,
+	struct vk_cmd_image_transfer_info transfer_info = {
+	    .src.params.layout = old_layout,
+	    .src.params.access_mask = src_access_mask,
+	    .src.params.stage_mask = src_stage_mask,
+	    .src.params.rect.extent = {.w = m->image_extent.width, .h = m->image_extent.height},
 	    .src.fm_image = bounce_fm_image,
 
-	    .dst.old_layout = wrap->layout,
-	    .dst.src_access_mask = VK_ACCESS_HOST_READ_BIT,
-	    .dst.src_stage_mask = VK_PIPELINE_STAGE_HOST_BIT,
+	    .dst.params.layout = wrap->layout,
+	    .dst.params.access_mask = VK_ACCESS_HOST_READ_BIT,
+	    .dst.params.stage_mask = VK_PIPELINE_STAGE_HOST_BIT,
+	    .dst.params.rect.extent = {.w = m->image_extent.width, .h = m->image_extent.height},
 	    .dst.fm_image = target_fm_image,
-
-	    .size.w = m->image_extent.width,
-	    .size.h = m->image_extent.height,
 	};
 
-	vk_cmd_copy_image_locked(vk, cmd, &copy_info);
+	vk_cmd_copy_image_locked(vk, cmd, &transfer_info);
 
 	// Barrier readback image to host so we can safely read
 	vk_cmd_image_barrier_locked(              //

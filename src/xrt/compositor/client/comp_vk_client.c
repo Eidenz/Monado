@@ -938,3 +938,58 @@ err_free:
 
 	return NULL;
 }
+
+xrt_result_t
+client_vk_compositor_blit_to_swapchain(struct client_vk_compositor *c,
+                                       struct xrt_swapchain *xsc,
+                                       const struct vk_cmd_first_mip_image *src_image,
+                                       const struct vk_cmd_blit_image_params *src_params,
+                                       uint32_t dst_index,
+                                       const struct vk_cmd_blit_image_params *dst_params)
+{
+	COMP_TRACE_MARKER();
+
+	struct client_vk_swapchain *sc = client_vk_swapchain(xsc);
+	struct vk_bundle *vk = &c->vk;
+	VkCommandBuffer cmd_buffer = VK_NULL_HANDLE;
+	VkResult ret;
+
+	vk_cmd_pool_lock(&c->pool);
+
+	ret = vk_cmd_pool_create_and_begin_cmd_buffer_locked(vk, &c->pool, 0, &cmd_buffer);
+	if (ret != VK_SUCCESS) {
+		VK_ERROR(vk, "vk_cmd_pool_create_and_begin_cmd_buffer_locked: %s", vk_result_string(ret));
+		vk_cmd_pool_unlock(&c->pool);
+		return XRT_ERROR_VULKAN;
+	}
+
+	struct vk_cmd_image_transfer_info blit_info = {
+	    .src =
+	        {
+	            .params = *src_params,
+	            .fm_image = *src_image,
+	        },
+	    .dst =
+	        {
+	            .params = *dst_params,
+	            .fm_image =
+	                {
+	                    .base_array_layer = 0,
+	                    .aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT,
+	                    .image = sc->base.images[dst_index],
+	                },
+	        },
+	};
+
+	vk_cmd_blit_image_locked(vk, cmd_buffer, &blit_info);
+
+	ret = vk_cmd_pool_end_submit_wait_and_free_cmd_buffer_locked(vk, &c->pool, cmd_buffer);
+	vk_cmd_pool_unlock(&c->pool);
+
+	if (ret != VK_SUCCESS) {
+		VK_ERROR(vk, "vk_cmd_pool_end_submit_wait_and_free_cmd_buffer_locked: %s", vk_result_string(ret));
+		return XRT_ERROR_VULKAN;
+	}
+
+	return XRT_SUCCESS;
+}

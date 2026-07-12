@@ -86,6 +86,7 @@ out_session:
 	return XRT_SUCCESS;
 
 err:
+	bs->base.destroy(&bs->base);
 	return xret;
 }
 
@@ -171,14 +172,15 @@ b_system_add_session(struct b_system *bsys, struct xrt_session *xs, struct xrt_s
 	const uint32_t new_count = bsys->sessions.count + 1;
 
 	if (new_count > bsys->sessions.capacity) {
-		bsys->sessions.capacity *= 2;
-		const size_t size = bsys->sessions.capacity * sizeof(*bsys->sessions.pairs);
+		const uint32_t new_capacity = bsys->sessions.capacity * 2;
+		const size_t size = new_capacity * sizeof(*bsys->sessions.pairs);
 		struct b_system_session_pair *tmp = realloc(bsys->sessions.pairs, size);
 		if (tmp == NULL) {
 			U_LOG_E("Failed to reallocate session array");
 			goto add_unlock;
 		}
 		bsys->sessions.pairs = tmp;
+		bsys->sessions.capacity = new_capacity;
 	}
 
 	bsys->sessions.pairs[bsys->sessions.count++] = (struct b_system_session_pair){xs, xses};
