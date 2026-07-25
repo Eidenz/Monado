@@ -163,10 +163,80 @@ print_linux_end_user_started_information(enum u_logging_level log_level)
 	U_LOG_IFL_I(log_level, "%s", sink.buffer);
 }
 
+#ifdef XRT_OS_WINDOWS
+/*!
+ * Cancel the blocking read each client thread is sitting in.
+ *
+ * The epoll based client loop wakes up on its own timeout and so notices
+ * `s->running` going false, but the Windows one blocks in ReadFile() with no
+ * timeout and would only notice once the client happens to send something.
+ * Cancelling the pending I/O makes that read fail so the thread can run its
+ * shutdown and be joined.
+ *
+ * The client thread closes this handle in common_shutdown() while holding the
+ * global state lock, so take it here as well, otherwise we could cancel I/O on
+ * a handle that has just been closed and possibly reused.
+ */
+static void
+cancel_all_client_io(struct ipc_server *s)
+{
+	os_mutex_lock(&s->global_state.lock);
+
+	for (uint32_t i = 0; i < IPC_MAX_CLIENTS; i++) {
+		struct ipc_thread *it = &s->threads[i];
+		if (it->state == IPC_THREAD_READY) {
+			continue;
+		}
+
+		xrt_ipc_handle_t ipc_handle = it->ics.imc.ipc_handle;
+		if (!xrt_ipc_handle_is_valid(ipc_handle)) {
+			continue;
+		}
+
+		CancelIoEx(ipc_handle, NULL);
+	}
+
+	os_mutex_unlock(&s->global_state.lock);
+}
+#endif // XRT_OS_WINDOWS
+
+/*!
+ * Join any still-running per-client threads.
+ *
+ * On shutdown @ref main_loop returns as soon as `s->running` is cleared, but the
+ * per-client threads may still be inside common_shutdown(), which destroys each
+ * client's compositor and dereferences `s->xsysd` / `s->xso`. Waiting for them
+ * here, before teardown_all() destroys those resources, avoids a race where a
+ * client thread locks a mutex the teardown below has already freed (observed as
+ * an `om->initialized` assertion in multi_compositor_destroy). `s->running` is
+ * already false by this point, so the epoll based client loop exits on its next
+ * timeout; the Windows one is woken by @ref cancel_all_client_io.
+ */
+static void
+join_all_client_threads(struct ipc_server *s)
+{
+#ifdef XRT_OS_WINDOWS
+	cancel_all_client_io(s);
+#endif
+
+	for (uint32_t i = 0; i < IPC_MAX_CLIENTS; i++) {
+		struct ipc_thread *it = &s->threads[i];
+		if (it->state == IPC_THREAD_READY) {
+			continue;
+		}
+		os_thread_join(&it->thread);
+		os_thread_destroy(&it->thread);
+		it->state = IPC_THREAD_READY;
+	}
+}
+
 static void
 teardown_all(struct ipc_server *s)
 {
 	u_var_remove_root(s);
+
+	// Client threads reference the resources destroyed below; wait them out first.
+	join_all_client_threads(s);
 
 	xrt_syscomp_destroy(&s->xsysc);
 
