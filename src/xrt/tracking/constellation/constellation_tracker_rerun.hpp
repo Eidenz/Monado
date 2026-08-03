@@ -76,6 +76,11 @@ private: // Methods
 
 	void
 	logFrameDeviceMetrics(const CameraSample &camera_sample, const DeviceState &device_state);
+
+	void
+	logFoundPose(const CameraSample &camera_sample,
+	             const std::unique_ptr<Device> &device,
+	             const FoundDevicePose &found_pose);
 };
 
 }; // namespace xrt::tracking::constellation

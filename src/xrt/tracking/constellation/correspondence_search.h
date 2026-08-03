@@ -23,6 +23,9 @@ extern "C" {
 
 #define MAX_BLOB_SEARCH_DEPTH 5
 
+//! Lambdatwist can sometimes have spurious failures, the anchor LED must be within 2.5mm to be accepted
+#define ANCHOR_LED_MAX_DISTANCE_M_SQ (0.025 * 0.025)
+
 enum correspondence_search_flags
 {
 	CS_FLAG_NONE = 0x0,

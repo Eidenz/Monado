@@ -25,6 +25,10 @@ extern "C" {
 #define MAX_OBJECT_LEDS 64
 
 #define WORST_REPROJECTION_ERROR 10.0
+//! Device origin poses closer than this are probably invalid solves.
+#define CLOSEST_ACCEPTABLE_POSE_M 0.05
+//! Poses farther away than this are definitely invalid solves.
+#define FARTHEST_ACCEPTABLE_POSE_M 15.0
 
 struct pose_rect
 {
@@ -135,7 +139,7 @@ void
 pose_metrics_evaluate_pose_with_prior(struct pose_metrics *score,
                                       const struct xrt_pose *pose,
                                       bool prior_must_match,
-                                      struct xrt_pose *pose_prior,
+                                      const struct xrt_pose *pose_prior,
                                       const struct xrt_vec3 *pos_error_thresh,
                                       const struct xrt_vec3 *rot_error_thresh,
                                       struct t_blob *blobs,

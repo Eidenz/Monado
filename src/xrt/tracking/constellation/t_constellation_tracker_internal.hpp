@@ -37,9 +37,9 @@
 
 #include "correspondence_search.h"
 #include "led_search_model.h"
-#include "pose_optimize.h"
 #include "pose_metrics.h"
 #include "t_constellation_tracker.h"
+#include "optimizer/pose_optimize.hpp"
 
 
 #define CT_TRACE(ct, ...) U_LOG_IFL_T(ct->log_level, __VA_ARGS__)
@@ -78,6 +78,8 @@ constellation_tracker_node_destroy(xrt_frame_node *node);
 
 namespace xrt::tracking::constellation {
 
+using namespace xrt::tracking::constellation::optimizer;
+
 namespace os = xrt::auxiliary::os;
 
 // Forward-declares
@@ -91,6 +93,8 @@ struct FoundDevicePose
 {
 	xrt_pose Tcv_cam_device XRT_POSE_IDENTITY;
 	float average_blob_brightness;
+	RawPoseCovarianceMatrix covariance;
+	RawPoseCovarianceMatrix whitening;
 };
 
 struct DeviceState
@@ -185,6 +189,12 @@ public: // Methods
 	setupDebugTracking(void *root);
 };
 
+struct OldOptimizationData
+{
+	RawPoseCovarianceMatrix covariance;
+	RawPoseCovarianceMatrix whitening;
+};
+
 struct Camera
 {
 public: // Fields
@@ -274,16 +284,14 @@ public: // Methods (t_constellation_tracker.cpp)
 	tryDevicePose(std::unique_ptr<Device> &device,
 	              CameraSample &sample,
 	              DeviceState &device_state,
-	              xrt_pose &Tcv_cam_world,
-	              std::optional<xrt_pose> &Tcv_world_device_prior,
-	              xrt_pose &Tcv_world_device_candidate);
+	              const std::optional<xrt_pose> &Tcv_cam_device_prior,
+	              const xrt_pose &Tcv_cam_device_candidate);
 
 	bool
 	tryDeviceBlobRecovery(std::unique_ptr<Device> &device,
 	                      CameraSample &sample,
 	                      DeviceState &device_state,
-	                      xrt_pose &Tcv_cam_world,
-	                      std::optional<xrt_pose> &Tcv_world_device_prior);
+	                      const std::optional<xrt_pose> &Tcv_cam_device_prior);
 
 	void
 	processSampleSlow(CameraSample &sample);
@@ -297,8 +305,8 @@ public: // Methods (t_constellation_tracker.cpp)
 	         DeviceState &device_state,
 	         std::unique_ptr<Device> &device,
 	         pose_metrics &score,
-	         xrt_pose &Tcv_cam_device,
-	         bool was_optimized);
+	         const xrt_pose &Tcv_cam_device,
+	         std::optional<OldOptimizationData *> was_optimized);
 
 public: // Methods (constellation_debug_scribble.cpp)
 	void
@@ -328,11 +336,12 @@ public: // Methods
 struct DeviceLastPose
 {
 public: // Fields
-	xrt_pose Txr_world_device;
+	std::optional<xrt_pose> Txr_world_device;
+	xrt_pose Tcv_cam_device;
 	timepoint_ns timestamp_ns;
 
 public: // Methods
-	DeviceLastPose(xrt_pose Txr_world_device, timepoint_ns timestamp_ns);
+	DeviceLastPose(std::optional<xrt_pose> Txr_world_device, xrt_pose Tcv_cam_device, timepoint_ns timestamp_ns);
 };
 
 struct DeviceBase
@@ -369,11 +378,20 @@ public: // Fields
 	// clang-format on
 
 public: // Methods
-	Device(t_constellation_tracker_device_params *params,
+	Device(ConstellationTracker *tracker,
+	       t_constellation_tracker_device_params *params,
 	       t_constellation_tracker_device *device,
 	       t_constellation_device_id_t id);
 
 	~Device();
+
+	// Delete move constructors
+	Device(const Device &) = delete;
+	Device(Device &&) = delete;
+	Device &
+	operator=(const Device &) = delete;
+	Device &
+	operator=(Device &&) = delete;
 
 	static Device *
 	fromXrtImuSink(xrt_imu_sink *sink)
@@ -414,6 +432,7 @@ public: // Fields
 	t_constellation_tracker_params params;
 
 	bool single_threaded{false};
+	bool deterministic{false};
 
 	std::vector<std::shared_ptr<CameraMosaic>> mosaics;
 

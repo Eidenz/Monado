@@ -186,7 +186,7 @@ correspondence_search_project_pose(struct correspondence_search *cs,
 	cs->num_pose_checks++;
 
 	// Invalid position, out of range
-	if (pose->position.z < 0.05 || pose->position.z > 15) {
+	if (pose->position.z < CLOSEST_ACCEPTABLE_POSE_M || pose->position.z > FARTHEST_ACCEPTABLE_POSE_M) {
 		CS_FULL_LOG(cs, "Pose out of range - Z @ %f metres", pose->position.z);
 		return false;
 	}
@@ -405,7 +405,6 @@ check_led_against_model_subset(struct correspondence_search *cs,
 	for (int i = 0; i < valid; i++) {
 		struct xrt_pose pose;
 		struct xrt_vec3 checkpos, checkdir;
-		float l;
 
 		// Construct quat and trans for this pose
 		quat_from_rotation_matrix(&pose.orientation, Rs[i]);
@@ -414,7 +413,7 @@ check_led_against_model_subset(struct correspondence_search *cs,
 		pose.position.y = Ts[i][1];
 		pose.position.z = Ts[i][2];
 
-		if (pose.position.z < 0.05 || pose.position.z > 15) {
+		if (pose.position.z < CLOSEST_ACCEPTABLE_POSE_M || pose.position.z > FARTHEST_ACCEPTABLE_POSE_M) {
 			CS_FULL_DEBUG(cs,
 			              "model %d failed to find a valid P3P solution for LED %d %d %d (%d) and blob %d "
 			              "%d %d (%d) - pose out of range Z @ %f metres",
@@ -473,8 +472,8 @@ check_led_against_model_subset(struct correspondence_search *cs,
 			// of where it should be, to catch spurious failures in lambdatwist
 			math_vec3_scalar_mul(1.0 / checkpos.z, &checkpos);
 			tmp = m_vec3_sub(checkpos, tmpblob);
-			l = m_vec3_len(tmp);
-			if (!(l <= 0.0025)) {
+			float l_sq = m_vec3_len_sqrd(tmp);
+			if (l_sq > ANCHOR_LED_MAX_DISTANCE_M_SQ) {
 				CS_FULL_DEBUG(cs,
 				              "Error pose candidate orient %f %f %f %f pos %f %f %f "
 				              "LED %d @ %f %f %f projected to %f %f %f (err %f)",
