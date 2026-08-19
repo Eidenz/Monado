@@ -1695,7 +1695,6 @@ oxr_session_get_visibility_mask(struct oxr_logger *log,
 	struct oxr_system *sys = sess->sys;
 	struct xrt_device *xdev = GET_STATIC_XDEV_BY_ROLE(sess->sys, head);
 	enum xrt_visibility_mask_type type = convert_mask_type(visibilityMaskType);
-	xrt_result_t xret;
 
 	assert(viewIndex < ARRAY_SIZE(sys->visibility_mask));
 
@@ -1712,15 +1711,14 @@ oxr_session_get_visibility_mask(struct oxr_logger *log,
 	if (mask == NULL) {
 		if (is_emulated_quad_inset_view(xdev, viewIndex)) {
 			u_visibility_mask_get_noop(type, &mask);
-			xret = XRT_SUCCESS;
 		} else {
-			xret = xrt_device_get_visibility_mask(xdev, type, viewIndex, &mask);
+			xrt_result_t xret = xrt_device_get_visibility_mask(xdev, type, viewIndex, &mask);
 			if (xret == XRT_ERROR_NOT_IMPLEMENTED && xdev->hmd != NULL) {
 				const struct xrt_fov fov = xdev->hmd->distortion.fov[viewIndex];
 				u_visibility_mask_get_default(type, &fov, &mask);
-				xret = XRT_SUCCESS;
+			} else {
+				OXR_CHECK_XRET(log, sess, xret, get_visibility_mask);
 			}
-			OXR_CHECK_XRET(log, sess, xret, get_visibility_mask);
 		}
 		sys->visibility_mask[viewIndex] = mask;
 	}

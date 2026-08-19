@@ -157,7 +157,7 @@ openvrLog(struct openvr_logger &logger, u_logging_level log_level, const char *f
 		return;
 	}
 
-	const char *prefix = "";
+	const char *prefix = NULL;
 	switch (log_level) {
 	case U_LOGGING_TRACE: prefix = "[TRACE]"; break;
 	case U_LOGGING_DEBUG: prefix = "[DEBUG]"; break;
@@ -165,6 +165,10 @@ openvrLog(struct openvr_logger &logger, u_logging_level log_level, const char *f
 	case U_LOGGING_WARN: prefix = "[WARN]"; break;
 	case U_LOGGING_ERROR: prefix = "[ERROR]"; break;
 	case U_LOGGING_RAW: prefix = ""; break;
+	default:
+		assert(prefix);
+		prefix = "";
+		break;
 	}
 
 	va_list args;
