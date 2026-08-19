@@ -34,10 +34,14 @@
 static void
 get_config_filename(char *out_name, size_t out_name_size, enum xrt_hand hand, const char *device_serial)
 {
-	const char *hand_str = "";
+	const char *hand_str = NULL;
 	switch (hand) {
 	case XRT_HAND_LEFT: hand_str = "l"; break;
 	case XRT_HAND_RIGHT: hand_str = "r"; break;
+	default:
+		assert(hand_str);
+		hand_str = "";
+		break;
 	}
 
 	snprintf(out_name, out_name_size, "%s-%s.cgc", hand_str, device_serial);

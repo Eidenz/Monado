@@ -153,7 +153,6 @@ hand_depth_center_of_mass(struct HandTracking *hgt, float data[22], float *out_d
 			HG_DEBUG(hgt, "%f", data[i]);
 		}
 
-		avg_location_px_coord = fmin(21.0, fmax(0.0, avg_location_px_coord));
 		return false;
 	}
 

@@ -330,7 +330,6 @@ client_loop(volatile struct ipc_client_state *ics)
 	}
 
 	close(epoll_fd);
-	epoll_fd = -1;
 
 	// Call the client disconnected callback.
 	ics->server->callbacks->client_disconnected( //
