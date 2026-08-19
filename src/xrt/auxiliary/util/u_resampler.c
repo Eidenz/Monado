@@ -113,14 +113,10 @@ resampler_write_raw(struct u_resampler *resampler, const sample_t *samples, size
 	if (num_samples > 0 && can_write > 0) {
 		assert(resampler->write_index == 0);
 
-		// copy in the samples that go at the start of the buffer
-		can_write = resampler->read_index;
-
 		// bytes to write after the start
 		size_t written_after_start = MIN(resampler->read_index, num_samples);
 
 		written += written_after_start;
-		num_samples -= written;
 
 		// copy the data
 		memcpy(resampler->samples + resampler->write_index, samples, written_after_start * sizeof(sample_t));
