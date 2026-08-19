@@ -372,10 +372,8 @@ ctrl_config_cb(bool success, uint8_t *response_bytes, int response_bytes_len, st
 	if (response_bytes_len < 16) {
 		char buf[16384] = "";
 		int bufsize = sizeof(buf) - 2;
-		int printed = 0;
 
-		printed += rift_s_snprintf_hexdump_buffer(buf + printed, bufsize - printed, "Controller Config",
-		                                          response_bytes, response_bytes_len);
+		rift_s_snprintf_hexdump_buffer(buf, bufsize, "Controller Config", response_bytes, response_bytes_len);
 
 		RIFT_S_ERROR("Failed to read controller config block - only got %d bytes\n%s", response_bytes_len, buf);
 		return;

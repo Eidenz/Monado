@@ -174,11 +174,10 @@ rift_s_hexdump_buffer(const char *label, const unsigned char *buf, int length)
 {
 	char outbuf[16384] = "";
 	int bufsize = sizeof(outbuf) - 2;
-	int printed = 0;
-
-	printed += rift_s_snprintf_hexdump_buffer(outbuf, bufsize - printed, label, buf, length);
-
-	RIFT_S_DEBUG("%s", outbuf);
+	int printed = rift_s_snprintf_hexdump_buffer(outbuf, bufsize, label, buf, length);
+	if (printed > 0) {
+		RIFT_S_DEBUG("%s", outbuf);
+	}
 }
 
 static int

@@ -1933,7 +1933,7 @@ wmr_hmd_create(enum wmr_headset_type hmd_type,
 		}
 
 		if (cur->dev_id_str && strncmp(wh->config_hdr.name, cur->dev_id_str, 64) == 0) {
-			hmd_type = cur->hmd_type;
+			assert(hmd_type == cur->hmd_type);
 			wh->hmd_desc = cur;
 			break;
 		}

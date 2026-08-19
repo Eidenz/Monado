@@ -1,4 +1,5 @@
 // Copyright 2023, Joseph Albers.
+// Copyright 2026, Collabora, Ltd.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -101,17 +102,14 @@ ulv5_device_get_hand_tracking(struct xrt_device *xdev,
 		return XRT_ERROR_INPUT_UNSUPPORTED;
 	}
 
-	bool hand_index = (name == XRT_INPUT_HT_UNOBSTRUCTED_RIGHT); // 0 if left, 1 if right.
-
-	bool hand_valid = ulv5d->hand_exists[hand_index];
+	const bool hand_index = (name == XRT_INPUT_HT_UNOBSTRUCTED_RIGHT); // 0 if left, 1 if right.
 
 	os_thread_helper_lock(&ulv5d->oth);
 	memcpy(out_value, &ulv5d->joint_set[hand_index], sizeof(struct xrt_hand_joint_set));
-	hand_valid = ulv5d->hand_exists[hand_index];
 	os_thread_helper_unlock(&ulv5d->oth);
 	m_space_relation_ident(&out_value->hand_pose);
 
-	if (hand_valid) {
+	if (ulv5d->hand_exists[hand_index]) {
 		out_value->is_active = true;
 		out_value->hand_pose.relation_flags = valid_flags;
 	} else {

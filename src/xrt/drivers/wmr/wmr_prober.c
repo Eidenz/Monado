@@ -1,5 +1,5 @@
 // Copyright 2020-2021, N Madsen.
-// Copyright 2020-2022, Collabora, Ltd.
+// Copyright 2020-2026, Collabora, Ltd.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -429,6 +429,10 @@ wmr_create_bt_controller(struct xrt_prober *xp,
 	    XRT_PROBER_STRING_PRODUCT,              //
 	    (uint8_t *)product_name,                //
 	    sizeof(product_name));                  //
+	if (ret != 0) {
+		U_LOG_IFL_E(log_level, "Failed to get WMR Bluetooth controller string descriptor");
+		return XRT_ERROR_DEVICE_CREATION_FAILED;
+	}
 
 	enum xrt_device_type controller_type = XRT_DEVICE_TYPE_UNKNOWN;
 	const int interface_controller = 0;

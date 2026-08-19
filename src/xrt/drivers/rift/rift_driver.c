@@ -1199,7 +1199,6 @@ rift_devices_create(struct os_hid_device *hmd_dev,
 		hmd->tracking.duty_cycle = 0x7f;
 
 		switch (hmd->variant) {
-		default:
 		case RIFT_VARIANT_DK2:
 			hmd->tracking.exposure_length = 350;
 			hmd->tracking.frame_interval = 16666;

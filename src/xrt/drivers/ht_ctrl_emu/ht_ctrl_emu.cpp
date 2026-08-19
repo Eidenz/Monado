@@ -390,7 +390,6 @@ cemu_device_get_tracked_pose(struct xrt_device *xdev,
 		return XRT_SUCCESS;
 	}
 
-	xret = XRT_SUCCESS;
 	switch (name) {
 	case XRT_INPUT_HAND_CTRL_EMU_GRIP_POSE: {
 		xret = do_grip_pose(&joint_set, out_relation, sys->grip_offset_from_palm, dev->hand_index);
