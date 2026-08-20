@@ -73,7 +73,6 @@ Checks:       |
     -clang-analyzer-core.NonNullParamChecker,
     -clang-analyzer-core.NullDereference,
     -clang-analyzer-core.UndefinedBinaryOperatorResult,
-    -clang-analyzer-core.uninitialized.Branch,
     -clang-analyzer-cplusplus.InnerPointer,
     -clang-analyzer-deadcode.DeadStores,
     -clang-analyzer-optin.core.EnumCastOutOfRange,
