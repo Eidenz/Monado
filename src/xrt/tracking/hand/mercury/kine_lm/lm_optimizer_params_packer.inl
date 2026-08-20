@@ -65,9 +65,7 @@ OptimizerHandUnpackFromVector(const T *in, const KinematicHandLM &state, Optimiz
 
 	AngleAxisToQuaternion<T>(out.wrist_post_orientation_aax, post_wrist_orientation);
 
-	Quat<T> pre_wrist_orientation_t(pre_wrist_orientation);
-
-	QuaternionProduct<T>(pre_wrist_orientation_t, post_wrist_orientation, out.wrist_final_orientation);
+	QuaternionProduct<T>(pre_wrist_orientation, post_wrist_orientation, out.wrist_final_orientation);
 #endif
 
 #ifdef USE_EVERYTHING_ELSE
