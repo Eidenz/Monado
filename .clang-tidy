@@ -71,7 +71,6 @@ Checks:       |
     -cert-msc51-cpp,
     -cert-oop54-cpp,
     -cert-str34-c,
-    -clang-analyzer-core.CallAndMessage,
     -clang-analyzer-core.NonNullParamChecker,
     -clang-analyzer-core.NullDereference,
     -clang-analyzer-core.UndefinedBinaryOperatorResult,
