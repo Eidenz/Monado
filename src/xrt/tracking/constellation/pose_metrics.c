@@ -122,7 +122,7 @@ check_pose_prior(struct pose_metrics *score,
 
 	math_quat_unrotate(&pose->orientation, &pose_prior->orientation, &orient_diff);
 	math_quat_normalize(&orient_diff);
-	math_quat_ln(&orient_diff, &score->orient_error);
+	math_quat_ln_so3(&orient_diff, &score->orient_error);
 
 	// Check each component of position and rotation are within the passed error bound and
 	// clear any return flag that's not set
