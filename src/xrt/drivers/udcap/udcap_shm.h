@@ -25,7 +25,7 @@ extern "C" {
 /* shm_open() name (lives at /dev/shm/udcap_hands on Linux). */
 #define UDCAP_SHM_NAME "/udcap_hands"
 #define UDCAP_SHM_MAGIC 0x55444331u /* "UDC1" */
-#define UDCAP_SHM_VERSION 13u
+#define UDCAP_SHM_VERSION 14u
 
 enum udcap_hand_index
 {
@@ -58,7 +58,24 @@ enum udcap_cmd
 	UDCAP_CMD_CALIB_AUTO = 7,  /* run the whole timed fist/together/spread sequence */
 	UDCAP_CMD_PAIR_START = 8,  /* cmd_arg = receiver index: put a receiver in pairing mode */
 	UDCAP_CMD_PAIR_STOP = 9,   /* cmd_arg = receiver index: leave pairing mode            */
-	UDCAP_CMD_SET_CHANNEL = 10 /* cmd_arg = receiver index, cmd_arg2 = RF channel         */
+	UDCAP_CMD_SET_CHANNEL = 10, /* cmd_arg = receiver index, cmd_arg2 = RF channel        */
+	/* Thumbstick calibration (v14). cmd_arg = hand index, -1 = every hand. On a
+	 * Control Module 2.0 these run the module's own on-device capture; on the
+	 * original module the server captures centre/range in software. Flow:
+	 * CENTER (stick at rest) -> RANGE_START (circle the stick to its edges) ->
+	 * RANGE_STOP. Progress is reported in joy_calib_state. */
+	UDCAP_CMD_JOY_CALIB_CENTER = 11,
+	UDCAP_CMD_JOY_CALIB_RANGE_START = 12,
+	UDCAP_CMD_JOY_CALIB_RANGE_STOP = 13
+};
+
+/* Thumbstick calibration progress, written by the server. */
+enum udcap_joy_calib_state
+{
+	UDCAP_JOY_CALIB_IDLE = 0,
+	UDCAP_JOY_CALIB_CENTERED = 1, /* centre captured, range capture armed */
+	UDCAP_JOY_CALIB_RANGING = 2,  /* range capture running                 */
+	UDCAP_JOY_CALIB_DONE = 3
 };
 
 /* Per-receiver pairing progress, reported by the server. */
@@ -106,7 +123,8 @@ enum udcap_btn_src
 	UDCAP_SRC_NONE = 0,
 	UDCAP_SRC_A = 1,
 	UDCAP_SRC_B = 2,
-	UDCAP_SRC_MENU = 3, /* A + B pressed together */
+	UDCAP_SRC_MENU = 3, /* original module: A + B pressed together;
+	                     * Control Module 2.0: its dedicated system button */
 	UDCAP_SRC_STICK = 4 /* thumbstick click */
 };
 
@@ -152,18 +170,30 @@ typedef struct udcap_hand
 	float joy_x, joy_y;            /* -1..1 */
 	float trigger, grip, trackpad; /* virtual analog, 0..1 */
 	uint32_t btn_a, btn_b, btn_menu, btn_joy, btn_power;
+	/* Controller module generation seen in the glove's data stream (v14):
+	 * 1 = original A/B/stick module (A + B = menu), 2 = Control Module 2.0
+	 * (dedicated system button -> btn_menu, factory-normalised stick, V2
+	 * haptics). 0 until the first button packet. */
+	uint32_t controller_version;
 
 	/* Identity + link quality (for the control app). */
 	float fps;              /* packets/sec for this hand */
 	char fw[16];            /* glove firmware version */
 	char glove_serial[24];  /* glove serial number */
+	char joystick_fw[16];   /* Control Module 2.0 firmware ("" = none / 1.0 module) */
 
 	/* Haptics request (reader -> server). Reader bumps `haptic_seq`; server
 	 * sends mcuSendVibration(index, duration_s, strength) when it changes. */
 	uint32_t haptic_seq;
 	int32_t haptic_index;    /* actuator index, -1 = default */
 	float haptic_duration_s; /* seconds */
-	int32_t haptic_strength; /* core strength units */
+	int32_t haptic_strength; /* core strength units (legacy 4..10 scale) */
+	/* v14: richer request. amplitude 0..1 (0 = not set, the server falls back
+	 * to haptic_strength); freq_hz 0 = module default. A Control Module 2.0
+	 * gets these as its 16-bit strength/rate; the original module collapses
+	 * amplitude back onto the legacy scale. */
+	float haptic_amplitude;
+	float haptic_freq_hz;
 
 	/* Config (NOT in the seqlock payload). Written by the server at startup and
 	 * tunable live (e.g. by udcap-offset or a GUI); the driver reads these every
@@ -273,6 +303,9 @@ typedef struct udcap_shm
 	/* Wireless receivers, populated by the server (see udcap_receiver). */
 	uint32_t receiver_count;
 	udcap_receiver receivers[UDCAP_RECEIVER_MAX];
+
+	/* Thumbstick calibration progress (enum udcap_joy_calib_state), v14. */
+	uint32_t joy_calib_state;
 } udcap_shm;
 
 /*

@@ -429,10 +429,26 @@ udcap_device_set_output(struct xrt_device *xdev, enum xrt_output_name name, cons
 		strength = 0;
 	}
 
+	float amp = value->vibration.amplitude;
+	if (amp < 0.0f) {
+		amp = 0.0f;
+	}
+	if (amp > 1.0f) {
+		amp = 1.0f;
+	}
+	float freq = value->vibration.frequency;
+	if (freq <= 0.0f) {
+		freq = 0.0f; // XRT_FREQUENCY_UNSPECIFIED -> module default
+	}
+
 	// Write params first, then publish via the request counter (release).
 	H->haptic_index = -1;
 	H->haptic_duration_s = dur;
 	H->haptic_strength = strength;
+	// v14: the server prefers these (Control Module 2.0 takes a real amplitude
+	// and frequency); haptic_strength stays as the legacy fallback.
+	H->haptic_amplitude = amp;
+	H->haptic_freq_hz = freq;
 	__atomic_add_fetch(&H->haptic_seq, 1, __ATOMIC_RELEASE);
 
 	return XRT_SUCCESS;
