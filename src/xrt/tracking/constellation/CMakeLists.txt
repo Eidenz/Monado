@@ -40,6 +40,7 @@ target_link_libraries(
 		aux_util
 		aux_util_scribble
 		aux_math
+		aux_tracking
 	)
 
 if(XRT_HAVE_OPENCV)

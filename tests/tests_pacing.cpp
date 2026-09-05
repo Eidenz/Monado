@@ -198,10 +198,10 @@ static constexpr auto longGpuTime = 2ms;
 
 TEST_CASE("u_pacing_compositor_display_timing")
 {
+	struct u_pc_display_timing_config config = u_pc_display_timing_get_default_config();
 	u_pacing_compositor *upc = nullptr;
 	MockClock clock;
-	REQUIRE(XRT_SUCCESS ==
-	        u_pc_display_timing_create(frame_interval_ns.count(), &U_PC_DISPLAY_TIMING_CONFIG_DEFAULT, &upc));
+	REQUIRE(XRT_SUCCESS == u_pc_display_timing_create(frame_interval_ns.count(), &config, &upc));
 	REQUIRE(upc != nullptr);
 
 	clock.advance(1ms);

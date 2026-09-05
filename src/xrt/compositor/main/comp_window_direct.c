@@ -96,6 +96,11 @@ get_primary_display_mode(struct comp_target_swapchain *cts,
 		COMP_ERROR(ct->c, "vk_enumerate_display_mode_properties: %s", vk_result_string(ret));
 		return VK_NULL_HANDLE;
 	}
+	if (mode_count == 0) {
+		COMP_ERROR(ct->c, "No Vulkan display modes available");
+		free(mode_properties);
+		return VK_NULL_HANDLE;
+	}
 
 
 	/*

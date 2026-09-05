@@ -208,6 +208,9 @@ struct vk_bundle
 		//! Was KHR_present_wait requested, available, and enabled?
 		bool present_wait;
 
+		//! Was KHR_present_wait2 requested, available, and enabled?
+		bool present_wait2;
+
 		//! Was KHR_video_maintenance1 requested, available, and enabled?
 		bool video_maintenance_1;
 	} features;
@@ -773,6 +776,7 @@ struct vk_device_features
 	bool present_id;
 	bool present_id2;
 	bool present_wait;
+	bool present_wait2;
 	bool video_maintenance_1;
 };
 

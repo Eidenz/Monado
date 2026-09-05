@@ -5,6 +5,9 @@ xrt_optimized_math_flags()
 
 add_library(
 	aux_tracking STATIC
+	t_camera_models.cpp
+	t_camera_models.h
+	t_camera_models.hpp
 	t_data_utils.c
 	t_dead_reckoning.h
 	t_dead_reckoning.c
@@ -51,15 +54,18 @@ if(XRT_HAVE_OPENCV)
 		target_sources(aux_tracking PRIVATE t_tracker_psvr.cpp)
 	endif()
 	target_include_directories(aux_tracking SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS})
-	target_link_libraries(
-		aux_tracking
-		PUBLIC ${OpenCV_LIBRARIES}
-		PRIVATE aux_util_sink
-		)
-	# t_euroc_recorder needs a Windows implementation of os_realtime_get_ns.
-	if(NOT WIN32)
-		target_sources(aux_tracking PRIVATE t_euroc_recorder.cpp t_euroc_recorder.h)
-	endif()
+	target_link_libraries(aux_tracking PUBLIC ${OpenCV_LIBRARIES})
+endif()
+
+target_link_libraries(aux_tracking PRIVATE aux_util_sink)
+
+if(ANDROID)
+	target_compile_options(aux_tracking PRIVATE -Wno-gnu-offsetof-extensions)
+endif()
+
+# t_euroc_recorder needs a Windows implementation of os_realtime_get_ns.
+if(NOT WIN32)
+	target_sources(aux_tracking PRIVATE t_euroc_recorder.cpp t_euroc_recorder.h)
 endif()
 
 if(XRT_FEATURE_SLAM)

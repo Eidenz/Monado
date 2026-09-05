@@ -15,6 +15,7 @@
 #include "util/u_pacing.h"
 #include "util/u_debug.h"
 #include "util/u_pretty_print.h"
+#include "util/u_thread_priority.h"
 
 #include "vk/vk_surface_info.h"
 
@@ -47,11 +48,32 @@
  */
 DEBUG_GET_ONCE_NUM_OPTION(preferred_at_least_image_count, "XRT_COMPOSITOR_PREFERRED_IMAGE_COUNT", 2)
 DEBUG_GET_ONCE_BOOL_OPTION(use_present_wait, "XRT_COMPOSITOR_USE_PRESENT_WAIT", false)
+DEBUG_GET_ONCE_BOOL_OPTION(use_display_timing, "XRT_COMPOSITOR_USE_DISPLAY_TIMING", true)
 
 static inline struct vk_bundle *
 get_vk(struct comp_target_swapchain *cts)
 {
 	return &cts->base.c->base.vk;
+}
+
+static inline bool
+is_shared_present_mode(struct vk_bundle *vk, VkPresentModeKHR present_mode)
+{
+#ifdef VK_KHR_shared_presentable_image
+	return vk->has_KHR_shared_presentable_image &&                           //
+	       (present_mode == VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR || //
+	        present_mode == VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR);      //
+#else
+	(void)present_mode;
+	return false;
+#endif
+}
+
+static inline bool
+is_shared_presentable_image(struct comp_target_swapchain *cts)
+{
+	struct vk_bundle *vk = get_vk(cts);
+	return is_shared_present_mode(vk, cts->present_mode);
 }
 
 static void
@@ -184,6 +206,14 @@ select_image_count(struct comp_target_swapchain *cts,
                    VkSurfaceCapabilitiesKHR caps,
                    uint32_t preferred_at_least_image_count)
 {
+	if (is_shared_presentable_image(cts)) {
+		/*!
+		 * Ignore caps.minImageCount as it was observed one android device
+		 * it's value was still > 1 for non-shared present modes.
+		 */
+		return 1;
+	}
+
 	// Min is equals to or greater to what we prefer, pick min then.
 	if (caps.minImageCount >= preferred_at_least_image_count) {
 		return caps.minImageCount;
@@ -206,18 +236,43 @@ select_image_count(struct comp_target_swapchain *cts,
 static bool
 check_surface_present_mode(struct comp_target_swapchain *cts,
                            const struct vk_surface_info *info,
+                           VkImageUsageFlags image_usage,
                            VkPresentModeKHR present_mode)
 {
+	struct vk_bundle *vk = get_vk(cts);
+
+	bool image_usage_supported = true;
 	for (uint32_t i = 0; i < info->present_mode_count; i++) {
-		if (info->present_modes[i] == present_mode) {
+		if (info->present_modes[i] != present_mode) {
+			continue;
+		}
+
+#ifdef VK_KHR_shared_presentable_image
+		if (!is_shared_present_mode(vk, present_mode)) {
 			return true;
 		}
+
+		const VkImageUsageFlags supported_image_usage =
+		    info->shared_present_caps.sharedPresentSupportedUsageFlags;
+		if ((supported_image_usage & image_usage) != image_usage) {
+			image_usage_supported = false;
+			break;
+		}
+#endif
+		// Everything checked out!
+		return true;
 	}
 
 	struct u_pp_sink_stack_only sink;
 	u_pp_delegate_t dg = u_pp_sink_stack_only_init(&sink);
 
 	u_pp(dg, "Present mode %s not supported, available:", vk_present_mode_string(present_mode));
+
+	if (!image_usage_supported) {
+		u_pp(dg, "Requested image_usage 0x%x not supported for present mode %s.", image_usage,
+		     vk_present_mode_string(present_mode));
+	}
+
 	for (uint32_t i = 0; i < info->present_mode_count; i++) {
 		u_pp(dg, "\n\t%s", vk_present_mode_string(info->present_modes[i]));
 	}
@@ -517,6 +572,9 @@ run_vblank_event_thread(void *ptr)
 	os_thread_helper_name(&cts->vblank.event_thread, "VBlank Events");
 	U_TRACE_SET_THREAD_NAME("VBlank Events");
 
+	// Try to raise priority of this thread.
+	u_try_to_set_realtime_priority_on_thread(U_LOGGING_INFO, "VBlank Events");
+
 	os_thread_helper_lock(&cts->vblank.event_thread);
 
 	while (os_thread_helper_is_running_locked(&cts->vblank.event_thread)) {
@@ -649,9 +707,11 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 
 	int64_t now_ns = os_monotonic_get_ns();
 	// Some platforms really don't like the pacing_compositor code.
-	bool use_display_timing_if_available = cts->timing_usage == COMP_TARGET_USE_DISPLAY_IF_AVAILABLE;
+	bool use_display_timing_if_available =
+	    debug_get_bool_option_use_display_timing() && cts->timing_usage == COMP_TARGET_USE_DISPLAY_IF_AVAILABLE;
 	if (cts->upc == NULL && use_display_timing_if_available && vk->has_GOOGLE_display_timing) {
-		u_pc_display_timing_create(ct->c->frame_interval_ns, &U_PC_DISPLAY_TIMING_CONFIG_DEFAULT, &cts->upc);
+		struct u_pc_display_timing_config config = u_pc_display_timing_get_default_config();
+		u_pc_display_timing_create(ct->c->frame_interval_ns, &config, &cts->upc);
 	} else if (cts->upc == NULL) {
 		u_pc_fake_create(ct->c->frame_interval_ns, now_ns, &cts->upc);
 	}
@@ -682,14 +742,19 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 		return;
 	}
 
-	// Check if we should use VK_KHR_present_id2 instead of VK_KHR_present_id.
 #ifdef VK_KHR_present_id2
-	cts->present_id2_supported = vk->features.present_id2 && info.present_id2_caps.presentId2Supported;
+	cts->surface.present_id2_supported = vk->features.present_id2 && info.present_id2_caps.presentId2Supported;
+#endif
+#ifdef VK_KHR_present_wait2
+	cts->surface.present_wait2_supported =
+	    vk->features.present_wait2 && info.present_wait2_caps.presentWait2Supported;
 #endif
 
 	// If we have the present wait extension, mark it as supported now
-	ct->wait_for_present_supported = (vk->features.present_id || cts->present_id2_supported) &&
-	                                 vk->features.present_wait && debug_get_bool_option_use_present_wait();
+	ct->wait_for_present_supported =
+	    ((vk->features.present_id && vk->features.present_wait) ||
+	     (cts->surface.present_id2_supported && cts->surface.present_wait2_supported)) &&
+	    debug_get_bool_option_use_present_wait();
 
 	// Can we create swapchains from the surface on this device and queue.
 	ret = comp_target_queue_supports_present(ct, present_queue, &supported);
@@ -706,7 +771,12 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 	}
 
 	// Check that the present mode is supported.
-	if (!check_surface_present_mode(cts, &info, cts->present_mode)) {
+	bool bret = check_surface_present_mode( //
+	    cts,                                //
+	    &info,                              //
+	    create_info->image_usage,           //
+	    cts->present_mode);                 //
+	if (!bret) {
 		goto error_print_and_free;
 	}
 
@@ -795,9 +865,10 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 	    .oldSwapchain = old_swapchain_handle,
 	};
 
-#ifdef VK_KHR_present_id2
-	if (cts->present_id2_supported && vk->features.present_wait) {
+#if defined(VK_KHR_present_id2) && defined(VK_KHR_present_wait2)
+	if (cts->surface.present_id2_supported && cts->surface.present_wait2_supported) {
 		swapchain_info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_ID_2_BIT_KHR;
+		swapchain_info.flags |= VK_SWAPCHAIN_CREATE_PRESENT_WAIT_2_BIT_KHR;
 	}
 #endif
 
@@ -827,6 +898,14 @@ comp_target_swapchain_create_images(struct comp_target *ct,
 	cts->base.format = cts->surface.format.format;
 	cts->base.final_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 	cts->base.surface_transform = surface_caps.currentTransform;
+	cts->base.present_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
+
+#ifdef VK_KHR_shared_presentable_image
+	if (is_shared_presentable_image(cts)) {
+		cts->base.present_load_op = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		cts->base.final_layout = VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR;
+	}
+#endif
 
 	create_image_views(cts);
 
@@ -875,13 +954,32 @@ comp_target_swapchain_acquire_next_image(struct comp_target *ct, uint32_t *out_i
 		return VK_ERROR_INITIALIZATION_FAILED;
 	}
 
-	return vk->vkAcquireNextImageKHR(          //
+#ifdef VK_KHR_shared_presentable_image
+	const bool is_shared_presentable = is_shared_presentable_image(cts);
+
+	if (is_shared_presentable && cts->shared_present_acquired) {
+		*out_index = 0;
+		return vk->vkGetSwapchainStatusKHR(vk->device, cts->swapchain.handle);
+	}
+#endif
+
+	VkResult ret = vk->vkAcquireNextImageKHR(  //
 	    vk->device,                            // device
 	    cts->swapchain.handle,                 // swapchain
 	    UINT64_MAX,                            // timeout
 	    cts->base.semaphores.present_complete, // semaphore
 	    VK_NULL_HANDLE,                        // fence
 	    out_index);                            // pImageIndex
+	VK_CHK_AND_RET(ret, "vkAcquireNextImageKHR");
+
+#ifdef VK_KHR_shared_presentable_image
+	if (is_shared_presentable) {
+		assert(*out_index == 0);
+		cts->shared_present_acquired = true;
+	}
+#endif
+
+	return ret;
 }
 
 static VkResult
@@ -946,7 +1044,7 @@ comp_target_swapchain_present(struct comp_target *ct,
 #endif
 
 #ifdef VK_KHR_present_id2
-	if (cts->present_id2_supported && vk->features.present_wait) {
+	if (cts->surface.present_id2_supported && cts->surface.present_wait2_supported) {
 		vk_append_to_pnext_chain((VkBaseInStructure *)&present_info, (VkBaseInStructure *)&vk_present_id2);
 	} else
 #endif
@@ -988,6 +1086,20 @@ comp_target_swapchain_wait_for_present(struct comp_target *ct, time_duration_ns 
 	struct comp_target_swapchain *cts = (struct comp_target_swapchain *)ct;
 	struct vk_bundle *vk = get_vk(cts);
 
+#ifdef VK_KHR_present_wait2
+	if (cts->surface.present_wait2_supported) {
+		VkPresentWait2InfoKHR info2 = {
+		    .sType = VK_STRUCTURE_TYPE_PRESENT_WAIT_2_INFO_KHR,
+		    .pNext = NULL,
+		    .presentId = (uint64_t)cts->current_frame_id,
+		    .timeout = timeout_ns,
+		};
+
+		return vk->vkWaitForPresent2KHR(vk->device, cts->swapchain.handle, &info2);
+	}
+
+#endif
+
 #ifdef VK_KHR_present_wait
 	if (!vk->features.present_wait) {
 		return VK_ERROR_EXTENSION_NOT_PRESENT;
@@ -1005,6 +1117,13 @@ comp_target_swapchain_check_ready(struct comp_target *ct)
 {
 	struct comp_target_swapchain *cts = (struct comp_target_swapchain *)ct;
 	return cts->surface.handle != VK_NULL_HANDLE;
+}
+
+static inline bool
+comp_target_swapchain_is_shared_presentable_image(struct comp_target *ct)
+{
+	struct comp_target_swapchain *cts = (struct comp_target_swapchain *)ct;
+	return is_shared_presentable_image(cts);
 }
 
 
@@ -1189,6 +1308,7 @@ comp_target_swapchain_init_and_set_fnptrs(struct comp_target_swapchain *cts,
 {
 	cts->timing_usage = timing_usage;
 	cts->base.check_ready = comp_target_swapchain_check_ready;
+	cts->base.is_shared_presentable_image = comp_target_swapchain_is_shared_presentable_image;
 	cts->base.create_images = comp_target_swapchain_create_images;
 	cts->base.has_images = comp_target_swapchain_has_images;
 	cts->base.acquire = comp_target_swapchain_acquire_next_image;

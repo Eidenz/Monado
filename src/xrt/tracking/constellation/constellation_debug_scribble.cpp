@@ -140,7 +140,7 @@ scribble_blobs(xrt_frame *frame, Camera &camera, CameraSample &sample)
  */
 
 void
-Camera::DebugScribbleSample(CameraSample &sample, bool fast)
+Camera::debugScribbleSample(CameraSample &sample, bool fast)
 {
 	ConstellationTracker &tracker = *this->tracker;
 
@@ -165,7 +165,7 @@ Camera::DebugScribbleSample(CameraSample &sample, bool fast)
 
 		// Iterate over the devices
 		for (auto &device : tracker.devices) {
-			auto maybe_device_state = sample.GetDeviceState(device->id);
+			auto maybe_device_state = sample.getDeviceState(device->id);
 			if (!maybe_device_state.has_value()) {
 				continue; // This device isn't in the sample, skip it
 			}
@@ -189,7 +189,7 @@ Camera::DebugScribbleSample(CameraSample &sample, bool fast)
 				                    &Txr_cam_device_prior);
 
 				xrt_pose Tcv_cam_device_prior;
-				math_pose_convert_opencv(&Txr_cam_device_prior, &Tcv_cam_device_prior);
+				math_pose_convert_from_opencv(&Txr_cam_device_prior, &Tcv_cam_device_prior);
 
 				scribble_led_model(frame,                           //
 				                   *this,                           //
@@ -227,7 +227,7 @@ Camera::DebugScribbleSample(CameraSample &sample, bool fast)
  */
 
 void
-CameraScribbleSettings::SetupDebugTracking(void *root)
+CameraScribbleSettings::setupDebugTracking(void *root)
 {
 	u_var_add_bool(root, &this->draw_blobs, "Draw watched blobs");
 	u_var_add_bool(root, &this->draw_blob_ids, "Draw blob IDs");

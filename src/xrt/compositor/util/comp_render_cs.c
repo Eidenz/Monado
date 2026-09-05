@@ -395,6 +395,7 @@ crc_clear_output(struct render_compute *render, const struct comp_render_dispatc
 	    render,                    //
 	    d->target.cs.image,        //
 	    d->target.cs.storage_view, // target_image_view
+	    d->target.cs.final_layout, // final_layout
 	    target_viewport_datas);    // views
 }
 
@@ -456,6 +457,7 @@ crc_distortion_after_squash(struct render_compute *render, const struct comp_ren
 		    src_norm_rects,                    //
 		    d->target.cs.image,                //
 		    d->target.cs.storage_view,         // target_image_view
+		    d->target.cs.final_layout,         // target_final_layout
 		    target_viewport_datas);            // views
 	} else {
 		render_compute_projection_scanout_compensation( //
@@ -468,6 +470,7 @@ crc_distortion_after_squash(struct render_compute *render, const struct comp_ren
 		    world_poses_scanout_end,                    //
 		    d->target.cs.image,                         //
 		    d->target.cs.storage_view,                  // target_image_view
+		    d->target.cs.final_layout,                  // target_final_layout
 		    target_viewport_datas);                     // views
 	}
 }
@@ -546,6 +549,7 @@ crc_distortion_fast_path(struct render_compute *render,
 		    src_norm_rects,                    //
 		    d->target.cs.image,                //
 		    d->target.cs.storage_view,         //
+		    d->target.cs.final_layout,         //
 		    target_viewport_datas);            //
 	} else {
 		render_compute_projection_timewarp( //
@@ -559,6 +563,7 @@ crc_distortion_fast_path(struct render_compute *render,
 		    world_poses_scanout_end,        //
 		    d->target.cs.image,             //
 		    d->target.cs.storage_view,      //
+		    d->target.cs.final_layout,      //
 		    target_viewport_datas);         //
 	}
 }

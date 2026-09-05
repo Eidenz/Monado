@@ -213,6 +213,9 @@ struct comp_render_dispatch_data
 
 			//! Target image view for distortion.
 			VkImageView storage_view;
+
+			//! Target image layout for distortion, the final layout to transition to.
+			VkImageLayout final_layout;
 		} cs;
 	} target;
 };
@@ -521,7 +524,10 @@ comp_render_gfx_dispatch(struct render_gfx *render,
  * @param target_storage_view Corresponding image view
  */
 static inline void
-comp_render_cs_add_target(struct comp_render_dispatch_data *data, VkImage target_image, VkImageView target_storage_view)
+comp_render_cs_add_target(struct comp_render_dispatch_data *data,
+                          VkImage target_image,
+                          VkImageView target_storage_view,
+                          VkImageLayout target_final_layout)
 {
 	// Error tracking.
 	data->target.initialized = true;
@@ -529,6 +535,7 @@ comp_render_cs_add_target(struct comp_render_dispatch_data *data, VkImage target
 	// When writing into the target.
 	data->target.cs.image = target_image;
 	data->target.cs.storage_view = target_storage_view;
+	data->target.cs.final_layout = target_final_layout;
 }
 
 /*!
@@ -689,7 +696,7 @@ comp_render_cs_layers(struct render_compute *render,
  *
  * - Layer images: `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`
  * - Scratch images: `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`
- * - Target image: `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR`
+ * - Target image: @ref comp_render_dispatch_data::target::cs::final_layout
  *
  * @note Swapchains in the @p layers must implement @ref comp_swapchain in
  * addition to just @ref xrt_swapchain, as this function downcasts to @ref comp_swapchain !

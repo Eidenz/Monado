@@ -12,6 +12,7 @@
 
 #include "xrt/xrt_config_os.h"
 #include "xrt/xrt_defines.h"
+#include "xrt/xrt_results.h"
 #include "xrt/xrt_session.h"
 
 #include "os/os_time.h"
@@ -463,9 +464,15 @@ update_session_state_locked(struct multi_system_compositor *msc)
 	switch (msc->sessions.state) {
 	case MULTI_SYSTEM_STATE_INIT_WARM_START:
 		// Produce at least one frame on init.
-		msc->sessions.state = MULTI_SYSTEM_STATE_STOPPING;
-		xrt_comp_begin_session(xc, &begin_session_info);
-		U_LOG_I("Doing warm start, %u active app session(s).", (uint32_t)msc->sessions.active_count);
+		if (xrt_comp_begin_session(xc, &begin_session_info) == XRT_SUCCESS) {
+			msc->sessions.state = MULTI_SYSTEM_STATE_STOPPING;
+			U_LOG_I("Doing warm start, %u active app session(s).", (uint32_t)msc->sessions.active_count);
+		} else {
+			msc->sessions.state = MULTI_SYSTEM_STATE_STOPPED;
+			U_LOG_E(
+			    "Native compositor failed to begin session on warm start; will retry once a "
+			    "client actually connects.");
+		}
 		break;
 
 	case MULTI_SYSTEM_STATE_STOPPED:
@@ -473,9 +480,16 @@ update_session_state_locked(struct multi_system_compositor *msc)
 			break;
 		}
 
-		msc->sessions.state = MULTI_SYSTEM_STATE_RUNNING;
-		xrt_comp_begin_session(xc, &begin_session_info);
-		U_LOG_I("Started native session, %u active app session(s).", (uint32_t)msc->sessions.active_count);
+		if (xrt_comp_begin_session(xc, &begin_session_info) == XRT_SUCCESS) {
+			msc->sessions.state = MULTI_SYSTEM_STATE_RUNNING;
+			U_LOG_I("Started native session, %u active app session(s).",
+			        (uint32_t)msc->sessions.active_count);
+		} else {
+			U_LOG_E(
+			    "Native compositor failed to begin session, %u active app session(s) still "
+			    "waiting.",
+			    (uint32_t)msc->sessions.active_count);
+		}
 		break;
 
 	case MULTI_SYSTEM_STATE_RUNNING:
@@ -657,7 +671,6 @@ system_compositor_set_z_order(struct xrt_system_compositor *xsc, struct xrt_comp
 
 	//! @todo Locking?
 	mc->state.z_order = z_order;
-	os_mutex_unlock(&msc->list_and_timing_lock);
 
 	return XRT_SUCCESS;
 }

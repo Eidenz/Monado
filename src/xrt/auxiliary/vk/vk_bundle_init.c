@@ -579,10 +579,6 @@ filter_device_features(struct vk_bundle *vk,
 		return;
 	}
 
-#if defined(VK_KHR_present_id) || defined(VK_KHR_present_id2)
-#define HAS_ANY_PRESENT_ID_EXTENSION
-#endif
-
 	/*
 	 * The structs
 	 */
@@ -608,23 +604,26 @@ filter_device_features(struct vk_bundle *vk,
 	};
 #endif
 
-#if defined(HAS_ANY_PRESENT_ID_EXTENSION) && defined(VK_KHR_present_wait)
-#ifdef VK_KHR_present_id
+#if defined(VK_KHR_present_id) && defined(VK_KHR_present_wait)
 	VkPhysicalDevicePresentIdFeaturesKHR present_id_info = {
 	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR,
 	    .pNext = NULL,
 	};
-#endif
 
-#ifdef VK_KHR_present_id2
-	VkPhysicalDevicePresentId2FeaturesKHR present_id2_info = {
-	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_2_FEATURES_KHR,
+	VkPhysicalDevicePresentWaitFeaturesKHR present_wait_info = {
+	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR,
 	    .pNext = NULL,
 	};
 #endif
 
-	VkPhysicalDevicePresentWaitFeaturesKHR present_wait_info = {
-	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR,
+#if defined(VK_KHR_present_id2) && defined(VK_KHR_present_wait2)
+	VkPhysicalDevicePresentId2FeaturesKHR present_id2_info = {
+	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_2_FEATURES_KHR,
+	    .pNext = NULL,
+	};
+
+	VkPhysicalDevicePresentWait2FeaturesKHR present_wait2_info = {
+	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_2_FEATURES_KHR,
 	    .pNext = NULL,
 	};
 #endif
@@ -676,20 +675,23 @@ filter_device_features(struct vk_bundle *vk,
 	}
 #endif
 
-#if defined(HAS_ANY_PRESENT_ID_EXTENSION) && defined(VK_KHR_present_wait)
-	if (vk->has_KHR_present_wait) {
-#ifdef VK_KHR_present_id
+#if defined(VK_KHR_present_id) && defined(VK_KHR_present_wait)
+	if (vk->has_KHR_present_id && vk->has_KHR_present_wait) {
 		vk_append_to_pnext_chain((VkBaseInStructure *)&physical_device_features,
 		                         (VkBaseInStructure *)&present_id_info);
-#endif
-
-#ifdef VK_KHR_present_id2
-		vk_append_to_pnext_chain((VkBaseInStructure *)&physical_device_features,
-		                         (VkBaseInStructure *)&present_id2_info);
-#endif
 
 		vk_append_to_pnext_chain((VkBaseInStructure *)&physical_device_features,
 		                         (VkBaseInStructure *)&present_wait_info);
+	}
+#endif
+
+#if defined(VK_KHR_present_id2) && defined(VK_KHR_present_wait2)
+	if (vk->has_KHR_present_id2 && vk->has_KHR_present_wait2) {
+		vk_append_to_pnext_chain((VkBaseInStructure *)&physical_device_features,
+		                         (VkBaseInStructure *)&present_id2_info);
+
+		vk_append_to_pnext_chain((VkBaseInStructure *)&physical_device_features,
+		                         (VkBaseInStructure *)&present_wait2_info);
 	}
 #endif
 
@@ -737,8 +739,6 @@ filter_device_features(struct vk_bundle *vk,
 	CHECK(timeline_semaphore, timeline_semaphore_info.timelineSemaphore);
 #endif
 
-#if defined(HAS_ANY_PRESENT_ID_EXTENSION) && defined(VK_KHR_present_wait)
-
 #ifdef VK_KHR_present_id
 	CHECK(present_id, present_id_info.presentId);
 #endif
@@ -747,11 +747,14 @@ filter_device_features(struct vk_bundle *vk,
 	CHECK(present_id2, present_id2_info.presentId2);
 #endif
 
+#if defined(VK_KHR_present_id) && defined(VK_KHR_present_wait)
 	// we need both extensions enabled/functional
-	CHECK(present_wait,
-	      (device_features->present_id || device_features->present_id2) && present_wait_info.presentWait);
+	CHECK(present_wait, device_features->present_id && present_wait_info.presentWait);
+#endif // defined(VK_KHR_present_id) && defined(VK_KHR_present_wait)
 
-#endif // defined(HAS_ANY_PRESENT_ID_EXTENSION) && defined(VK_KHR_present_wait)
+#if defined(VK_KHR_present_id2) && defined(VK_KHR_present_wait2)
+	CHECK(present_wait2, device_features->present_id2 && present_wait2_info.presentWait2);
+#endif
 
 #ifdef VK_KHR_synchronization2
 	CHECK(synchronization_2, synchronization_2_info.synchronization2);
@@ -777,6 +780,8 @@ filter_device_features(struct vk_bundle *vk,
 	         "Features:"
 	         "\n\text_fmt_resolve: %i"
 	         "\n\tnull_descriptor: %i"
+	         "\n\tpresent_wait: %i"
+	         "\n\tpresnet_wait2: %i"
 	         "\n\tshader_image_gather_extended: %i"
 	         "\n\tshader_storage_image_write_without_format: %i"
 	         "\n\tstorage_buffer_8bit_access: %i"
@@ -785,6 +790,8 @@ filter_device_features(struct vk_bundle *vk,
 	         "\n\tvideo_maintenance_1: %i",                              //
 	         device_features->ext_fmt_resolve,                           //
 	         device_features->null_descriptor,                           //
+	         device_features->present_wait,                              //
+	         device_features->present_wait2,                             //
 	         device_features->shader_image_gather_extended,              //
 	         device_features->shader_storage_image_write_without_format, //
 	         device_features->storage_buffer_8bit_access,                //
@@ -899,6 +906,7 @@ vk_create_device(struct vk_bundle *vk,
 	vk->features.present_id = device_features.present_id;
 	vk->features.present_id2 = device_features.present_id2;
 	vk->features.present_wait = device_features.present_wait;
+	vk->features.present_wait2 = device_features.present_wait2;
 	vk->features.video_maintenance_1 = device_features.video_maintenance_1;
 
 
@@ -1011,11 +1019,19 @@ vk_create_device(struct vk_bundle *vk,
 	};
 #endif
 
+#if VK_KHR_present_wait2
+	VkPhysicalDevicePresentWait2FeaturesKHR present_wait2 = {
+	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_2_FEATURES_KHR,
+	    .pNext = NULL,
+	    .presentWait2 = device_features.present_wait2,
+	};
+#endif
+
 #if VK_KHR_present_id
 	VkPhysicalDevicePresentIdFeaturesKHR present_id = {
 	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR,
 	    .pNext = NULL,
-	    .presentId = device_features.present_wait,
+	    .presentId = device_features.present_id && device_features.present_wait,
 	};
 #endif
 
@@ -1023,7 +1039,7 @@ vk_create_device(struct vk_bundle *vk,
 	VkPhysicalDevicePresentId2FeaturesKHR present_id2 = {
 	    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_2_FEATURES_KHR,
 	    .pNext = NULL,
-	    .presentId2 = device_features.present_wait,
+	    .presentId2 = device_features.present_id2 && device_features.present_wait2,
 	};
 #endif
 
@@ -1086,13 +1102,13 @@ vk_create_device(struct vk_bundle *vk,
 #endif
 
 #ifdef VK_KHR_present_id
-	if (vk->has_KHR_present_wait) {
+	if (vk->has_KHR_present_id && device_features.present_wait) {
 		vk_append_to_pnext_chain((VkBaseInStructure *)&device_create_info, (VkBaseInStructure *)&present_id);
 	}
 #endif
 
 #ifdef VK_KHR_present_id2
-	if (vk->has_KHR_present_wait) {
+	if (vk->has_KHR_present_id2 && device_features.present_wait2) {
 		vk_append_to_pnext_chain((VkBaseInStructure *)&device_create_info, (VkBaseInStructure *)&present_id2);
 	}
 #endif
@@ -1100,6 +1116,12 @@ vk_create_device(struct vk_bundle *vk,
 #ifdef VK_KHR_present_wait
 	if (vk->has_KHR_present_wait) {
 		vk_append_to_pnext_chain((VkBaseInStructure *)&device_create_info, (VkBaseInStructure *)&present_wait);
+	}
+#endif
+
+#ifdef VK_KHR_present_wait2
+	if (vk->has_KHR_present_wait2) {
+		vk_append_to_pnext_chain((VkBaseInStructure *)&device_create_info, (VkBaseInStructure *)&present_wait2);
 	}
 #endif
 

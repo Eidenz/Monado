@@ -14,7 +14,7 @@
 #include "math/m_api.h"
 
 
-static const float LED_RADIUS_M = 0.004f; // 4mm
+static const float LED_RADIUS_M = 0.006f; // 6mm
 static const float LED_VISIBILITY_ANGLE = DEG_TO_RAD(90);
 
 //! Rotation on X axis from LED -> IMU.

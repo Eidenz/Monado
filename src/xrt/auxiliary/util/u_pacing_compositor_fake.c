@@ -179,10 +179,16 @@ static int64_t
 predict_next_frame_present_time(struct fake_timing *ft, int64_t now_ns)
 {
 	int64_t time_needed_ns = ft->comp_time_ns;
-	int64_t predicted_present_time_ns = ft->last_present_time_ns + ft->frame_period_ns;
+	int64_t period_ns = ft->frame_period_ns;
+	int64_t predicted_present_time_ns = ft->last_present_time_ns + period_ns;
 
-	while (now_ns + time_needed_ns > predicted_present_time_ns) {
-		predicted_present_time_ns += ft->frame_period_ns;
+	// Jump straight to the first slot at/after the deadline: stepping by one period was
+	// O(uptime) where last_present_time_ns never advances (no vblank feedback, e.g. Android).
+	int64_t deadline_ns = now_ns + time_needed_ns;
+	if (deadline_ns > predicted_present_time_ns) {
+		int64_t behind_ns = deadline_ns - predicted_present_time_ns;
+		int64_t steps = (behind_ns + period_ns - 1) / period_ns;
+		predicted_present_time_ns += steps * period_ns;
 	}
 
 	return predicted_present_time_ns;

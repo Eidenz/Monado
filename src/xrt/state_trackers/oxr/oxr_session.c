@@ -335,12 +335,24 @@ get_device_fovs_and_poses(struct oxr_logger *log,
 	return XR_SUCCESS;
 }
 
-
+#ifdef OXR_HAVE_KHR_visibility_mask
 static bool
 is_emulated_quad_inset_view(struct xrt_device *xdev, uint32_t view_index)
 {
 	return view_index >= 2 && !xdev->supported.get_views_quad;
 }
+
+static enum xrt_visibility_mask_type
+convert_mask_type(XrVisibilityMaskTypeKHR type)
+{
+	switch (type) {
+	case XR_VISIBILITY_MASK_TYPE_HIDDEN_TRIANGLE_MESH_KHR: return XRT_VISIBILITY_MASK_TYPE_HIDDEN_TRIANGLE_MESH;
+	case XR_VISIBILITY_MASK_TYPE_VISIBLE_TRIANGLE_MESH_KHR: return XRT_VISIBILITY_MASK_TYPE_VISIBLE_TRIANGLE_MESH;
+	case XR_VISIBILITY_MASK_TYPE_LINE_LOOP_KHR: return XRT_VISIBILITY_MASK_TYPE_LINE_LOOP;
+	default: return (enum xrt_visibility_mask_type)0;
+	}
+}
+#endif // OXR_HAVE_KHR_visibility_mask
 
 
 /*
@@ -409,10 +421,9 @@ oxr_session_begin(struct oxr_logger *log, struct oxr_session *sess, const XrSess
 		return oxr_error(log, XR_ERROR_SESSION_NOT_READY, "Session is not ready to begin");
 	}
 
+	const struct oxr_extension_status *extensions = &sess->sys->inst->extensions;
 	struct xrt_compositor *xc = sess->compositor;
 	if (xc != NULL) {
-		const struct oxr_extension_status *extensions = &sess->sys->inst->extensions;
-
 		const struct xrt_begin_session_info begin_session_info = {
 		    .view_type = (enum xrt_view_type)beginInfo->primaryViewConfigurationType,
 #ifdef OXR_HAVE_EXT_hand_tracking
@@ -455,16 +466,6 @@ oxr_session_begin(struct oxr_logger *log, struct oxr_session *sess, const XrSess
 
 		xrt_result_t xret = xrt_comp_begin_session(xc, &begin_session_info);
 		OXR_CHECK_XRET(log, sess, xret, xrt_comp_begin_session);
-
-#ifdef OXR_HAVE_EXT_user_presence
-		struct xrt_device *xdev = GET_STATIC_XDEV_BY_ROLE(sess->sys, head);
-		if (extensions->EXT_user_presence && xdev->supported.presence) {
-			bool presence = false;
-			xret = xrt_device_get_presence(xdev, &presence);
-			OXR_CHECK_XRET(log, sess, xret, xrt_device_get_presence);
-			oxr_event_push_XrEventDataUserPresenceChangedEXT(log, sess, presence);
-		}
-#endif
 	} else {
 		// Headless, pretend we got event from the compositor.
 		sess->compositor_visible = true;
@@ -488,6 +489,25 @@ oxr_session_begin(struct oxr_logger *log, struct oxr_session *sess, const XrSess
 		return oxr_error(log, ret,
 		                 "Frame sync object refused to let us begin session, probably already running");
 	}
+
+#ifdef OXR_HAVE_EXT_user_presence
+	struct xrt_device *xdev = GET_STATIC_XDEV_BY_ROLE(sess->sys, head);
+	if (extensions->EXT_user_presence && xdev->supported.presence && xdev->inputs) {
+		for (size_t i = 0; i < xdev->input_count; ++i) {
+			struct xrt_input *input = &xdev->inputs[i];
+			if (input->name != XRT_INPUT_GENERIC_HEAD_DETECT) {
+				continue;
+			}
+
+			// On init we only have the name, so trigger a sync of the inputs.
+			xrt_result_t xret = xrt_device_update_inputs(xdev);
+			OXR_CHECK_XRET(log, sess, xret, xrt_device_update_inputs);
+
+			oxr_event_push_XrEventDataUserPresenceChangedEXT(log, sess, input->value.boolean);
+			break;
+		}
+	}
+#endif
 
 	// Set the current view configuration type, used in xrEndFrame.
 	sess->current_view_config_type = beginInfo->primaryViewConfigurationType;
@@ -738,15 +758,32 @@ oxr_session_poll(struct oxr_logger *log, struct oxr_session *sess)
 			}
 			break;
 #endif // OXR_HAVE_KHR_visibility_mask
-		case XRT_SESSION_EVENT_USER_PRESENCE_CHANGE:
-#ifdef OXR_HAVE_EXT_user_presence
-			oxr_event_push_XrEventDataUserPresenceChangedEXT(log, sess,
-			                                                 xse.presence_change.is_user_present);
-#endif // OXR_HAVE_EXT_user_presence
-			break;
 		default: U_LOG_W("unhandled event type! %d", xse.type); break;
 		}
 	}
+
+#ifdef OXR_HAVE_EXT_user_presence
+	struct xrt_device *xdev = GET_STATIC_XDEV_BY_ROLE(sess->sys, head);
+	if (sess->sys->inst->extensions.EXT_user_presence && xdev->supported.presence && xdev->inputs) {
+		for (size_t i = 0; i < xdev->input_count; ++i) {
+			struct xrt_input *input = &xdev->inputs[i];
+			if (input->name != XRT_INPUT_GENERIC_HEAD_DETECT) {
+				continue;
+			}
+
+			// Make sure the presence input is updated.
+			xrt_result_t xret = xrt_device_update_inputs(xdev);
+			OXR_CHECK_XRET(log, sess, xret, xrt_device_update_inputs);
+
+			bool presence = input->value.boolean;
+			if (sess->presence != presence) {
+				oxr_event_push_XrEventDataUserPresenceChangedEXT(log, sess, presence);
+				sess->presence = presence;
+			}
+			break;
+		}
+	}
+#endif // OXR_HAVE_EXT_user_presence
 
 	if (sess->state == XR_SESSION_STATE_SYNCHRONIZED && sess->compositor_visible) {
 		oxr_session_change_state(log, sess, XR_SESSION_STATE_VISIBLE, now_xr);
@@ -1647,17 +1684,6 @@ oxr_session_android_thread_settings(struct oxr_logger *log,
 #endif // OXR_HAVE_KHR_android_thread_settings
 
 #ifdef OXR_HAVE_KHR_visibility_mask
-
-static enum xrt_visibility_mask_type
-convert_mask_type(XrVisibilityMaskTypeKHR type)
-{
-	switch (type) {
-	case XR_VISIBILITY_MASK_TYPE_HIDDEN_TRIANGLE_MESH_KHR: return XRT_VISIBILITY_MASK_TYPE_HIDDEN_TRIANGLE_MESH;
-	case XR_VISIBILITY_MASK_TYPE_VISIBLE_TRIANGLE_MESH_KHR: return XRT_VISIBILITY_MASK_TYPE_VISIBLE_TRIANGLE_MESH;
-	case XR_VISIBILITY_MASK_TYPE_LINE_LOOP_KHR: return XRT_VISIBILITY_MASK_TYPE_LINE_LOOP;
-	default: return (enum xrt_visibility_mask_type)0;
-	}
-}
 
 XrResult
 oxr_session_get_visibility_mask(struct oxr_logger *log,

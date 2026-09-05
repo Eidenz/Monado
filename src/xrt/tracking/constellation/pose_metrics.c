@@ -214,12 +214,10 @@ get_visible_leds_and_bounds(const struct xrt_pose *T_cam_obj,
 		}
 
 		// Calculate the expected size of an LED at this distance
-		double led_radius_px = 4.0;
-		const double led_radius_mm = led->radius_m * 1000.0;
-		led_radius_px = focal_length * led_radius_mm / led_pos_m->z / 1000.0;
+		const double led_radius_px = focal_length * led->radius_m / led_pos_m->z;
 
 		LOG_SPEW("LED id %d led_radius_px %f = focal length %f led_radius %f Z = %f m", led_model->leds[i].id,
-		         led_radius_px, focal_length, led_radius_mm, led_pos_m->z);
+		         led_radius_px, focal_length, led->radius_m, led_pos_m->z);
 
 		// Convert the position to a unit vector for dot product comparison
 		struct xrt_vec3 view_vec = *led_pos_m;

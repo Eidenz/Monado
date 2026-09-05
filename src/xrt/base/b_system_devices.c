@@ -9,6 +9,7 @@
  */
 
 #include "b_system_devices.h"
+#include "b_body_tracker.h"
 #include "b_hand_tracker.h"
 
 #include "util/u_device.h"
@@ -103,6 +104,58 @@ set_hand_tracking_enabled(struct xrt_system_devices *xsysd, enum xrt_hand hand, 
 		}
 	}
 	return xret;
+}
+
+XRT_CHECK_RESULT static xrt_result_t
+notify_chirality_pair(struct b_system_devices_static *bsysds, struct xrt_device *left, struct xrt_device *right)
+{
+	if (left != NULL && left->supported.notify_chirality) {
+		xrt_result_t xret = xrt_device_notify_chirality(left, true, XRT_HAND_LEFT);
+		if (xret != XRT_SUCCESS) {
+			return xret;
+		}
+	}
+	if (right != NULL && right->supported.notify_chirality) {
+		xrt_result_t xret = xrt_device_notify_chirality(right, true, XRT_HAND_RIGHT);
+		if (xret != XRT_SUCCESS) {
+			return xret;
+		}
+	}
+
+	return XRT_SUCCESS;
+}
+
+XRT_CHECK_RESULT static xrt_result_t
+notify_chirality(struct b_system_devices_static *bsysds)
+{
+	xrt_result_t xret;
+
+	// left/right controllers
+	xret = notify_chirality_pair(
+	    bsysds, //
+	    bsysds->cached.left != XRT_DEVICE_ROLE_UNASSIGNED ? bsysds->base.base.static_xdevs[bsysds->cached.left]
+	                                                      : NULL, //
+	    bsysds->cached.right != XRT_DEVICE_ROLE_UNASSIGNED ? bsysds->base.base.static_xdevs[bsysds->cached.right]
+	                                                       : NULL); //
+	if (xret != XRT_SUCCESS) {
+		return xret;
+	}
+
+	// left/right conforming hand tracking
+	xret = notify_chirality_pair(bsysds, bsysds->base.base.static_roles.hand_tracking.conforming.left,
+	                             bsysds->base.base.static_roles.hand_tracking.conforming.right);
+	if (xret != XRT_SUCCESS) {
+		return xret;
+	}
+
+	// left/right unobstructed hand tracking
+	xret = notify_chirality_pair(bsysds, bsysds->base.base.static_roles.hand_tracking.unobstructed.left,
+	                             bsysds->base.base.static_roles.hand_tracking.unobstructed.right);
+	if (xret != XRT_SUCCESS) {
+		return xret;
+	}
+
+	return XRT_SUCCESS;
 }
 
 /*
@@ -203,6 +256,14 @@ feature_dec(struct xrt_system_devices *xsysd, enum xrt_device_feature_type type)
 }
 
 static xrt_result_t
+create_body_tracker(struct xrt_system_devices *xsysd,
+                    const struct xrt_body_tracker_create_info *info,
+                    struct xrt_body_tracker **out_xbt)
+{
+	return b_body_tracker_create(xsysd, info, out_xbt);
+}
+
+static xrt_result_t
 create_hand_tracker(struct xrt_system_devices *xsysd,
                     const struct xrt_hand_tracker_create_info *info,
                     struct xrt_hand_tracker **out_xht)
@@ -221,6 +282,7 @@ b_system_devices_allocate(void)
 {
 	struct b_system_devices *bsysd = U_TYPED_CALLOC(struct b_system_devices);
 	bsysd->base.destroy = destroy;
+	bsysd->base.create_body_tracker = create_body_tracker;
 	bsysd->base.create_hand_tracker = create_hand_tracker;
 
 	return bsysd;
@@ -244,6 +306,7 @@ b_system_devices_static_allocate(void)
 	struct b_system_devices_static *bsysds = U_TYPED_CALLOC(struct b_system_devices_static);
 
 	u_system_devices_populate_function_pointers(&bsysds->base.base, get_roles, destroy);
+	bsysds->base.base.create_body_tracker = create_body_tracker;
 	bsysds->base.base.create_hand_tracker = create_hand_tracker;
 	bsysds->base.base.feature_inc = feature_inc;
 	bsysds->base.base.feature_dec = feature_dec;
@@ -251,7 +314,7 @@ b_system_devices_static_allocate(void)
 	return bsysds;
 }
 
-void
+xrt_result_t
 b_system_devices_static_finalize(struct b_system_devices_static *bsysds,
                                  struct xrt_device *left,
                                  struct xrt_device *right,
@@ -286,4 +349,6 @@ b_system_devices_static_finalize(struct b_system_devices_static *bsysds,
 	bsysds->cached.left = left_index;
 	bsysds->cached.right = right_index;
 	bsysds->cached.gamepad = gamepad_index;
+
+	return notify_chirality(bsysds);
 }

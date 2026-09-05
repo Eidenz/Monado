@@ -10,6 +10,10 @@
 #include "xrt/xrt_config_drivers.h"
 
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  *
  * Config checking, sorted alphabetically.
@@ -177,4 +181,8 @@ t_builder_simula_create(void);
  */
 struct xrt_builder *
 t_builder_wmr_create(void);
+#endif
+
+#ifdef __cplusplus
+}
 #endif

@@ -112,6 +112,16 @@ vk_surface_info_fill_in(struct vk_bundle *vk, struct vk_surface_info *info, VkSu
 			surf_caps2.pNext = &present_id2_caps;
 		}
 #endif
+#ifdef VK_KHR_present_wait2
+		VkSurfaceCapabilitiesPresentWait2KHR present_wait2_caps = {
+		    .sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_PRESENT_WAIT_2_KHR,
+		    .pNext = NULL,
+		};
+		if (vk->has_KHR_present_wait2) {
+			present_wait2_caps.pNext = surf_caps2.pNext;
+			surf_caps2.pNext = &present_wait2_caps;
+		}
+#endif
 #ifdef VK_KHR_shared_presentable_image
 		VkSharedPresentSurfaceCapabilitiesKHR shared_present_caps = {
 		    .sType = VK_STRUCTURE_TYPE_SHARED_PRESENT_SURFACE_CAPABILITIES_KHR,
@@ -131,6 +141,9 @@ vk_surface_info_fill_in(struct vk_bundle *vk, struct vk_surface_info *info, VkSu
 		info->caps = surf_caps2.surfaceCapabilities;
 #ifdef VK_KHR_present_id2
 		info->present_id2_caps = present_id2_caps;
+#endif
+#ifdef VK_KHR_present_wait2
+		info->present_wait2_caps = present_wait2_caps;
 #endif
 #ifdef VK_KHR_shared_presentable_image
 		info->shared_present_caps = shared_present_caps;
@@ -189,6 +202,10 @@ vk_print_surface_info(struct vk_bundle *vk, struct vk_surface_info *info, enum u
 
 #if defined(VK_KHR_get_surface_capabilities2) && defined(VK_KHR_present_id2)
 	PNT("present_id2_caps.presentId2Supported: %u", info->present_id2_caps.presentId2Supported);
+#endif
+
+#if defined(VK_KHR_get_surface_capabilities2) && defined(VK_KHR_present_wait2)
+	PNT("present_wait2_caps.presentWait2Supported: %u", info->present_wait2_caps.presentWait2Supported);
 #endif
 
 #if defined(VK_KHR_get_surface_capabilities2) && defined(VK_KHR_shared_presentable_image)

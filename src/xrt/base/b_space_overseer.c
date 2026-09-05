@@ -23,6 +23,7 @@
 #include "util/u_logging.h"
 #include "util/u_pretty_print.h"
 #include "b_space_overseer.h"
+#include "b_tracked_device.h"
 
 #include <assert.h>
 #include <inttypes.h>
@@ -35,6 +36,8 @@
  * Structs and defines.
  *
  */
+
+struct b_space_overseer;
 
 /*!
  * Keeps track of what kind of space it is.
@@ -52,6 +55,12 @@ enum u_space_type
 	 * space as it's parent/next we need a node that can be updated.
 	 */
 	U_SPACE_TYPE_ATTACHABLE,
+
+	/*!
+	 * A pose space whose device was removed. Resolving through this space
+	 * yields an invalid relation with no flags set.
+	 */
+	U_SPACE_TYPE_ZOMBIE,
 };
 
 /*!
@@ -77,6 +86,12 @@ struct u_space
 		{
 			struct xrt_device *xdev;
 			enum xrt_input_name xname;
+
+			/*!
+			 * Set on pose spaces so space_destroy can take the graph
+			 * lock and look up the tracked device via xdev.
+			 */
+			struct b_space_overseer *overseer;
 		} pose;
 
 		struct
@@ -96,7 +111,7 @@ struct b_space_overseer
 	//! Main graph lock.
 	pthread_rwlock_t lock;
 
-	//! Map from xdev to space, each entry holds a reference.
+	//! Map from xdev to tracked device, each entry holds a reference.
 	struct u_hashmap_int *xdev_map;
 
 	//! Map from xrt_tracking_origin to space, each entry holds a reference.
@@ -213,19 +228,14 @@ hashmap_unreference_space_items(void *item, void *priv)
 	u_space_reference(&us, NULL);
 }
 
-static struct u_space *
-find_xdev_space_read_locked(struct b_space_overseer *uso, struct xrt_device *xdev)
+static struct b_tracked_device *
+find_xdev_tracked_device_read_locked(struct b_space_overseer *uso, struct xrt_device *xdev)
 {
 	void *ptr = NULL;
 	uint64_t key = xdev->id.val;
 	u_hashmap_int_find(uso->xdev_map, key, &ptr);
 
-	if (ptr == NULL) {
-		U_LOG_E("Looking for space belonging to unknown xrt_device! '%s'", xdev->str);
-	}
-	assert(ptr != NULL);
-
-	return (struct u_space *)ptr;
+	return (struct b_tracked_device *)ptr;
 }
 
 static struct u_space *
@@ -316,6 +326,54 @@ notify_ref_space_usage_device(struct b_space_overseer *uso, enum xrt_reference_s
 
 /*
  *
+ * Zombie space helpers.
+ *
+ */
+
+static void
+zombiefy_space_write_locked(struct u_space *us)
+{
+	assert(us->type == U_SPACE_TYPE_POSE);
+
+	us->type = U_SPACE_TYPE_ZOMBIE;
+	us->pose.xdev = NULL;
+	us->pose.xname = 0;
+	us->pose.overseer = NULL;
+}
+
+static void
+zombiefy_pose_space_cb(struct xrt_space *xs, void *priv)
+{
+	(void)priv;
+
+	struct u_space *us = u_space(xs);
+	if (us->type != U_SPACE_TYPE_POSE) {
+		return;
+	}
+
+	zombiefy_space_write_locked(us);
+}
+
+static void
+hashmap_unreference_tracked_device_items(void *item, void *priv)
+{
+	(void)priv;
+
+	struct b_tracked_device *btd = (struct b_tracked_device *)item;
+
+	/*
+	 * Pose spaces may outlive the overseer teardown path long enough that
+	 * the tracked-device destroy would otherwise see a non-empty pose list.
+	 * Zombify and clear first, matching remove_device.
+	 */
+	b_tracked_device_for_each_pose_space(btd, zombiefy_pose_space_cb, NULL);
+	b_tracked_device_clear_pose_spaces(btd);
+	b_tracked_device_reference(&btd, NULL);
+}
+
+
+/*
+ *
  * Graph traversing functions.
  *
  */
@@ -330,6 +388,9 @@ static void
 push_then_traverse(struct xrt_relation_chain *xrc, struct u_space *space, int64_t at_timestamp_ns)
 {
 	switch (space->type) {
+	case U_SPACE_TYPE_ZOMBIE:
+		m_relation_chain_push_relation(xrc, &(struct xrt_space_relation)XRT_SPACE_RELATION_ZERO);
+		return;
 	case U_SPACE_TYPE_NULL: break; // No-op
 	case U_SPACE_TYPE_POSE: {
 		assert(space->pose.xdev != NULL);
@@ -360,6 +421,9 @@ traverse_then_push_inverse(struct xrt_relation_chain *xrc, struct u_space *space
 {
 	// Done traversing.
 	switch (space->type) {
+	case U_SPACE_TYPE_ZOMBIE:
+		m_relation_chain_push_relation(xrc, &(struct xrt_space_relation)XRT_SPACE_RELATION_ZERO);
+		return;
 	case U_SPACE_TYPE_NULL: break;
 	case U_SPACE_TYPE_POSE: break;
 	case U_SPACE_TYPE_OFFSET: break;
@@ -381,6 +445,7 @@ traverse_then_push_inverse(struct xrt_relation_chain *xrc, struct u_space *space
 		xrt_device_get_tracked_pose(space->pose.xdev, space->pose.xname, at_timestamp_ns, &xsr);
 		m_relation_chain_push_inverted_relation(xrc, &xsr);
 	} break;
+	case U_SPACE_TYPE_ZOMBIE: assert(false); break; // Handled above.
 	case U_SPACE_TYPE_OFFSET: m_relation_chain_push_inverted_pose_if_not_identity(xrc, &space->offset.pose); break;
 	case U_SPACE_TYPE_ROOT: assert(false); // Should not get here.
 	case U_SPACE_TYPE_ATTACHABLE: break;   // No-op
@@ -445,6 +510,18 @@ static void
 space_destroy(struct xrt_space *xs)
 {
 	struct u_space *us = u_space(xs);
+
+	if (us->type == U_SPACE_TYPE_POSE && us->pose.xdev != NULL) {
+		struct b_space_overseer *uso = us->pose.overseer;
+		assert(uso != NULL);
+
+		pthread_rwlock_wrlock(&uso->lock);
+		struct b_tracked_device *btd = find_xdev_tracked_device_read_locked(uso, us->pose.xdev);
+		if (btd != NULL) {
+			b_tracked_device_untrack_pose_space(btd, xs);
+		}
+		pthread_rwlock_unlock(&uso->lock);
+	}
 
 	assert(us->next != NULL || us->type == U_SPACE_TYPE_ROOT);
 
@@ -586,17 +663,33 @@ create_pose_space(struct xrt_space_overseer *xso,
 
 	struct b_space_overseer *uso = b_space_overseer(xso);
 
-	// Only need the read lock.
-	pthread_rwlock_rdlock(&uso->lock);
+	/*
+	 * Write lock: the xdev map lookup alone only needs a read lock, and
+	 * create_space does not touch the graph. But b_tracked_device has no
+	 * lock of its own, so track_pose_space mutates pose_spaces under this
+	 * graph lock and must be exclusive (also vs. untrack / remove_device).
+	 * A per-device lock would let this take a read lock for the lookup and
+	 * then lock only the tracked device while tracking.
+	 */
+	pthread_rwlock_wrlock(&uso->lock);
 
-	struct u_space *uparent = find_xdev_space_read_locked(uso, xdev);
+	struct b_tracked_device *btd = find_xdev_tracked_device_read_locked(uso, xdev);
+	if (btd == NULL) {
+		pthread_rwlock_unlock(&uso->lock);
+		U_LOG_E("Creating pose space for unknown xrt_device! '%s'", xdev->str);
+		return XRT_ERROR_DEVICE_CREATION_FAILED;
+	}
+
+	struct u_space *uparent = u_space(b_tracked_device_get_space(btd));
 	struct u_space *us = create_space(U_SPACE_TYPE_POSE, uparent);
-
-	// Safe to unlock now.
-	pthread_rwlock_unlock(&uso->lock);
 
 	us->pose.xdev = xdev;
 	us->pose.xname = name;
+	us->pose.overseer = uso;
+
+	b_tracked_device_track_pose_space(btd, &us->base);
+
+	pthread_rwlock_unlock(&uso->lock);
 
 	// Created with one references.
 	*out_space = &us->base;
@@ -622,15 +715,25 @@ locate_space(struct xrt_space_overseer *xso,
 
 	m_relation_chain_push_pose_if_not_identity(&xrc, offset);
 
-	// crude optimization: If locating a space in itself, we don't actually need to locate the space itself.
-	// only the offsets need to be applied.
+	/*
+	 * Crude optimization: If locating a space in itself, we don't actually
+	 * need to locate the space itself. Only the offsets need to be applied.
+	 *
+	 * This lets zombie spaces still be locatable with themselves after they
+	 * have been zombiefied, this might right or wrong, unsure but the
+	 * decision was made to do it this way.
+	 */
 	if (uspace != ubase_space) {
 		build_relation_chain(uso, &xrc, ubase_space, uspace, at_timestamp_ns);
 	}
 
 	m_relation_chain_push_inverted_pose_if_not_identity(&xrc, base_offset);
 
-	// For base_space =~= space (approx equals).
+	/*
+	 * Resolve outside the graph lock (build_relation_chain unlocks first).
+	 * Same trade-off as locate_device: a concurrent remove_device may leave a
+	 * briefly stale tracked pose; locate results are mostly transient.
+	 */
 	special_resolve(&xrc, out_relation);
 
 	return XRT_SUCCESS;
@@ -674,6 +777,15 @@ locate_spaces(struct xrt_space_overseer *xso,
 
 	struct u_space *ubase_space = u_space(base_space);
 
+	/*
+	 * Hold the read lock for the whole loop so space graph reads (and the
+	 * duplicate-space copy optimisation) stay consistent with respect to
+	 * writers such as remove_device / zombify. Resolving under the lock is
+	 * deliberate: deferring it would require buffering a relation chain per
+	 * space, and get_tracked_pose already dominates the critical section.
+	 */
+	pthread_rwlock_rdlock(&uso->lock);
+
 	for (uint32_t i = 0; i < space_count; i++) {
 		// spaces are allowed to be NULL
 		if (spaces[i] == NULL) {
@@ -691,14 +803,21 @@ locate_spaces(struct xrt_space_overseer *xso,
 		}
 
 		struct u_space *uspace = u_space(spaces[i]);
+
 		struct xrt_relation_chain xrc = {0};
 
 		m_relation_chain_push_pose_if_not_identity(&xrc, &offsets[i]);
 
-		// crude optimization: If locating a space in itself, we don't actually need to locate the space itself.
-		// only the offsets need to be applied.
+		/*
+		 * Crude optimization: If locating a space in itself, we don't actually
+		 * need to locate the space itself. Only the offsets need to be applied.
+		 *
+		 * This lets zombie spaces still be locatable with themselves after they
+		 * have been zombiefied, this might right or wrong, unsure but the
+		 * decision was made to do it this way.
+		 */
 		if (spaces[i] != base_space) {
-			build_relation_chain(uso, &xrc, ubase_space, uspace, at_timestamp_ns);
+			build_relation_chain_read_locked(uso, &xrc, ubase_space, uspace, at_timestamp_ns);
 		}
 
 		m_relation_chain_push_inverted_pose_if_not_identity(&xrc, base_offset);
@@ -706,6 +825,8 @@ locate_spaces(struct xrt_space_overseer *xso,
 		// For base_space =~= space (approx equals).
 		special_resolve(&xrc, &out_relations[i]);
 	}
+
+	pthread_rwlock_unlock(&uso->lock);
 
 	return XRT_SUCCESS;
 }
@@ -727,10 +848,23 @@ locate_device(struct xrt_space_overseer *xso,
 	// Only need the read lock.
 	pthread_rwlock_rdlock(&uso->lock);
 
-	struct u_space *uspace = find_xdev_space_read_locked(uso, xdev);
+	struct b_tracked_device *btd = find_xdev_tracked_device_read_locked(uso, xdev);
+	if (btd == NULL) {
+		pthread_rwlock_unlock(&uso->lock);
+		*out_relation = (struct xrt_space_relation)XRT_SPACE_RELATION_ZERO;
+		return XRT_SUCCESS;
+	}
+
+	struct u_space *uspace = u_space(b_tracked_device_get_space(btd));
 	build_relation_chain_read_locked(uso, &xrc, ubase_space, uspace, at_timestamp_ns);
 
-	// Safe to unlock now.
+	/*
+	 * Safe to unlock before resolve. A concurrent remove_device can zombify
+	 * between unlock and special_resolve, so we may still report a tracked
+	 * pose for a just-removed device. That is fine: locate results are
+	 * mostly transient frame data, and the device is gone from the map for
+	 * subsequent calls.
+	 */
 	pthread_rwlock_unlock(&uso->lock);
 
 	// Do as much work outside of the lock.
@@ -1114,6 +1248,34 @@ add_device(struct xrt_space_overseer *xso, struct xrt_device *xdev)
 }
 
 static xrt_result_t
+remove_device(struct xrt_space_overseer *xso, struct xrt_device *xdev)
+{
+	struct b_space_overseer *uso = b_space_overseer(xso);
+
+	pthread_rwlock_wrlock(&uso->lock);
+
+	struct b_tracked_device *btd = find_xdev_tracked_device_read_locked(uso, xdev);
+	if (btd != NULL) {
+		b_tracked_device_for_each_pose_space(btd, zombiefy_pose_space_cb, NULL);
+		b_tracked_device_clear_pose_spaces(btd);
+
+		uint64_t key = xdev->id.val;
+		u_hashmap_int_erase(uso->xdev_map, key);
+	}
+
+	pthread_rwlock_unlock(&uso->lock);
+
+	/*
+	 * Drop the reference the device held on its tracked device outside of the
+	 * lock. The per-tracking-origin space in xto_map is shared between devices
+	 * so it is intentionally left in place.
+	 */
+	b_tracked_device_reference(&btd, NULL);
+
+	return XRT_SUCCESS;
+}
+
+static xrt_result_t
 attach_device(struct xrt_space_overseer *xso, struct xrt_device *xdev, struct xrt_space *space)
 {
 	struct b_space_overseer *uso = b_space_overseer(xso);
@@ -1171,8 +1333,8 @@ destroy(struct xrt_space_overseer *xso)
 	xrt_space_reference(&uso->base.semantic.view, NULL);
 	xrt_space_reference(&uso->base.semantic.root, NULL);
 
-	// Each device has a reference to its space, make sure to unreference before creating.
-	u_hashmap_int_clear_and_call_for_each(uso->xdev_map, hashmap_unreference_space_items, uso);
+	// Each device has a reference to its tracked device, make sure to unreference before destroying.
+	u_hashmap_int_clear_and_call_for_each(uso->xdev_map, hashmap_unreference_tracked_device_items, uso);
 	u_hashmap_int_destroy(&uso->xdev_map);
 
 	u_hashmap_int_clear_and_call_for_each(uso->xto_map, hashmap_unreference_space_items, uso);
@@ -1216,6 +1378,7 @@ b_space_overseer_create(struct xrt_session_event_sink *broadcast)
 	uso->base.get_reference_space_offset = get_reference_space_offset;
 	uso->base.set_reference_space_offset = set_reference_space_offset;
 	uso->base.add_device = add_device;
+	uso->base.remove_device = remove_device;
 	uso->base.attach_device = attach_device;
 	uso->base.destroy = destroy;
 	uso->broadcast = broadcast;
@@ -1322,19 +1485,23 @@ b_space_overseer_link_space_to_device(struct b_space_overseer *uso, struct xrt_s
 	uint64_t key = xdev->id.val;
 	u_hashmap_int_find(uso->xdev_map, key, &ptr);
 	if (ptr != NULL) {
+		/*
+		 * Re-linking the same device must not happen in production.
+		 * Pose spaces stay on the old b_tracked_device pose list; dropping
+		 * that object here skips zombify on remove_device and can leave
+		 * destroy asserting on a non-empty pose list.
+		 */
 		U_LOG_W("Device '%s' (name=%s, id=%" PRIu64 ") already has a space attached!", xdev->str,
 		        u_str_xrt_device_name(xdev->name), xdev->id.val);
 	}
 
-	// Each xdev needs to add a reference to the space.
-	struct xrt_space *new_space = NULL;
-	xrt_space_reference(&new_space, xs);
+	struct b_tracked_device *new_btd = b_tracked_device_create(xs);
 
-	u_hashmap_int_insert(uso->xdev_map, key, new_space);
+	u_hashmap_int_insert(uso->xdev_map, key, new_btd);
 
 	pthread_rwlock_unlock(&uso->lock);
 
-	// Dereferrence old space outside of lock.
-	struct xrt_space *old_space = (struct xrt_space *)ptr;
-	xrt_space_reference(&old_space, NULL);
+	// Dereference old tracked device outside of lock.
+	struct b_tracked_device *old_btd = (struct b_tracked_device *)ptr;
+	b_tracked_device_reference(&old_btd, NULL);
 }

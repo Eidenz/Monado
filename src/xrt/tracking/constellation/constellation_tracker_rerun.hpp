@@ -43,7 +43,7 @@ public: // Methods
 	 * @param camera_sample The camera sample to log.
 	 */
 	void
-	LogSample(const ConstellationTracker &tracker, const CameraSample &camera_sample);
+	logSample(const ConstellationTracker &tracker, const CameraSample &camera_sample);
 
 	/*!
 	 * Logs a camera's image frame to rerun.
@@ -53,29 +53,29 @@ public: // Methods
 	 * @param frame        The camera's image frame.
 	 */
 	void
-	LogImageFrame(const ConstellationTracker &tracker,
+	logImageFrame(const ConstellationTracker &tracker,
 	              uint32_t mosaic_index,
 	              uint32_t camera_index,
 	              const xrt_frame &frame);
 
 private: // Methods
 	void
-	LogStaticScene(const CameraSample &camera_sample, const t_camera_calibration &calibration);
+	logStaticScene(const CameraSample &camera_sample, const t_camera_calibration &calibration);
 
 	void
-	LogLedModel(const std::string &entity_name,
+	logLedModel(const std::string &entity_name,
 	            t_constellation_device_id_t device_id,
 	            const t_constellation_tracker_led_model &led_model,
 	            bool prior);
 
 	void
-	LogBlobSet(const CameraSample &camera_sample);
+	logBlobSet(const CameraSample &camera_sample);
 
 	void
-	LogFrameCameraMetrics(const CameraSample &camera_sample);
+	logFrameCameraMetrics(const CameraSample &camera_sample);
 
 	void
-	LogFrameDeviceMetrics(const CameraSample &camera_sample, const DeviceState &device_state);
+	logFrameDeviceMetrics(const CameraSample &camera_sample, const DeviceState &device_state);
 };
 
 }; // namespace xrt::tracking::constellation

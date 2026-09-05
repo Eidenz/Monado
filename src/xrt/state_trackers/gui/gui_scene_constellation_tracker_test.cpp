@@ -152,12 +152,13 @@ public: // Methods
 			    // @todo support tracking sources in dataset files by interpolating the tracking source pose
 			    //       in the samples.
 			    .tracking_source = nullptr,
+			    .imu_sink = nullptr,
 			};
 
-			this->tracker->AddDevice(&device_params, &stub_device);
+			this->tracker->addDevice(&device_params, &stub_device);
 		}
 
-		tracker->SetupVariableTracking();
+		tracker->setupVariableTracking();
 	};
 };
 
@@ -187,10 +188,10 @@ constellation_tracker_test_play_sample_cb(void *ptr)
 			sample.device_states[i].needs_slow_processing = true;
 		}
 
-		scene->tracker->mosaics[sample.mosaic_index]->cameras[sample.camera_index]->SlowSampleProcess(sample);
+		scene->tracker->mosaics[sample.mosaic_index]->cameras[sample.camera_index]->processSampleSlow(sample);
 	} else {
 		sample.device_count = 0; // always filled in by fast process
-		scene->tracker->mosaics[sample.mosaic_index]->cameras[sample.camera_index]->FastSampleProcess(sample);
+		scene->tracker->mosaics[sample.mosaic_index]->cameras[sample.camera_index]->processSampleFast(sample);
 	}
 }
 

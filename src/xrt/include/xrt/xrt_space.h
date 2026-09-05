@@ -331,6 +331,26 @@ struct xrt_space_overseer
 	xrt_result_t (*add_device)(struct xrt_space_overseer *xso, struct xrt_device *xdev);
 
 	/*!
+	 * Remove a device that was previously added with
+	 * @ref xrt_space_overseer::add_device. After this call the device can no
+	 * longer be located through this space overseer and any pose spaces that
+	 * were created for it become invalid.
+	 *
+	 * Removing a device that was never added (or has already been removed)
+	 * is a safe no-op.
+	 *
+	 * Like @ref xrt_space_overseer::add_device this is not intended to be
+	 * called by the OpenXR state tracker, but by other monado components
+	 * that add devices but do not own the space overseer, for instance to
+	 * support hotplugging.
+	 *
+	 * @param[in] xso The space overseer.
+	 * @param[in] xdev The device to stop tracking.
+	 * @return XRT_SUCCESS if removed or not present, otherwise an error code.
+	 */
+	xrt_result_t (*remove_device)(struct xrt_space_overseer *xso, struct xrt_device *xdev);
+
+	/*!
 	 * Attach a device to a different space then it was associated with
 	 * originally, the space overseer might not support this operation.
 	 *
@@ -580,6 +600,19 @@ XRT_NONNULL_ALL static inline xrt_result_t
 xrt_space_overseer_add_device(struct xrt_space_overseer *xso, struct xrt_device *xdev)
 {
 	return xso->add_device(xso, xdev);
+}
+
+/*!
+ * @copydoc xrt_space_overseer::remove_device
+ *
+ * Helper for calling through the function pointer.
+ *
+ * @public @memberof xrt_space_overseer
+ */
+XRT_NONNULL_ALL static inline xrt_result_t
+xrt_space_overseer_remove_device(struct xrt_space_overseer *xso, struct xrt_device *xdev)
+{
+	return xso->remove_device(xso, xdev);
 }
 
 /*!

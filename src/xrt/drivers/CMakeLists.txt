@@ -35,10 +35,12 @@ if(XRT_BUILD_DRIVER_CONTACTGLOVE)
 	add_library(
 		drv_contactglove STATIC
 		contactglove/contactglove.c
-		contactglove/contactglove.h
+		contactglove/contactglove_calibration.c
+		contactglove/contactglove_calibration.h
 		contactglove/contactglove_interface.h
-		contactglove/contactglove_protocol.h
+		contactglove/contactglove_internal.h
 		contactglove/contactglove_prober.c
+		contactglove/contactglove_protocol.h
 		)
 	target_link_libraries(drv_contactglove PRIVATE xrt-interfaces aux_util aux_os)
 	list(APPEND ENABLED_DRIVERS contactglove)
@@ -484,6 +486,8 @@ if(XRT_BUILD_DRIVER_HANDTRACKING)
 endif()
 
 if(XRT_BUILD_DRIVER_SURVIVE)
+	include(CMakePushCheckState)
+	include(CheckSymbolExists)
 	add_library(
 		drv_survive STATIC
 		survive/survive_driver.c
@@ -504,6 +508,17 @@ if(XRT_BUILD_DRIVER_SURVIVE)
 			drv_vp2
 			PkgConfig::SURVIVE
 		)
+
+	cmake_push_check_state(RESET)
+	set(CMAKE_REQUIRED_LIBRARIES PkgConfig::SURVIVE)
+	check_symbol_exists(
+		"survive_simple_object_charge_percet" "survive_api.h" HAVE_MISSPELLED_CHARGE_FN
+		)
+	cmake_pop_check_state()
+	if(HAVE_MISSPELLED_CHARGE_FN)
+		target_compile_definitions(drv_survive PUBLIC XR_SURVIVE_MISSPELLED_CHARGE_FN)
+	endif()
+
 	list(APPEND ENABLED_HEADSET_DRIVERS survive)
 endif()
 

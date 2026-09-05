@@ -1,4 +1,5 @@
 // Copyright 2026, Beyley Cardellio
+// Copyright 2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -93,7 +94,7 @@ public: // Fields
 public: // Methods
 	//! Ensures that there is a swapchain in the cache with the given properties, creating one if necessary.
 	xrt_result_t
-	EnsureSwapchain(xrt_compositor *xc,
+	ensureSwapchain(xrt_compositor *xc,
 	                uint32_t storage_format,
 	                uint32_t sample_format,
 	                uint32_t width,
@@ -103,7 +104,7 @@ public: // Methods
 
 	//! Resets the internal state of the cache, releasing any swapchain it holds.
 	void
-	Reset();
+	reset();
 
 	~SwapchainCache();
 };
@@ -139,7 +140,7 @@ private: // Fields
 
 #ifdef XRT_HAVE_VULKAN
 	//! The active Vulkan compositor.
-	struct xrt_compositor_vk *xc_vk{nullptr};
+	struct xrt_compositor *xc_vk{nullptr};
 
 	//! The vk_bundle for the compositor.
 	vk_bundle *vk{nullptr};
@@ -155,8 +156,11 @@ private: // Fields
 		//! The sampler to use during the blit operation
 		VkSampler sampler{VK_NULL_HANDLE};
 
-		//! Private here for now.
-		VkPipelineCache pipeline_cache{VK_NULL_HANDLE};
+		//! Vulkan pipeline cache object passed to vkCreateComputePipelines.
+		VkPipelineCache driver_pipeline_cache{VK_NULL_HANDLE};
+
+		//! Get-or-create cache for blit_ms.comp specialization variants.
+		struct render_blit_ms_pipeline_cache *pipeline_cache{nullptr};
 
 		//! Pipeline layout for blit pipelines.
 		VkPipelineLayout pipeline_layout{VK_NULL_HANDLE};
@@ -191,17 +195,17 @@ public: // Fields
 private: // Methods
 #ifdef XRT_HAVE_VULKAN
 	xrt_result_t
-	SetupBlitPipelines(openvr_logger &logger);
+	setupBlitPipelines(openvr_logger &logger);
 
 	//! Sets up the Vulkan compositor as the active compositor, and begins the session.
 	xrt_result_t
-	SetupVulkanCompositor(openvr_logger &logger, vr::VRVulkanTextureData_t &vulkan_data);
+	setupVulkanCompositor(openvr_logger &logger, vr::VRVulkanTextureData_t &vulkan_data);
 
 	void
-	DestroyVulkanResources();
+	destroyVulkanResources();
 
 	xrt_result_t
-	TransferAppImageToSwapchainImage(openvr_logger &logger,
+	transferAppImageToSwapchainImage(openvr_logger &logger,
 	                                 xrt_swapchain *xsc,
 	                                 uint32_t dst_index,
 	                                 vr::VRVulkanTextureData_t &texture_data,
@@ -211,23 +215,23 @@ private: // Methods
 
 	//! Handles submission of a Vulkan texture, which involves copying it into a runtime-owned swapchain image.
 	vr::EVRCompositorError
-	SubmitVulkan(openvr_logger &logger,
+	submitVulkan(openvr_logger &logger,
 	             vr::EVREye eye,
 	             vr::VRVulkanTextureData_t &texture_data,
 	             vr::EColorSpace color_space,
 	             const vr::VRTextureBounds_t &bounds);
 
 	void
-	GetVulkanOutputDevice(openvr_logger &logger, uint64_t *out_device, VkInstance pInstance);
+	getVulkanOutputDevice(openvr_logger &logger, uint64_t *out_device, VkInstance pInstance);
 #endif
 
 	//! Gets the projection layer data from the passed eye state
 	xrt_layer_projection_view_data
-	GetProjectionLayerDataForEye(vr::EVREye eye, const EyeState &eye_state);
+	getProjectionLayerDataForEye(vr::EVREye eye, const EyeState &eye_state);
 
 	//! Completes a frame and submits textures to the runtime.
 	vr::EVRCompositorError
-	CompleteFrame(openvr_logger &logger);
+	completeFrame(openvr_logger &logger);
 
 public: // Methods
 	Compositor(xrt_system_devices *xsysd,
@@ -242,30 +246,30 @@ public: // Methods
 	 * if it exists.
 	 */
 	vr::EVRCompositorError
-	WaitBeginFrame(openvr_logger &logger);
+	waitBeginFrame(openvr_logger &logger);
 
 	//! Submits a texture for an eye, completing the frame if both eyes have been submit.
 	vr::EVRCompositorError
-	Submit(openvr_logger &logger,
+	submit(openvr_logger &logger,
 	       vr::EVREye eye,
 	       const vr::Texture_t &texture,
 	       const vr::VRTextureBounds_t &bounds,
 	       vr::EVRSubmitFlags nSubmitFlags);
 
 	void
-	GetOutputDevice(openvr_logger &logger,
+	getOutputDevice(openvr_logger &logger,
 	                uint64_t *out_device,
 	                vr::ETextureType texture_type,
 	                VkInstance pInstance);
 
 	timepoint_ns
-	GetTimeForPredictions();
+	getTimeForPredictions();
 
 	time_duration_ns
-	GetFramePeriod();
+	getFramePeriod();
 
 	xrt_result_t
-	GetFrameRenderState(std::array<xrt_fov, 2> &fovs,
+	getFrameRenderState(std::array<xrt_fov, 2> &fovs,
 	                    std::array<xrt_pose, 2> &T_head_eyes,
 	                    xrt_pose &head_relation);
 };

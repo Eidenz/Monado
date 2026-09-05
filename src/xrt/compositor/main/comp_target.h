@@ -146,6 +146,9 @@ struct comp_target
 	//! The final layout that the renderpass should leave this target in.
 	VkImageLayout final_layout;
 
+	//! Load ops required for present
+	VkAttachmentLoadOp present_load_op;
+
 	//! Number of images that this target has.
 	uint32_t image_count;
 	//! Array of images and image views for rendering.
@@ -184,6 +187,13 @@ struct comp_target
 	 * Call before calling @ref create_images
 	 */
 	bool (*check_ready)(struct comp_target *ct);
+
+	/*!
+	 * Is this target shared presentable image?
+	 *
+	 * Call before after @ref create_images
+	 */
+	bool (*is_shared_presentable_image)(struct comp_target *ct);
 
 	/*!
 	 * Create or recreate the image(s) of the target, for swapchain based
@@ -399,6 +409,20 @@ comp_target_check_ready(struct comp_target *ct)
 	COMP_TRACE_MARKER();
 
 	return ct->check_ready(ct);
+}
+
+/*!
+ * @copydoc comp_target::is_shared_presentable_image
+ *
+ * @public @memberof comp_target
+ * @ingroup comp_main
+ */
+static inline bool
+comp_target_is_shared_presentable_image(struct comp_target *ct)
+{
+	COMP_TRACE_MARKER();
+
+	return ct->is_shared_presentable_image(ct);
 }
 
 /*!

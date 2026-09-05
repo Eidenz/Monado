@@ -199,13 +199,15 @@ void
 chl_frame_state_cs_set_target(struct chl_frame_state *frame_state,
                               VkImage target_image,
                               VkImageView target_storage_view,
+                              VkImageLayout target_final_layout,
                               const struct render_viewport_data views[XRT_MAX_VIEWS])
 {
 	// Add the target info.
 	comp_render_cs_add_target( //
 	    &frame_state->data,    // data
 	    target_image,          // target_image
-	    target_storage_view);  // target_unorm_view
+	    target_storage_view,   // target_unorm_view
+	    target_final_layout);  // target_final_layout
 
 	for (uint32_t i = 0; i < frame_state->view_count; i++) {
 		// Which image of the scratch images for this view are we using.

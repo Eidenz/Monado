@@ -195,6 +195,8 @@ def get_device_cmds():
         None,
         Cmd("vkWaitForPresentKHR", requires=("VK_KHR_present_wait",)),
         None,
+        Cmd("vkWaitForPresent2KHR", requires=("VK_KHR_present_wait2",)),
+        None,
         Cmd("vkGetSwapchainStatusKHR", requires=("VK_KHR_shared_presentable_image",)),
     ]
 
@@ -321,8 +323,10 @@ DEVICE_EXTENSIONS_TO_CHECK = [
     "VK_KHR_maintenance2",
     "VK_KHR_maintenance3",
     "VK_KHR_maintenance4",
+    "VK_KHR_present_id",
     "VK_KHR_present_id2",
     "VK_KHR_present_wait",
+    "VK_KHR_present_wait2",
     "VK_KHR_portability_subset",
     "VK_KHR_shared_presentable_image",
     "VK_KHR_synchronization2",

@@ -101,7 +101,7 @@ check-signoff:
     - .fdo.ci-fairy
   stage: verify
   script:
-    - ci-fairy check-commits --signed-off-by --junit-xml=results.xml
+    - ci-fairy check-commits --signed-off-by --textwidth 0 --junit-xml=results.xml
   variables:
     GIT_DEPTH: 100
   rules:

@@ -126,6 +126,7 @@ public:
 	Context(const std::string &steam_install, const std::string &steamvr_install, u_logging_level level);
 
 	// These are owned by monado, context is destroyed when these are destroyed
+	std::mutex devices_mut;
 	class HmdDevice *hmd{nullptr};
 	class ControllerDevice *controller[16]{nullptr};
 	struct xrt_system_devices *xsysd{nullptr};
@@ -133,9 +134,20 @@ public:
 	//! to xsysd (the builder uses it to add them to the space overseer).
 	void (*device_added_cb)(struct xrt_device *xdev, void *userdata){nullptr};
 	void *device_added_ud{nullptr};
+	//! True until steamvr_lh_create_devices has assembled xsysd. Devices that
+	//! show up during setup extend the discovery wait; later ones are hotplugs.
+	bool in_setup{true};
 	const u_logging_level log_level;
 
+	void
+	wait_for_discover();
+
+	void
+	extend_discover();
+
 private:
+	std::condition_variable discover_cv;
+	std::chrono::steady_clock::time_point discover_end_time;
 	std::atomic<bool> frame_thread_run;
 	std::binary_semaphore frame_thread_event{0};
 	std::thread frame_thread;

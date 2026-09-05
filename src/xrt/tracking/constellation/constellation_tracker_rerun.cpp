@@ -197,7 +197,7 @@ namespace xrt::tracking::constellation {
  */
 
 void
-RerunContext::LogStaticScene(const CameraSample &camera_sample, const t_camera_calibration &calibration)
+RerunContext::logStaticScene(const CameraSample &camera_sample, const t_camera_calibration &calibration)
 {
 	std::string camera_entity = GetWorldCameraEntityName(camera_sample.mosaic_index, camera_sample.camera_index);
 	std::string camera_image_entity =
@@ -210,7 +210,7 @@ RerunContext::LogStaticScene(const CameraSample &camera_sample, const t_camera_c
 }
 
 void
-RerunContext::LogLedModel(const std::string &entity_name,
+RerunContext::logLedModel(const std::string &entity_name,
                           t_constellation_device_id_t device_id,
                           const t_constellation_tracker_led_model &led_model,
                           bool prior)
@@ -243,7 +243,7 @@ RerunContext::LogLedModel(const std::string &entity_name,
 }
 
 void
-RerunContext::LogBlobSet(const CameraSample &camera_sample)
+RerunContext::logBlobSet(const CameraSample &camera_sample)
 {
 	std::string camera_image_blobs_entity =
 	    GetCameraImageBlobsEntityName(camera_sample.mosaic_index, camera_sample.camera_index);
@@ -284,7 +284,7 @@ RerunContext::LogBlobSet(const CameraSample &camera_sample)
 }
 
 void
-RerunContext::LogFrameCameraMetrics(const CameraSample &camera_sample)
+RerunContext::logFrameCameraMetrics(const CameraSample &camera_sample)
 {
 	float brightness = 0.0f;
 	for (uint32_t i = 0; i < camera_sample.blob_count; i++) {
@@ -304,7 +304,7 @@ RerunContext::LogFrameCameraMetrics(const CameraSample &camera_sample)
 }
 
 void
-RerunContext::LogFrameDeviceMetrics(const CameraSample &camera_sample, const DeviceState &device_state)
+RerunContext::logFrameDeviceMetrics(const CameraSample &camera_sample, const DeviceState &device_state)
 {
 	if (!device_state.found_pose.has_value()) {
 		return;
@@ -333,7 +333,7 @@ RerunContext::LogFrameDeviceMetrics(const CameraSample &camera_sample, const Dev
  */
 
 void
-RerunContext::LogSample(const ConstellationTracker &tracker, const CameraSample &camera_sample)
+RerunContext::logSample(const ConstellationTracker &tracker, const CameraSample &camera_sample)
 {
 	std::string timeline_name = GetTimelineName(camera_sample);
 	std::string camera_entity = GetWorldCameraEntityName(camera_sample.mosaic_index, camera_sample.camera_index);
@@ -341,7 +341,7 @@ RerunContext::LogSample(const ConstellationTracker &tracker, const CameraSample 
 	std::optional<xrt_pose> Tcv_world_cam = std::nullopt;
 	if (camera_sample.Txr_world_cam.has_value()) {
 		xrt_pose Tcv_world_cam_value;
-		math_pose_convert_opencv(&camera_sample.Txr_world_cam.value(), &Tcv_world_cam_value);
+		math_pose_convert_from_opencv(&camera_sample.Txr_world_cam.value(), &Tcv_world_cam_value);
 		Tcv_world_cam = Tcv_world_cam_value;
 
 		this->stream->log(camera_entity, ToRerunTransform(Tcv_world_cam_value));
@@ -350,7 +350,7 @@ RerunContext::LogSample(const ConstellationTracker &tracker, const CameraSample 
 	const auto &calibration =
 	    tracker.mosaics[camera_sample.mosaic_index]->cameras[camera_sample.camera_index]->calibration;
 
-	this->LogStaticScene(camera_sample, calibration);
+	this->logStaticScene(camera_sample, calibration);
 	this->stream->set_time_timestamp_nanos_since_epoch(timeline_name, camera_sample.timestamp_ns);
 
 	for (uint32_t i = 0; i < camera_sample.device_count; i++) {
@@ -376,7 +376,7 @@ RerunContext::LogSample(const ConstellationTracker &tracker, const CameraSample 
 
 			const xrt_pose &Tcv_cam_device = found_pose.Tcv_cam_device;
 			this->stream->log(camera_device_pose_entity, ToRerunTransform(Tcv_cam_device));
-			this->LogLedModel(camera_device_pose_entity, device_id, device->params.led_model, false);
+			this->logLedModel(camera_device_pose_entity, device_id, device->params.led_model, false);
 		}
 
 		// Prior pose in this frame
@@ -393,21 +393,21 @@ RerunContext::LogSample(const ConstellationTracker &tracker, const CameraSample 
 			                    &Txr_cam_device_prior);                       //
 
 			xrt_pose Tcv_cam_device_prior;
-			math_pose_convert_opencv(&Txr_cam_device_prior, &Tcv_cam_device_prior);
+			math_pose_convert_from_opencv(&Txr_cam_device_prior, &Tcv_cam_device_prior);
 
 			this->stream->log(camera_device_prior_entity, ToRerunTransform(Tcv_cam_device_prior));
-			this->LogLedModel(camera_device_prior_entity, device_id, device->params.led_model, true);
+			this->logLedModel(camera_device_prior_entity, device_id, device->params.led_model, true);
 		}
 
-		this->LogFrameDeviceMetrics(camera_sample, device_state);
+		this->logFrameDeviceMetrics(camera_sample, device_state);
 	}
 
-	this->LogFrameCameraMetrics(camera_sample);
-	this->LogBlobSet(camera_sample);
+	this->logFrameCameraMetrics(camera_sample);
+	this->logBlobSet(camera_sample);
 }
 
 void
-RerunContext::LogImageFrame(const ConstellationTracker &tracker,
+RerunContext::logImageFrame(const ConstellationTracker &tracker,
                             uint32_t mosaic_index,
                             uint32_t camera_index,
                             const xrt_frame &frame)
@@ -430,6 +430,6 @@ constellation_tracker_rerun_blobwatch_push_frame(struct t_constellation_tracker 
 	ConstellationTracker *ct = ConstellationTracker::Get(tracker);
 
 	if (ct->rerun_stream) {
-		ct->rerun_stream->LogImageFrame(*ct, mosaic_index, camera_index, *frame);
+		ct->rerun_stream->logImageFrame(*ct, mosaic_index, camera_index, *frame);
 	}
 }

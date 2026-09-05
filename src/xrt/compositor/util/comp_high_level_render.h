@@ -194,6 +194,7 @@ void
 chl_frame_state_cs_set_target(struct chl_frame_state *frame_state,
                               VkImage target_image,
                               VkImageView target_storage_view,
+                              VkImageLayout target_final_layout,
                               const struct render_viewport_data views[XRT_MAX_VIEWS]);
 
 /*!
@@ -212,6 +213,7 @@ chl_frame_state_cs_default_pipeline(struct chl_frame_state *frame_state,
                                     const struct xrt_fov fovs[XRT_MAX_VIEWS],
                                     VkImage target_image,
                                     VkImageView target_storage_view,
+                                    VkImageLayout target_final_layout,
                                     const struct render_viewport_data target_viewport_datas[XRT_MAX_VIEWS])
 {
 	chl_frame_state_cs_set_views(  //
@@ -226,6 +228,7 @@ chl_frame_state_cs_default_pipeline(struct chl_frame_state *frame_state,
 	    frame_state,               //
 	    target_image,              //
 	    target_storage_view,       //
+	    target_final_layout,       //
 	    target_viewport_datas);    //
 
 	// Start the compute pipeline.

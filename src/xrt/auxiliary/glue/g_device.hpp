@@ -72,9 +72,6 @@ struct DeviceFunctions
 	 */
 	bool plane_detection{false};
 
-	//! @ref xrt_device::get_presence
-	bool presence{false};
-
 	//! @ref xrt_device::ref_space_usage
 	bool reference_space{false};
 
@@ -95,6 +92,11 @@ struct DeviceFunctions
 	 * @ref xrt_device::end_feature
 	 */
 	bool features{false};
+
+	/*!
+	 * @ref xrt_device::notify_chirality
+	 */
+	bool notify_chirality{false};
 };
 
 /*!
@@ -180,10 +182,6 @@ public: // Members
 			xdev.get_plane_detections_ext = getPlaneDetectionsExtWrap;
 		}
 
-		if constexpr (functions.presence) {
-			xdev.get_presence = getPresenceWrap;
-		}
-
 		if constexpr (functions.reference_space) {
 			xdev.ref_space_usage = refSpaceUsageWrap;
 		}
@@ -204,6 +202,10 @@ public: // Members
 		if constexpr (functions.features) {
 			xdev.begin_feature = beginFeatureWrap;
 			xdev.end_feature = endFeatureWrap;
+		}
+
+		if constexpr (functions.notify_chirality) {
+			xdev.notify_chirality = notifyChiralityWrap;
 		}
 	}
 
@@ -359,13 +361,6 @@ private: // Functions
 	G_CATCH_GUARDS
 
 	static xrt_result_t
-	getPresenceWrap(struct xrt_device *xdev, bool *presence) noexcept
-	try {
-		return GET(xdev).getPresence(presence);
-	}
-	G_CATCH_GUARDS
-
-	static xrt_result_t
 	beginPlaneDetectionExtWrap(struct xrt_device *xdev,
 	                           const struct xrt_plane_detector_begin_info_ext *begin_info,
 	                           uint64_t plane_detection_id,
@@ -493,6 +488,13 @@ private: // Functions
 	endFeatureWrap(struct xrt_device *xdev, enum xrt_device_feature_type type) noexcept
 	try {
 		return GET(xdev).endFeature(type);
+	}
+	G_CATCH_GUARDS
+
+	static xrt_result_t
+	notifyChiralityWrap(struct xrt_device *xdev, bool has_chirality, enum xrt_hand chirality) noexcept
+	try {
+		return GET(xdev).notifyChirality(has_chirality, chirality);
 	}
 	G_CATCH_GUARDS
 

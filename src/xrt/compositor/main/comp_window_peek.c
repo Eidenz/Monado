@@ -38,6 +38,7 @@ struct comp_window_peek
 	uint32_t width, height;
 	bool running;
 	bool hidden;
+	bool shared_present_semaphore_wait_once;
 
 	struct vk_cmd_pool pool;
 	VkCommandBuffer cmd;
@@ -396,7 +397,7 @@ comp_window_peek_blit(struct comp_window_peek *w, VkImage src, int32_t width, in
 	    VK_ACCESS_TRANSFER_WRITE_BIT,         // srcAccessMask
 	    0,                                    // dstAccessMask
 	    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // oldImageLayout
-	    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,      // newImageLayout
+	    w->base.base.final_layout,            // newImageLayout
 	    VK_PIPELINE_STAGE_TRANSFER_BIT,       // srcStageMask
 	    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, // dstStageMask
 	    range);                               // subresourceRange
@@ -435,6 +436,16 @@ comp_window_peek_blit(struct comp_window_peek *w, VkImage src, int32_t width, in
 	    .signalSemaphoreCount = 1,
 	    .pSignalSemaphores = &w->base.base.semaphores.render_complete,
 	};
+
+	if (comp_target_is_shared_presentable_image(w->c->target)) {
+		if (w->shared_present_semaphore_wait_once) {
+			submit.pWaitSemaphores = NULL;
+			submit.pWaitDstStageMask = NULL;
+			submit.waitSemaphoreCount = 0;
+		} else {
+			w->shared_present_semaphore_wait_once = true;
+		}
+	}
 
 	// Done writing commands, submit to queue.
 	ret = vk_cmd_submit_locked(vk, vk->main_queue, 1, &submit, VK_NULL_HANDLE);

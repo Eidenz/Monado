@@ -60,14 +60,14 @@ DataSerializer::~DataSerializer()
 // uint8_t
 
 void
-DataSerializer::Write(uint8_t value)
+DataSerializer::write(uint8_t value)
 {
 	this->file.write(reinterpret_cast<const char *>(&value), sizeof(value));
 	throw_if_stream_failed(this->file, "Failed to write dataset file.");
 }
 
 void
-DataSerializer::Read(uint8_t &value)
+DataSerializer::read(uint8_t &value)
 {
 	this->file.read(reinterpret_cast<char *>(&value), sizeof(value));
 	throw_if_stream_failed(this->file, "Failed to read dataset file.");
@@ -76,7 +76,7 @@ DataSerializer::Read(uint8_t &value)
 // uint32_t
 
 void
-DataSerializer::Write(uint32_t value)
+DataSerializer::write(uint32_t value)
 {
 	__le32 le_value = __cpu_to_le32(value);
 	this->file.write(reinterpret_cast<const char *>(&le_value), sizeof(le_value));
@@ -84,7 +84,7 @@ DataSerializer::Write(uint32_t value)
 }
 
 void
-DataSerializer::Read(uint32_t &value)
+DataSerializer::read(uint32_t &value)
 {
 	__le32 le_value;
 	this->file.read(reinterpret_cast<char *>(&le_value), sizeof(le_value));
@@ -95,7 +95,7 @@ DataSerializer::Read(uint32_t &value)
 // float
 
 void
-DataSerializer::Write(float value)
+DataSerializer::write(float value)
 {
 	__lef32 le_value = __cpu_to_lef32(value);
 	this->file.write(reinterpret_cast<const char *>(&le_value), sizeof(le_value));
@@ -103,7 +103,7 @@ DataSerializer::Write(float value)
 }
 
 void
-DataSerializer::Read(float &value)
+DataSerializer::read(float &value)
 {
 	__lef32 le_value;
 	this->file.read(reinterpret_cast<char *>(&le_value), sizeof(le_value));
@@ -114,7 +114,7 @@ DataSerializer::Read(float &value)
 // uint64_t
 
 void
-DataSerializer::Write(uint64_t value)
+DataSerializer::write(uint64_t value)
 {
 	__le64 le_value = __cpu_to_le64(value);
 	this->file.write(reinterpret_cast<const char *>(&le_value), sizeof(le_value));
@@ -122,7 +122,7 @@ DataSerializer::Write(uint64_t value)
 }
 
 void
-DataSerializer::Read(uint64_t &value)
+DataSerializer::read(uint64_t &value)
 {
 	__le64 le_value;
 	this->file.read(reinterpret_cast<char *>(&le_value), sizeof(le_value));
@@ -133,7 +133,7 @@ DataSerializer::Read(uint64_t &value)
 // double
 
 void
-DataSerializer::Write(double value)
+DataSerializer::write(double value)
 {
 	__lef64 le_value = __cpu_to_lef64(value);
 	this->file.write(reinterpret_cast<const char *>(&le_value), sizeof(le_value));
@@ -141,7 +141,7 @@ DataSerializer::Write(double value)
 }
 
 void
-DataSerializer::Read(double &value)
+DataSerializer::read(double &value)
 {
 	__lef64 le_value;
 	this->file.read(reinterpret_cast<char *>(&le_value), sizeof(le_value));
@@ -152,171 +152,171 @@ DataSerializer::Read(double &value)
 // xrt_pose
 
 void
-DataSerializer::Write(const xrt_pose &value)
+DataSerializer::write(const xrt_pose &value)
 {
-	this->Write(value.position.x);
-	this->Write(value.position.y);
-	this->Write(value.position.z);
-	this->Write(value.orientation.x);
-	this->Write(value.orientation.y);
-	this->Write(value.orientation.z);
-	this->Write(value.orientation.w);
+	this->write(value.position.x);
+	this->write(value.position.y);
+	this->write(value.position.z);
+	this->write(value.orientation.x);
+	this->write(value.orientation.y);
+	this->write(value.orientation.z);
+	this->write(value.orientation.w);
 }
 
 void
-DataSerializer::Read(xrt_pose &value)
+DataSerializer::read(xrt_pose &value)
 {
-	this->Read(value.position.x);
-	this->Read(value.position.y);
-	this->Read(value.position.z);
-	this->Read(value.orientation.x);
-	this->Read(value.orientation.y);
-	this->Read(value.orientation.z);
-	this->Read(value.orientation.w);
+	this->read(value.position.x);
+	this->read(value.position.y);
+	this->read(value.position.z);
+	this->read(value.orientation.x);
+	this->read(value.orientation.y);
+	this->read(value.orientation.z);
+	this->read(value.orientation.w);
 }
 
 // FoundDevicePose
 
 void
-DataSerializer::Write(const FoundDevicePose &value)
+DataSerializer::write(const FoundDevicePose &value)
 {
-	this->Write(value.Tcv_cam_device);
+	this->write(value.Tcv_cam_device);
 }
 
 void
-DataSerializer::Read(FoundDevicePose &value)
+DataSerializer::read(FoundDevicePose &value)
 {
-	this->Read(value.Tcv_cam_device);
+	this->read(value.Tcv_cam_device);
 }
 
 // DeviceState
 
 void
-DataSerializer::Write(const DeviceState &value)
+DataSerializer::write(const DeviceState &value)
 {
-	this->Write(static_cast<uint8_t>(value.device_id));
+	this->write(static_cast<uint8_t>(value.device_id));
 
-	this->Write(value.Txr_world_device_prior);
-	this->Write(value.found_pose);
+	this->write(value.Txr_world_device_prior);
+	this->write(value.found_pose);
 }
 
 void
-DataSerializer::Read(DeviceState &value)
+DataSerializer::read(DeviceState &value)
 {
 	uint8_t device_id;
-	this->Read(device_id);
+	this->read(device_id);
 	value.device_id = static_cast<t_constellation_device_id_t>(device_id);
 
-	this->Read(value.Txr_world_device_prior);
-	this->Read(value.found_pose);
+	this->read(value.Txr_world_device_prior);
+	this->read(value.found_pose);
 }
 
 // t_blob
 
 void
-DataSerializer::Write(const t_blob &value)
+DataSerializer::write(const t_blob &value)
 {
-	this->Write(value.blob_id);
-	this->Write(static_cast<uint8_t>(value.matched_device_id));
-	this->Write(static_cast<uint8_t>(value.matched_device_led_id));
-	this->Write(value.center.x);
-	this->Write(value.center.y);
-	this->Write(value.motion_vector.x);
-	this->Write(value.motion_vector.y);
-	this->Write(static_cast<uint32_t>(value.bounding_box.offset.w));
-	this->Write(static_cast<uint32_t>(value.bounding_box.offset.h));
-	this->Write(static_cast<uint32_t>(value.bounding_box.extent.w));
-	this->Write(static_cast<uint32_t>(value.bounding_box.extent.h));
-	this->Write(value.size.x);
-	this->Write(value.size.y);
-	this->Write(value.brightness);
+	this->write(value.blob_id);
+	this->write(static_cast<uint8_t>(value.matched_device_id));
+	this->write(static_cast<uint8_t>(value.matched_device_led_id));
+	this->write(value.center.x);
+	this->write(value.center.y);
+	this->write(value.motion_vector.x);
+	this->write(value.motion_vector.y);
+	this->write(static_cast<uint32_t>(value.bounding_box.offset.w));
+	this->write(static_cast<uint32_t>(value.bounding_box.offset.h));
+	this->write(static_cast<uint32_t>(value.bounding_box.extent.w));
+	this->write(static_cast<uint32_t>(value.bounding_box.extent.h));
+	this->write(value.size.x);
+	this->write(value.size.y);
+	this->write(value.brightness);
 }
 
 void
-DataSerializer::Read(t_blob &value)
+DataSerializer::read(t_blob &value)
 {
-	this->Read(value.blob_id);
+	this->read(value.blob_id);
 
 	uint8_t matched_device_id;
-	this->Read(matched_device_id);
+	this->read(matched_device_id);
 	value.matched_device_id = static_cast<t_constellation_device_id_t>(matched_device_id);
 
 	uint8_t matched_device_led_id;
-	this->Read(matched_device_led_id);
+	this->read(matched_device_led_id);
 	value.matched_device_led_id = static_cast<t_constellation_device_id_t>(matched_device_led_id);
 
-	this->Read(value.center.x);
-	this->Read(value.center.y);
-	this->Read(value.motion_vector.x);
-	this->Read(value.motion_vector.y);
+	this->read(value.center.x);
+	this->read(value.center.y);
+	this->read(value.motion_vector.x);
+	this->read(value.motion_vector.y);
 
 	uint32_t bounding_box_offset_w;
-	this->Read(bounding_box_offset_w);
+	this->read(bounding_box_offset_w);
 	value.bounding_box.offset.w = static_cast<int>(bounding_box_offset_w);
 
 	uint32_t bounding_box_offset_h;
-	this->Read(bounding_box_offset_h);
+	this->read(bounding_box_offset_h);
 	value.bounding_box.offset.h = static_cast<int>(bounding_box_offset_h);
 
 	uint32_t bounding_box_extent_w;
-	this->Read(bounding_box_extent_w);
+	this->read(bounding_box_extent_w);
 	value.bounding_box.extent.w = static_cast<int>(bounding_box_extent_w);
 
 	uint32_t bounding_box_extent_h;
-	this->Read(bounding_box_extent_h);
+	this->read(bounding_box_extent_h);
 	value.bounding_box.extent.h = static_cast<int>(bounding_box_extent_h);
 
-	this->Read(value.size.x);
-	this->Read(value.size.y);
-	this->Read(value.brightness);
+	this->read(value.size.x);
+	this->read(value.size.y);
+	this->read(value.brightness);
 }
 
 // CameraSample
 
 void
-DataSerializer::Write(const CameraSample &value)
+DataSerializer::write(const CameraSample &value)
 {
-	this->Write(static_cast<uint64_t>(value.id));
-	this->Write(static_cast<uint64_t>(value.timestamp_ns));
+	this->write(static_cast<uint64_t>(value.id));
+	this->write(static_cast<uint64_t>(value.timestamp_ns));
 
-	this->Write(static_cast<uint32_t>(value.blob_count));
+	this->write(static_cast<uint32_t>(value.blob_count));
 	for (size_t i = 0; i < value.blob_count; i++) {
-		this->Write(value.blobs[i]);
+		this->write(value.blobs[i]);
 	}
 
-	this->Write(value.Txr_world_cam);
+	this->write(value.Txr_world_cam);
 
-	this->Write(value.device_count);
+	this->write(value.device_count);
 	for (size_t i = 0; i < value.device_count; i++) {
-		this->Write(value.device_states[i]);
+		this->write(value.device_states[i]);
 	}
 
-	this->Write(value.mosaic_index);
-	this->Write(value.camera_index);
+	this->write(value.mosaic_index);
+	this->write(value.camera_index);
 }
 
 void
-DataSerializer::Read(CameraSample &value)
+DataSerializer::read(CameraSample &value)
 {
-	this->Read(value.id);
+	this->read(value.id);
 
 	uint64_t timestamp_ns;
-	this->Read(timestamp_ns);
+	this->read(timestamp_ns);
 	value.timestamp_ns = timestamp_ns;
 
-	this->Read(value.blob_count);
+	this->read(value.blob_count);
 	if (value.blob_count > ARRAY_SIZE(value.blobs)) {
 		throw std::runtime_error("Dataset sample blob_count exceeds CameraSample storage.");
 	}
 
 	for (size_t i = 0; i < value.blob_count; i++) {
-		this->Read(value.blobs[i]);
+		this->read(value.blobs[i]);
 	}
 
-	this->Read(value.Txr_world_cam);
+	this->read(value.Txr_world_cam);
 
 	uint32_t device_count;
-	this->Read(device_count);
+	this->read(device_count);
 	value.device_count = device_count;
 
 	if (device_count > value.device_states.max_size()) {
@@ -324,20 +324,20 @@ DataSerializer::Read(CameraSample &value)
 	}
 
 	for (size_t i = 0; i < value.device_count; i++) {
-		this->Read(value.device_states[i]);
+		this->read(value.device_states[i]);
 	}
 
-	this->Read(value.mosaic_index);
-	this->Read(value.camera_index);
+	this->read(value.mosaic_index);
+	this->read(value.camera_index);
 }
 
 // t_camera_calibration
 
 void
-DataSerializer::Write(const t_camera_calibration &value)
+DataSerializer::write(const t_camera_calibration &value)
 {
-	this->Write(static_cast<uint32_t>(value.image_size_pixels.w));
-	this->Write(static_cast<uint32_t>(value.image_size_pixels.h));
+	this->write(static_cast<uint32_t>(value.image_size_pixels.w));
+	this->write(static_cast<uint32_t>(value.image_size_pixels.h));
 
 	// @todo remove when clang-format is updated in CI
 	// clang-format off
@@ -345,25 +345,25 @@ DataSerializer::Write(const t_camera_calibration &value)
 	// clang-format on
 
 	for (size_t i = 0; i < 9; i++) {
-		this->Write(intrinsics_as_array[i]);
+		this->write(intrinsics_as_array[i]);
 	}
 
 	for (size_t i = 0; i < ARRAY_SIZE(value.distortion_parameters_as_array); i++) {
-		this->Write(value.distortion_parameters_as_array[i]);
+		this->write(value.distortion_parameters_as_array[i]);
 	}
 
-	this->Write(static_cast<uint8_t>(value.distortion_model));
+	this->write(static_cast<uint8_t>(value.distortion_model));
 }
 
 void
-DataSerializer::Read(t_camera_calibration &value)
+DataSerializer::read(t_camera_calibration &value)
 {
 	uint32_t image_size_w;
-	this->Read(image_size_w);
+	this->read(image_size_w);
 	value.image_size_pixels.w = static_cast<int>(image_size_w);
 
 	uint32_t image_size_h;
-	this->Read(image_size_h);
+	this->read(image_size_h);
 	value.image_size_pixels.h = static_cast<int>(image_size_h);
 
 	// @todo remove when clang-format is updated in CI
@@ -372,86 +372,86 @@ DataSerializer::Read(t_camera_calibration &value)
 	// clang-format on
 
 	for (size_t i = 0; i < 9; i++) {
-		this->Read(intrinsics_as_array[i]);
+		this->read(intrinsics_as_array[i]);
 	}
 
 	for (size_t i = 0; i < ARRAY_SIZE(value.distortion_parameters_as_array); i++) {
-		this->Read(value.distortion_parameters_as_array[i]);
+		this->read(value.distortion_parameters_as_array[i]);
 	}
 
 	uint8_t distortion_model;
-	this->Read(distortion_model);
+	this->read(distortion_model);
 	value.distortion_model = static_cast<t_camera_distortion_model>(distortion_model);
 }
 
 // t_constellation_tracker_led
 
 void
-DataSerializer::Write(t_constellation_tracker_led &value)
+DataSerializer::write(t_constellation_tracker_led &value)
 {
-	this->Write(value.position.x);
-	this->Write(value.position.y);
-	this->Write(value.position.z);
+	this->write(value.position.x);
+	this->write(value.position.y);
+	this->write(value.position.z);
 
-	this->Write(value.normal.x);
-	this->Write(value.normal.y);
-	this->Write(value.normal.z);
+	this->write(value.normal.x);
+	this->write(value.normal.y);
+	this->write(value.normal.z);
 
-	this->Write(value.radius_m);
-	this->Write(value.visibility_angle);
+	this->write(value.radius_m);
+	this->write(value.visibility_angle);
 
-	this->Write(static_cast<uint8_t>(value.id));
+	this->write(static_cast<uint8_t>(value.id));
 }
 
 void
-DataSerializer::Read(t_constellation_tracker_led &value)
+DataSerializer::read(t_constellation_tracker_led &value)
 {
-	this->Read(value.position.x);
-	this->Read(value.position.y);
-	this->Read(value.position.z);
+	this->read(value.position.x);
+	this->read(value.position.y);
+	this->read(value.position.z);
 
-	this->Read(value.normal.x);
-	this->Read(value.normal.y);
-	this->Read(value.normal.z);
+	this->read(value.normal.x);
+	this->read(value.normal.y);
+	this->read(value.normal.z);
 
-	this->Read(value.radius_m);
-	this->Read(value.visibility_angle);
+	this->read(value.radius_m);
+	this->read(value.visibility_angle);
 
 	uint8_t id;
-	this->Read(id);
+	this->read(id);
 	value.id = static_cast<t_constellation_led_id_it>(id);
 }
 
 // t_constellation_tracker_led_model
 
 void
-DataSerializer::Write(const t_constellation_tracker_led_model &value)
+DataSerializer::write(const t_constellation_tracker_led_model &value)
 {
-	this->Write(static_cast<uint32_t>(value.led_count));
+	this->write(static_cast<uint32_t>(value.led_count));
 	for (size_t i = 0; i < value.led_count; i++) {
-		this->Write(value.leds[i]);
+		this->write(value.leds[i]);
 	}
 }
 
 void
-DataSerializer::Read(std::vector<t_constellation_tracker_led> &led_storage, t_constellation_tracker_led_model &value)
+DataSerializer::read(std::vector<t_constellation_tracker_led> &led_storage, t_constellation_tracker_led_model &value)
 {
 	uint32_t led_count;
-	this->Read(led_count);
+	this->read(led_count);
 	value.led_count = led_count;
 
 	led_storage.resize(led_count);
 	value.leds = led_storage.data();
 
 	for (size_t i = 0; i < value.led_count; i++) {
-		this->Read(value.leds[i]);
+		this->read(value.leds[i]);
 	}
 }
 
 // Flush
 
 void
-DataSerializer::Flush()
+DataSerializer::flush()
 {
 	this->file.flush();
 }
@@ -466,34 +466,38 @@ DataRecorder::DataRecorder(ConstellationTracker *tracker, std::string out_file) 
 {
 	// Magic value to identify the file so we can prevent loading invalid files. Written in BE to preserve the
 	// match with the source code.
-	this->serializer.Write(static_cast<uint32_t>(__be32_to_cpu(CT_DATA_MAGIC_VALUE)));
+	this->serializer.write(static_cast<uint32_t>(__be32_to_cpu(CT_DATA_MAGIC_VALUE)));
 
-	this->serializer.Write(static_cast<uint32_t>(tracker->mosaics.size()));
+	this->serializer.write(static_cast<uint32_t>(tracker->mosaics.size()));
 	for (auto &mosaic : tracker->mosaics) {
-		this->serializer.Write(static_cast<uint32_t>(mosaic->cameras.size()));
+		this->serializer.write(static_cast<uint32_t>(mosaic->cameras.size()));
 		for (auto &camera : mosaic->cameras) {
-			this->serializer.Write(camera->calibration);
+			this->serializer.write(camera->calibration);
 		}
 	}
 
-	this->serializer.Flush();
+	this->serializer.flush();
 }
 
 void
-DataRecorder::RecordSample(const CameraSample &sample)
+DataRecorder::recordSample(const CameraSample &sample)
 {
-	this->serializer.Write(static_cast<uint8_t>(PACKET_TYPE_CAMERA_SAMPLE));
-	this->serializer.Write(sample);
-	this->serializer.Flush();
+	std::lock_guard<std::mutex> guard(this->lock);
+
+	this->serializer.write(static_cast<uint8_t>(PACKET_TYPE_CAMERA_SAMPLE));
+	this->serializer.write(sample);
+	this->serializer.flush();
 }
 
 void
-DataRecorder::RecordDeviceInfo(const Device &device)
+DataRecorder::recordDeviceInfo(const Device &device)
 {
-	this->serializer.Write(static_cast<uint8_t>(PACKET_TYPE_DEVICE_INFO));
-	this->serializer.Write(static_cast<uint8_t>(device.id));
-	this->serializer.Write(device.params.led_model);
-	this->serializer.Flush();
+	std::lock_guard<std::mutex> guard(this->lock);
+
+	this->serializer.write(static_cast<uint8_t>(PACKET_TYPE_DEVICE_INFO));
+	this->serializer.write(static_cast<uint8_t>(device.id));
+	this->serializer.write(device.params.led_model);
+	this->serializer.flush();
 }
 
 /*
@@ -505,24 +509,24 @@ DataRecorder::RecordDeviceInfo(const Device &device)
 DatasetReader::DatasetReader(std::string filename) : serializer(filename, false)
 {
 	uint32_t magic_value;
-	this->serializer.Read(magic_value);
+	this->serializer.read(magic_value);
 	if (magic_value != static_cast<uint32_t>(__be32_to_cpu(CT_DATA_MAGIC_VALUE))) {
 		throw std::runtime_error(
 		    "Invalid magic value in dataset file, not a valid constellation tracker dataset.");
 	}
 
 	uint32_t mosaic_count;
-	this->serializer.Read(mosaic_count);
+	this->serializer.read(mosaic_count);
 
 	for (size_t i = 0; i < mosaic_count; i++) {
 		DatasetMosaic mosaic;
 
 		uint32_t camera_count;
-		this->serializer.Read(camera_count);
+		this->serializer.read(camera_count);
 
 		for (size_t j = 0; j < camera_count; j++) {
 			t_camera_calibration calibration;
-			this->serializer.Read(calibration);
+			this->serializer.read(calibration);
 			mosaic.camera_calibrations.push_back(calibration);
 		}
 
@@ -532,11 +536,11 @@ DatasetReader::DatasetReader(std::string filename) : serializer(filename, false)
 	while (true) {
 		try {
 			uint8_t packet_type;
-			this->serializer.Read(packet_type);
+			this->serializer.read(packet_type);
 			switch (packet_type) {
 			case PACKET_TYPE_CAMERA_SAMPLE: {
 				CameraSample sample;
-				this->serializer.Read(sample);
+				this->serializer.read(sample);
 				this->samples.push_back(sample);
 				break;
 			}
@@ -544,10 +548,10 @@ DatasetReader::DatasetReader(std::string filename) : serializer(filename, false)
 				DatasetDevice &device = this->devices.emplace_back();
 
 				uint8_t device_id;
-				this->serializer.Read(device_id);
+				this->serializer.read(device_id);
 				device.id = static_cast<t_constellation_device_id_t>(device_id);
 
-				this->serializer.Read(device.leds, device.led_model);
+				this->serializer.read(device.leds, device.led_model);
 
 				break;
 			}

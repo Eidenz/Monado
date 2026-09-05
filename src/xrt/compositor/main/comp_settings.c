@@ -69,6 +69,17 @@ get_desired_present_mode(void)
 		return VK_PRESENT_MODE_MAILBOX_KHR;
 	}
 
+#ifdef VK_KHR_shared_presentable_image
+	if (strcmp(present_mode_str, "shared_continuous_refresh") == 0 ||
+	    strcmp(present_mode_str, "SHARED_CONTINUOUS_REFRESH") == 0) {
+		return VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR;
+	}
+	if (strcmp(present_mode_str, "shared_demand_refresh") == 0 ||
+	    strcmp(present_mode_str, "SHARED_DEMAND_REFRESH") == 0) {
+		return VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR;
+	}
+#endif
+
 	U_LOG_E("Unrecognized present mode: %s", present_mode_str);
 	return VK_PRESENT_MODE_FIFO_KHR;
 }

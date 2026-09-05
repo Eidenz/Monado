@@ -11,6 +11,8 @@
 
 #include "t_constellation_tracker_internal.hpp"
 
+#include <mutex>
+
 
 namespace xrt::tracking::constellation {
 
@@ -25,89 +27,89 @@ public: // Methods
 	~DataSerializer();
 
 	void
-	Write(uint8_t value);
+	write(uint8_t value);
 	void
-	Read(uint8_t &value);
+	read(uint8_t &value);
 
 	void
-	Write(uint32_t value);
+	write(uint32_t value);
 	void
-	Read(uint32_t &value);
+	read(uint32_t &value);
 
 	void
-	Write(float value);
+	write(float value);
 	void
-	Read(float &value);
+	read(float &value);
 
 	void
-	Write(uint64_t value);
+	write(uint64_t value);
 	void
-	Read(uint64_t &value);
+	read(uint64_t &value);
 
 	void
-	Write(double value);
+	write(double value);
 	void
-	Read(double &value);
+	read(double &value);
 
 	void
-	Write(const xrt_pose &value);
+	write(const xrt_pose &value);
 	void
-	Read(xrt_pose &value);
+	read(xrt_pose &value);
 
 	void
-	Write(const FoundDevicePose &value);
+	write(const FoundDevicePose &value);
 	void
-	Read(FoundDevicePose &value);
+	read(FoundDevicePose &value);
 
 	void
-	Write(const DeviceState &value);
+	write(const DeviceState &value);
 	void
-	Read(DeviceState &value);
+	read(DeviceState &value);
 
 	void
-	Write(const t_blob &value);
+	write(const t_blob &value);
 	void
-	Read(t_blob &value);
+	read(t_blob &value);
 
 	void
-	Write(const CameraSample &value);
+	write(const CameraSample &value);
 	void
-	Read(CameraSample &value);
+	read(CameraSample &value);
 
 	void
-	Write(const t_camera_calibration &value);
+	write(const t_camera_calibration &value);
 	void
-	Read(t_camera_calibration &value);
+	read(t_camera_calibration &value);
 
 	void
-	Write(t_constellation_tracker_led &value);
+	write(t_constellation_tracker_led &value);
 	void
-	Read(t_constellation_tracker_led &value);
+	read(t_constellation_tracker_led &value);
 
 	void
-	Write(const t_constellation_tracker_led_model &value);
+	write(const t_constellation_tracker_led_model &value);
 	void
-	Read(std::vector<t_constellation_tracker_led> &led_storage, t_constellation_tracker_led_model &value);
+	read(std::vector<t_constellation_tracker_led> &led_storage, t_constellation_tracker_led_model &value);
 
 	template <typename T>
 	void
-	Write(const std::optional<T> &opt_value)
+	write(const std::optional<T> &opt_value)
 	{
-		this->Write(static_cast<uint8_t>(opt_value.has_value() ? 1 : 0));
+		this->write(static_cast<uint8_t>(opt_value.has_value() ? 1 : 0));
 		if (opt_value.has_value()) {
-			this->Write(opt_value.value());
+			this->write(opt_value.value());
 		}
 	}
 
 	template <typename T>
 	void
-	Read(std::optional<T> &opt_value)
+	read(std::optional<T> &opt_value)
 	{
 		uint8_t has_value;
-		this->Read(has_value);
+		this->read(has_value);
 		if (has_value) {
 			T value;
-			this->Read(value);
+			this->read(value);
 			opt_value = value;
 		} else {
 			opt_value = std::nullopt;
@@ -115,7 +117,7 @@ public: // Methods
 	}
 
 	void
-	Flush();
+	flush();
 };
 
 struct DataRecorder
@@ -123,16 +125,23 @@ struct DataRecorder
 private: // Fields
 	DataSerializer serializer;
 
+	/*!
+	 * Serializes writes to @ref serializer. Every camera has a fast processing thread of its own and
+	 * records from it, so without this two cameras' packets interleave and the file is unreadable
+	 * from the first race onwards.
+	 */
+	std::mutex lock;
+
 public: // Methods
 	DataRecorder(ConstellationTracker *tracker, std::string out_file);
 
 	~DataRecorder() = default;
 
 	void
-	RecordSample(const CameraSample &sample);
+	recordSample(const CameraSample &sample);
 
 	void
-	RecordDeviceInfo(const Device &device);
+	recordDeviceInfo(const Device &device);
 };
 
 struct DatasetMosaic
