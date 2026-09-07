@@ -43,6 +43,7 @@ static const uint64_t MAX_VIEW_WIDTH = 1920;
 static const uint64_t MAX_VIEW_HEIGHT = 1080;
 
 DEBUG_GET_ONCE_LOG_OPTION(log, "XRT_COMPOSITOR_LOG", U_LOGGING_INFO)
+DEBUG_GET_ONCE_NUM_OPTION(fps, "XRT_COMPOSITOR_NULL_FPS", 20)
 
 
 /*
@@ -614,7 +615,12 @@ null_compositor_create_system(struct xrt_device *xdev, struct xrt_system_composi
 	c->settings.log_level = debug_get_log_option_log();
 	c->frame.waited.id = -1;
 	c->frame.rendering.id = -1;
-	c->settings.frame_interval_ns = U_TIME_1S_IN_NS / 20; // 20 FPS
+	long fps = debug_get_num_option_fps();
+	if (fps <= 0) {
+		NULL_WARN(c, "Invalid XRT_COMPOSITOR_NULL_FPS '%ld', fallback to default", fps);
+		fps = 20;
+	}
+	c->settings.frame_interval_ns = U_TIME_1S_IN_NS / fps;
 	c->xdev = xdev;
 
 	NULL_DEBUG(c, "Doing init %p", (void *)c);
