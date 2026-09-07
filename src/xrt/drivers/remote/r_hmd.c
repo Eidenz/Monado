@@ -142,14 +142,17 @@ r_hmd_create(struct r_hub *r)
 	snprintf(rh->base.serial, sizeof(rh->base.serial), "Remote HMD");
 
 	// Setup info.
+	assert(r->w_pixels > 0 && r->h_pixels > 0);
+	assert(r->w_meters > 0.0f && r->h_meters > 0.0f);
+
 	bool ret = true;
 	struct u_device_simple_info info;
-	info.display.w_pixels = 1920;
-	info.display.h_pixels = 1080;
-	info.display.w_meters = 0.13f;
-	info.display.h_meters = 0.07f;
-	info.lens_horizontal_separation_meters = 0.13f / 2.0f;
-	info.lens_vertical_position_meters = 0.07f / 2.0f;
+	info.display.w_pixels = rh->r->w_pixels;
+	info.display.h_pixels = rh->r->h_pixels;
+	info.display.w_meters = rh->r->w_meters;
+	info.display.h_meters = rh->r->h_meters;
+	info.lens_horizontal_separation_meters = rh->r->w_meters / 2.0f;
+	info.lens_vertical_position_meters = rh->r->h_meters / 2.0f;
 
 	if (rh->r->view_count == 1) {
 		info.fov[0] = 120.0f * (M_PI / 180.0f);
