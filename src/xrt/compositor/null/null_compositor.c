@@ -36,12 +36,6 @@
 #include <stdint.h>
 #include <stdio.h>
 
-static const uint64_t RECOMMENDED_VIEW_WIDTH = 320;
-static const uint64_t RECOMMENDED_VIEW_HEIGHT = 240;
-
-static const uint64_t MAX_VIEW_WIDTH = 1920;
-static const uint64_t MAX_VIEW_HEIGHT = 1080;
-
 DEBUG_GET_ONCE_LOG_OPTION(log, "XRT_COMPOSITOR_LOG", U_LOGGING_INFO)
 DEBUG_GET_ONCE_NUM_OPTION(fps, "XRT_COMPOSITOR_NULL_FPS", 20)
 
@@ -313,12 +307,19 @@ compositor_init_sys_info(struct null_compositor *c, struct xrt_device *xdev)
 	(void)sys_info->client_d3d_deviceLUID_valid;
 	// clang-format off
 	for (uint32_t i = 0; i < view_count; ++i) {
-		c->view_configs[0].views[i].recommended.width_pixels  = RECOMMENDED_VIEW_WIDTH;
-		c->view_configs[0].views[i].recommended.height_pixels = RECOMMENDED_VIEW_HEIGHT;
+		uint32_t w = xdev->hmd->views[i].display.w_pixels;
+		uint32_t h = xdev->hmd->views[i].display.h_pixels;
+		if (w == 0 || h == 0) {
+			U_LOG_E("Bug detected: HMD \"%s\" xdev->hmd.views[%u].display size must be > 0!", xdev->str, i);
+			return false;
+		}
+
+		c->view_configs[0].views[i].recommended.width_pixels  = w;
+		c->view_configs[0].views[i].recommended.height_pixels = h;
 		c->view_configs[0].views[i].recommended.sample_count  = 1;
-		c->view_configs[0].views[i].max.width_pixels  = MAX_VIEW_WIDTH;
-		c->view_configs[0].views[i].max.height_pixels = MAX_VIEW_HEIGHT;
-		c->view_configs[0].views[i].max.sample_count  = 1;
+		c->view_configs[0].views[i].max.width_pixels          = w;
+		c->view_configs[0].views[i].max.height_pixels         = h;
+		c->view_configs[0].views[i].max.sample_count          = 1;
 	}
 	// clang-format on
 	c->view_configs[0].view_type = view_type;
