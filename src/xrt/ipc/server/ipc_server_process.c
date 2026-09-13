@@ -454,6 +454,15 @@ shutdown_clients(struct ipc_server *s)
 	for (uint32_t i = 0; i < IPC_MAX_CLIENTS; i++) {
 		struct ipc_thread *it = &s->threads[i];
 		volatile struct ipc_client_state *ics = &it->ics;
+		if (ics->client_state.info.immediate_disconnect) {
+			// instantly disconnect clients with this flag
+			// some clients (e.g. libmonado) have no session or event polling to respond to an exit request
+			U_LOG_I("Disconnecting client (Client %d): %s", ics->client_state.id,
+			        ics->client_state.info.application_name);
+			it->state = IPC_THREAD_STOPPING;
+			continue;
+		}
+
 		if (it->state == IPC_THREAD_READY || it->state == IPC_THREAD_STOPPING || ics->xs == NULL)
 			continue;
 

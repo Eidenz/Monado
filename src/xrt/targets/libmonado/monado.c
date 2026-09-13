@@ -204,6 +204,7 @@ mnd_root_create(mnd_root_t **out_root)
 	mnd_root_t *r = U_TYPED_CALLOC(mnd_root_t);
 
 	struct xrt_instance_info info = {0};
+	info.app_info.immediate_disconnect = true;
 	snprintf(info.app_info.application_name, sizeof(info.app_info.application_name), "%s", "libmonado");
 
 	xrt_result_t xret = ipc_client_connection_init(&r->ipc_c, U_LOGGING_INFO, &info);

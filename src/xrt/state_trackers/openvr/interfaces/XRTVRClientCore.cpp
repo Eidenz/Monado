@@ -56,6 +56,7 @@ XRTVRClientCore_003::Init(vr::EVRApplicationType eApplicationType, const char *p
 	    .app_info =
 	        {
 	            .application_name = "OpenVR client",
+	            .immediate_disconnect = false,
 	            .ext_hand_tracking_enabled = false,
 	            .ext_hand_tracking_data_source_enabled = false,
 	            .ext_eye_gaze_interaction_enabled = false,
@@ -244,6 +245,7 @@ XRTVRClientCore_003::BIsHmdPresent()
 	    .app_info =
 	        {
 	            .application_name = "OpenVR client (temporary instance for BIsHmdPresent)",
+	            .immediate_disconnect = false,
 	            .ext_hand_tracking_enabled = false,
 	            .ext_hand_tracking_data_source_enabled = false,
 	            .ext_eye_gaze_interaction_enabled = false,
