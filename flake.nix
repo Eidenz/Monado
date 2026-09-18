@@ -1,14 +1,16 @@
 # Copyright 2024, Gavin John <gavinnjohn@gmail.com>
+# Copyright 2025-2026, coolGi <remy.alipoursafari@collabora.com>
 # SPDX-License-Identifier: CC0-1.0 OR MIT OR BSL-1.0
 
 {
   inputs = {
     # Whenever an upstream change is merged, update this and
     # remove the packages from the ...ToUpstream lists below
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     flake-parts.url = "github:hercules-ci/flake-parts";
-    # Allow the use of git dependencies
+    # Allow the use of certain git dependencies
     nixpkgs-xr.url = "github:nix-community/nixpkgs-xr";
+    nixpkgs-xr.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
