@@ -8,6 +8,8 @@ if(BUILD_TESTING)
 	target_include_directories(
 		xrt-external-catch2 SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Catch2
 		)
+	# clang-22 gives a warning for this in our build configuration, so let's disable it.
+	target_compile_definitions(xrt-external-catch2 PUBLIC CATCH_CONFIG_NO_COUNTER)
 	if(MSVC)
 		# Needed for Visual Studio 2019.
 		# https://github.com/catchorg/Catch2/issues/2916#issuecomment-2404082203
