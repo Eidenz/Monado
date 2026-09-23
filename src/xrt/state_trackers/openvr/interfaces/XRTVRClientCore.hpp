@@ -47,8 +47,10 @@ class XRTVRClientCore_003 : public vr::IVRClientCore_003
 {
 public: // Fields
 	xrt_instance *xinst{nullptr};
+	xrt_app_instance *xainst{nullptr};
 
 	xrt_system *xsys{nullptr};
+	xrt_app_system *xasys{nullptr};
 	xrt_system_devices *xsysd{nullptr};
 	xrt_space_overseer *xso{nullptr};
 	xrt_system_compositor *xsysc{nullptr};

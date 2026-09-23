@@ -12,8 +12,6 @@
 #include "xrt/xrt_instance.h"
 #include "xrt/xrt_tracking.h"
 
-#include "os/os_time.h"
-
 #include "common/openvr_error.hpp"
 #include "common/openvr_logger.hpp"
 #include "common/openvr_math.hpp"
@@ -54,9 +52,38 @@ XRTVRSystem_026::GetRecommendedRenderTargetSize(uint32_t *pnWidth, uint32_t *pnH
 
 	auto xdev = (*maybe_device)->xdev;
 
-	// Use view zero, since OpenVR doesn't support per-eye render target sizes.
-	*pnWidth = xdev->hmd->views[0].display.w_pixels;
-	*pnHeight = xdev->hmd->views[0].display.h_pixels;
+	// We unconditionally use view zero, since OpenVR doesn't support per-eye render target sizes.
+	xrt_recommended_view_config recommended_view_config;
+	xrt_result_t xret = xrt_app_system_get_recommended_view_configuration( //
+	    this->core->xasys,                                                 //
+	    XRT_VIEW_TYPE_STEREO,                                              //
+	    &recommended_view_config);                                         //
+	if (xret != XRT_SUCCESS) {
+		OPENVR_LOG_ERROR_XRET(
+		    logger,
+		    "Failed to get app system view configuration, this is likely fatal? Trying xrt_system_compositor",
+		    xret);
+	} else if (recommended_view_config.valid) {
+		// We got a recommendation
+		*pnWidth = recommended_view_config.views[0].width_pixels;
+		*pnHeight = recommended_view_config.views[0].height_pixels;
+		return;
+	}
+
+	xrt_view_config view_config;
+	xret = xrt_syscomp_get_view_config(this->core->xsysc, XRT_VIEW_TYPE_STEREO, &view_config);
+	if (xret != XRT_SUCCESS) {
+		OPENVR_LOG_ERROR_XRET(logger, "Failed to get view configuration, this is likely fatal, using backup.",
+		                      xret);
+
+		*pnWidth = xdev->hmd->views[0].display.w_pixels;
+		*pnHeight = xdev->hmd->views[0].display.h_pixels;
+		return;
+	}
+
+	// Fallback for no recommendation.
+	*pnWidth = view_config.views[0].recommended.width_pixels;
+	*pnHeight = view_config.views[0].recommended.height_pixels;
 }
 
 vr::HmdMatrix44_t
