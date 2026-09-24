@@ -97,7 +97,32 @@ monado-ctl --unfreeze <client-id>   # resume live tracking
 Run `monado-ctl` with no arguments to list clients and their ids. The symbol is
 absent on stock Monado, so tools can detect support before showing freeze UI.
 
-> **AI usage:** The UDCAP, hotplug, in-headset screenshot, finger-frame gesture and controller-freeze additions in this fork were developed with AI assistance (Anthropic's Claude), under human direction, testing, and review. Upstream Monado is unaffected.
+### Powered-off controllers: hold or release
+
+By default a controller or tracker that powers off (or loses its pose) keeps
+serving its last good pose, so in-game hands freeze in place. Switch that off to
+report it untracked instead, like upstream Monado, so the app can take over (an
+avatar's own idle or sleeping pose, for example). It applies to every app and
+takes effect at once, also for devices that are already off. The headset always
+holds.
+
+```bash
+monado-ctl --hold-pose=off   # report powered-off controllers as untracked
+monado-ctl --hold-pose=on    # hold their last pose (default)
+monado-ctl --hold-pose       # print the current mode
+```
+
+libmonado: `mnd_root_set_hold_pose_when_off` / `mnd_root_get_hold_pose_when_off`.
+The startup default comes from `XRT_HOLD_POSE_WHEN_OFF` (default `true`).
+
+### Device tracking state
+
+`mnd_root_get_device_tracking_state` reports whether a device is connected
+(powered on; for UDCAP gloves: radio link up) and whether its pose is fully
+tracked, so a UI can grey out dead devices that stay in the device list. UDCAP
+gloves also report their battery level now.
+
+> **AI usage:** The UDCAP, hotplug, in-headset screenshot, finger-frame gesture and controller-freeze, hold-pose and tracking-state additions in this fork were developed with AI assistance (Anthropic's Claude), under human direction, testing, and review. Upstream Monado is unaffected.
 
 ---
 

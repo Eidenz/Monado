@@ -315,6 +315,8 @@ struct xrt_device_supported
 	bool body_tracking_calibration;
 	bool body_tracking_fidelity;
 	bool battery_status;
+	//! Fork addition: @ref xrt_device::get_tracking_state is implemented.
+	bool tracking_state;
 	bool brightness_control;
 	bool compositor_info;
 	bool notify_chirality;
@@ -723,6 +725,19 @@ struct xrt_device
 	                                   float *out_charge);
 
 	/*!
+	 * @brief Get whether the physical device is connected and tracking.
+	 *
+	 * Fork addition. Only valid when @ref xrt_device_supported::tracking_state
+	 * is set. A device can stay in the system (and keep its role) while it is
+	 * powered off, so this is how a UI tells a live device from a dead one.
+	 *
+	 * @param[in] xdev           The device.
+	 * @param[out] out_connected Whether the device is powered on and linked.
+	 * @param[out] out_tracking  Whether its pose is currently fully tracked.
+	 */
+	xrt_result_t (*get_tracking_state)(struct xrt_device *xdev, bool *out_connected, bool *out_tracking);
+
+	/*!
 	 * @brief Get the current display brightness.
 	 *
 	 * @param[in] xdev             The device.
@@ -1117,6 +1132,25 @@ XRT_NONNULL_ALL static inline xrt_result_t
 xrt_device_get_battery_status(struct xrt_device *xdev, bool *out_present, bool *out_charging, float *out_charge)
 {
 	return xdev->get_battery_status(xdev, out_present, out_charging, out_charge);
+}
+
+/*!
+ * Helper function for @ref xrt_device::get_tracking_state.
+ *
+ * Returns @ref XRT_ERROR_FEATURE_NOT_SUPPORTED for devices that don't report
+ * their tracking state.
+ *
+ * @copydoc xrt_device::get_tracking_state
+ *
+ * @public @memberof xrt_device
+ */
+XRT_NONNULL_ALL static inline xrt_result_t
+xrt_device_get_tracking_state(struct xrt_device *xdev, bool *out_connected, bool *out_tracking)
+{
+	if (!xdev->supported.tracking_state || xdev->get_tracking_state == NULL) {
+		return XRT_ERROR_FEATURE_NOT_SUPPORTED;
+	}
+	return xdev->get_tracking_state(xdev, out_connected, out_tracking);
 }
 
 /*!

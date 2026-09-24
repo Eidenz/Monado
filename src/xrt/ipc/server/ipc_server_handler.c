@@ -10,6 +10,7 @@
  * @ingroup ipc_server
  */
 
+#include "util/u_device.h"
 #include "util/u_misc.h"
 #include "util/u_handles.h"
 #include "util/u_pretty_print.h"
@@ -1689,6 +1690,26 @@ ipc_handle_system_set_client_controller_freeze(volatile struct ipc_client_state 
 	return ipc_server_set_client_controller_freeze(s, client_id, freeze != 0);
 }
 
+xrt_result_t
+ipc_handle_system_set_hold_pose_when_off(volatile struct ipc_client_state *_ics, uint32_t hold)
+{
+	struct ipc_server *s = _ics->server;
+
+	IPC_INFO(s, "System setting hold-pose-when-off to %s.", hold ? "on" : "off");
+
+	u_device_set_hold_pose_when_off(hold != 0);
+
+	return XRT_SUCCESS;
+}
+
+xrt_result_t
+ipc_handle_system_get_hold_pose_when_off(volatile struct ipc_client_state *_ics, uint32_t *out_hold)
+{
+	*out_hold = u_device_get_hold_pose_when_off() ? 1u : 0u;
+
+	return XRT_SUCCESS;
+}
+
 
 /*
  *
@@ -2824,6 +2845,18 @@ ipc_handle_device_get_battery_status(
 	struct xrt_device *xdev = NULL;
 	GET_XDEV_OR_RETURN(ics, id, xdev);
 	return xrt_device_get_battery_status(xdev, out_present, out_charging, out_charge);
+}
+
+xrt_result_t
+ipc_handle_device_get_tracking_state(volatile struct ipc_client_state *ics,
+                                     uint32_t id,
+                                     bool *out_connected,
+                                     bool *out_tracking)
+{
+	struct xrt_device *xdev = NULL;
+	GET_XDEV_OR_RETURN(ics, id, xdev);
+
+	return xrt_device_get_tracking_state(xdev, out_connected, out_tracking);
 }
 
 xrt_result_t

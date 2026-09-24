@@ -26,7 +26,7 @@ extern "C" {
 //! Major version of the API.
 #define MND_API_VERSION_MAJOR 1
 //! Minor version of the API.
-#define MND_API_VERSION_MINOR 8
+#define MND_API_VERSION_MINOR 9
 //! Patch version of the API.
 #define MND_API_VERSION_PATCH 0
 
@@ -341,6 +341,36 @@ mnd_result_t
 mnd_root_set_client_controller_freeze(mnd_root_t *root, uint32_t client_id, bool freeze);
 
 /*!
+ * Choose what apps see when a controller or tracker powers off (or loses its
+ * pose). Holding (the default) keeps serving the last good pose, so in-game
+ * hands freeze in place. Releasing reports the device untracked, so an app can
+ * take over (e.g. an avatar's own idle or sleeping pose). Applies to every
+ * client and takes effect immediately, also for devices that are already off.
+ *
+ * Supported in version 1.9 and above.
+ *
+ * @param root The libmonado state.
+ * @param hold True to hold the last pose, false to report the device untracked.
+ *
+ * @return MND_SUCCESS on success
+ */
+mnd_result_t
+mnd_root_set_hold_pose_when_off(mnd_root_t *root, bool hold);
+
+/*!
+ * Get the current hold-pose-when-off mode, see @ref mnd_root_set_hold_pose_when_off.
+ *
+ * Supported in version 1.9 and above.
+ *
+ * @param root          The libmonado state.
+ * @param[out] out_hold Whether powered-off devices hold their last pose.
+ *
+ * @return MND_SUCCESS on success
+ */
+mnd_result_t
+mnd_root_get_hold_pose_when_off(mnd_root_t *root, bool *out_hold);
+
+/*!
  * Get the number of devices
  *
  * @param root                  The libmonado state.
@@ -577,6 +607,24 @@ mnd_root_get_tracking_origin_name(mnd_root_t *root, uint32_t origin_index, const
 mnd_result_t
 mnd_root_get_device_battery_status(
     mnd_root_t *root, uint32_t device_index, bool *out_present, bool *out_charging, float *out_charge);
+
+/*!
+ * Get whether a device is connected (powered on and linked) and whether its
+ * pose is currently tracked. Devices stay in the device list while they are
+ * powered off, so this is how to tell a live device from a dead one.
+ *
+ * Supported in version 1.9 and above.
+ *
+ * @param root               The libmonado state.
+ * @param device_index       Index of the device.
+ * @param[out] out_connected Whether the device is connected.
+ * @param[out] out_tracking  Whether the device's pose is fully tracked.
+ *
+ * @return MND_SUCCESS on success, MND_ERROR_UNSUPPORTED_OPERATION if the
+ *         device doesn't report its tracking state.
+ */
+mnd_result_t
+mnd_root_get_device_tracking_state(mnd_root_t *root, uint32_t device_index, bool *out_connected, bool *out_tracking);
 
 /*!
  * Get current brightness of a display device.

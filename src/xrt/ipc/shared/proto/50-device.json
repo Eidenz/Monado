@@ -253,6 +253,16 @@
 		]
 	},
 
+	"device_get_tracking_state": {
+		"in": [
+			{"name": "id", "type": "uint32_t"}
+		],
+		"out": [
+			{"name": "connected", "type": "bool"},
+			{"name": "tracking", "type": "bool"}
+		]
+	},
+
 	"device_get_brightness": {
 		"in": [
 			{"name": "id", "type": "uint32_t"}

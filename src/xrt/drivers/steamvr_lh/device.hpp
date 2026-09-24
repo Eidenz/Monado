@@ -86,6 +86,10 @@ public:
 	//! Disconnected devices stay in the system but lose role assignment.
 	mutable std::atomic<bool> connected{true};
 
+	//! Whether the last pose update was fully tracked (valid, connected and
+	//! Running_OK). Reported through @ref xrt_device::get_tracking_state.
+	mutable std::atomic<bool> tracking{false};
+
 	virtual ~Device();
 
 	xrt_input *
@@ -110,6 +114,10 @@ public:
 
 	xrt_result_t
 	get_battery_status(bool *out_present, bool *out_charging, float *out_charge);
+
+	//! Maps to @ref xrt_device::get_tracking_state.
+	xrt_result_t
+	get_tracking_state(bool *out_connected, bool *out_tracking);
 
 	//! Set the proprietary driver handle (used when a known device is re-added by the driver).
 	void
@@ -141,6 +149,25 @@ protected:
 
 private:
 	vr::ITrackedDeviceServerDriver *driver;
+
+	/*
+	 * What the relation history holds while the device is dark: its last good
+	 * pose (held) or an untracked entry (released). Kept in step with
+	 * u_device_get_hold_pose_when_off(), also when that changes while the
+	 * device is already off.
+	 */
+	mutable std::mutex dark_mutex;
+	//! Last fully valid relation pushed, re-served when holding again.
+	mutable xrt_space_relation last_good{};
+	mutable bool has_last_good{false};
+	//! Whether the newest history entry is an untracked (released) one.
+	mutable bool released_in_history{false};
+	//! Whether the last pose update was valid (connected and poseIsValid).
+	mutable std::atomic<bool> pose_valid{false};
+
+	//! Bring the history in line with the hold mode while the device is dark.
+	void
+	sync_dark_pose() const;
 
 	void
 	init_chaperone(const std::string &steam_install);

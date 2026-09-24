@@ -190,6 +190,13 @@ u_device_ni_get_battery_status(struct xrt_device *xdev, bool *out_present, bool 
 }
 
 xrt_result_t
+u_device_ni_get_tracking_state(struct xrt_device *xdev, bool *out_connected, bool *out_tracking)
+{
+	E(get_tracking_state);
+	return XRT_ERROR_NOT_IMPLEMENTED;
+}
+
+xrt_result_t
 u_device_ni_get_brightness(struct xrt_device *xdev, float *out_brightness)
 {
 	E(get_brightness);

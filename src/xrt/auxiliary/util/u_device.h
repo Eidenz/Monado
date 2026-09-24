@@ -246,6 +246,34 @@ u_device_populate_function_pointers(struct xrt_device *xdev,
                                     u_device_get_tracked_pose_function_t get_tracked_pose_fn,
                                     u_device_destroy_function_t destroy_fn);
 
+
+/*
+ *
+ * Hold pose when a device powers off (fork addition).
+ *
+ */
+
+/*!
+ * Whether a device that powers off (or loses its pose) keeps serving its last
+ * good pose, so in-game hands freeze in place, instead of going untracked so
+ * apps can take over. Process-wide, defaults to on (env
+ * `XRT_HOLD_POSE_WHEN_OFF`), switched at runtime through libmonado. Drivers
+ * that support it read this whenever a device goes dark.
+ *
+ * @ingroup aux_util
+ */
+bool
+u_device_get_hold_pose_when_off(void);
+
+/*!
+ * Set the process-wide hold-pose-when-off mode.
+ *
+ * @see u_device_get_hold_pose_when_off
+ * @ingroup aux_util
+ */
+void
+u_device_set_hold_pose_when_off(bool hold);
+
 #ifdef __cplusplus
 }
 #endif

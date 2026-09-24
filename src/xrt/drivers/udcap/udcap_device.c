@@ -350,6 +350,56 @@ udcap_device_get_hand_tracking(struct xrt_device *xdev,
 	return XRT_SUCCESS;
 }
 
+// The glove is on: the server is alive and the glove's radio link is up. The
+// receiver keeps reporting link state for a glove that is switched off, so a
+// live server alone doesn't mean a live glove (same rule as udcap-control).
+static bool
+udcap_snap_is_linked(const udcap_hand *snap)
+{
+	return udcap_snap_is_live(snap) && snap->link == UDCAP_LINK_LINKED;
+}
+
+static xrt_result_t
+udcap_device_get_tracking_state(struct xrt_device *xdev, bool *out_connected, bool *out_tracking)
+{
+	struct udcap_device *ud = udcap_device(xdev);
+
+	udcap_hand snap;
+	udcap_snapshot(ud, &snap);
+
+	bool connected = udcap_snap_is_linked(&snap);
+	bool tracking = connected;
+
+	// The glove rides on a Lighthouse tracker: it is only tracked while that is.
+	if (connected && ud->tracker != NULL) {
+		bool tracker_connected = false;
+		bool tracker_tracking = false;
+		if (xrt_device_get_tracking_state(ud->tracker, &tracker_connected, &tracker_tracking) == XRT_SUCCESS) {
+			tracking = tracker_tracking;
+		}
+	}
+
+	*out_connected = connected;
+	*out_tracking = tracking;
+	return XRT_SUCCESS;
+}
+
+static xrt_result_t
+udcap_device_get_battery_status(struct xrt_device *xdev, bool *out_present, bool *out_charging, float *out_charge)
+{
+	struct udcap_device *ud = udcap_device(xdev);
+
+	udcap_hand snap;
+	udcap_snapshot(ud, &snap);
+
+	// The core reports a 0..5 level (~20% each); 0 means no reading yet.
+	uint32_t level = snap.battery > 5 ? 5 : snap.battery;
+	*out_present = udcap_snap_is_linked(&snap) && level > 0;
+	*out_charging = false;
+	*out_charge = (float)level / 5.0f;
+	return XRT_SUCCESS;
+}
+
 static xrt_result_t
 udcap_device_get_tracked_pose(struct xrt_device *xdev,
                               enum xrt_input_name name,
@@ -514,9 +564,13 @@ udcap_device_create(enum xrt_hand hand)
 	ud->base.get_tracked_pose = udcap_device_get_tracked_pose;
 	ud->base.update_inputs = udcap_device_update_inputs;
 	ud->base.set_output = udcap_device_set_output;
+	ud->base.get_tracking_state = udcap_device_get_tracking_state;
+	ud->base.get_battery_status = udcap_device_get_battery_status;
 	ud->base.destroy = udcap_device_destroy;
 
 	ud->base.supported.hand_tracking = true;
+	ud->base.supported.tracking_state = true;
+	ud->base.supported.battery_status = true;
 	ud->base.supported.orientation_tracking = true;
 	ud->base.supported.position_tracking = true;
 

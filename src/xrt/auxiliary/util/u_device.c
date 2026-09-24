@@ -38,6 +38,7 @@
 DEBUG_GET_ONCE_OPTION(head_serial, "XRT_DEVICE_HEAD_SERIAL", NULL)
 DEBUG_GET_ONCE_OPTION(left_serial, "XRT_DEVICE_LEFT_SERIAL", NULL)
 DEBUG_GET_ONCE_OPTION(right_serial, "XRT_DEVICE_RIGHT_SERIAL", NULL)
+DEBUG_GET_ONCE_BOOL_OPTION(hold_pose_when_off, "XRT_HOLD_POSE_WHEN_OFF", true)
 
 
 /*
@@ -645,6 +646,7 @@ u_device_populate_function_pointers(struct xrt_device *xdev,
 	xdev->ref_space_usage = u_device_ni_ref_space_usage;
 	xdev->is_form_factor_available = u_device_ni_is_form_factor_available;
 	xdev->get_battery_status = u_device_ni_get_battery_status;
+	xdev->get_tracking_state = u_device_ni_get_tracking_state;
 	xdev->get_brightness = u_device_ni_get_brightness;
 	xdev->set_brightness = u_device_ni_set_brightness;
 	xdev->get_compositor_info = u_device_ni_get_compositor_info;
@@ -659,4 +661,33 @@ u_device_populate_function_pointers(struct xrt_device *xdev,
 
 	// This must be implemented by the driver.
 	xdev->destroy = destroy_fn;
+}
+
+
+/*
+ *
+ * Hold pose when a device powers off (fork addition).
+ *
+ */
+
+// 0 = not read from the environment yet, 1 = hold, 2 = release.
+static xrt_atomic_s32_t hold_pose_when_off_state = 0;
+
+bool
+u_device_get_hold_pose_when_off(void)
+{
+	int32_t state = xrt_atomic_s32_load(&hold_pose_when_off_state);
+	if (state == 0) {
+		int32_t from_env = debug_get_bool_option_hold_pose_when_off() ? 1 : 2;
+		// Only the first reader seeds it; a runtime set always wins.
+		xrt_atomic_s32_cmpxchg(&hold_pose_when_off_state, 0, from_env);
+		state = xrt_atomic_s32_load(&hold_pose_when_off_state);
+	}
+	return state == 1;
+}
+
+void
+u_device_set_hold_pose_when_off(bool hold)
+{
+	xrt_atomic_s32_store(&hold_pose_when_off_state, hold ? 1 : 2);
 }

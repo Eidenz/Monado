@@ -425,6 +425,37 @@ mnd_root_set_client_controller_freeze(mnd_root_t *root, uint32_t client_id, bool
 }
 
 mnd_result_t
+mnd_root_set_hold_pose_when_off(mnd_root_t *root, bool hold)
+{
+	CHECK_NOT_NULL(root);
+
+	xrt_result_t r = ipc_call_system_set_hold_pose_when_off(&root->ipc_c, hold ? 1u : 0u);
+	if (r != XRT_SUCCESS) {
+		PE("Failed to set hold-pose-when-off.\n");
+		return MND_ERROR_OPERATION_FAILED;
+	}
+
+	return MND_SUCCESS;
+}
+
+mnd_result_t
+mnd_root_get_hold_pose_when_off(mnd_root_t *root, bool *out_hold)
+{
+	CHECK_NOT_NULL(root);
+	CHECK_NOT_NULL(out_hold);
+
+	uint32_t hold = 0;
+	xrt_result_t r = ipc_call_system_get_hold_pose_when_off(&root->ipc_c, &hold);
+	if (r != XRT_SUCCESS) {
+		PE("Failed to get hold-pose-when-off.\n");
+		return MND_ERROR_OPERATION_FAILED;
+	}
+
+	*out_hold = hold != 0;
+	return MND_SUCCESS;
+}
+
+mnd_result_t
 mnd_root_get_device_count(mnd_root_t *root, uint32_t *out_device_count)
 {
 	CHECK_NOT_NULL(root);
@@ -729,6 +760,31 @@ mnd_root_get_device_battery_status(
 
 	xrt_result_t xret =
 	    ipc_call_device_get_battery_status(&root->ipc_c, device_index, out_present, out_charging, out_charge);
+	switch (xret) {
+	case XRT_SUCCESS: return MND_SUCCESS;
+	case XRT_ERROR_IPC_FAILURE: PE("Connection error!"); return MND_ERROR_OPERATION_FAILED;
+	default: PE("Internal error, shouldn't get here"); return MND_ERROR_OPERATION_FAILED;
+	}
+}
+
+mnd_result_t
+mnd_root_get_device_tracking_state(mnd_root_t *root, uint32_t device_index, bool *out_connected, bool *out_tracking)
+{
+	CHECK_NOT_NULL(root);
+	CHECK_DEVICE_INDEX(device_index);
+	CHECK_NOT_NULL(out_connected);
+	CHECK_NOT_NULL(out_tracking);
+
+	const struct ipc_device_info *device_info = &root->device_infos[device_index];
+
+	if (!device_info->supported.tracking_state) {
+		return MND_ERROR_UNSUPPORTED_OPERATION;
+	}
+
+	// The IPC call takes the service's device id, not our list index.
+	uint32_t device_id = root->device_list.devices[device_index].id;
+
+	xrt_result_t xret = ipc_call_device_get_tracking_state(&root->ipc_c, device_id, out_connected, out_tracking);
 	switch (xret) {
 	case XRT_SUCCESS: return MND_SUCCESS;
 	case XRT_ERROR_IPC_FAILURE: PE("Connection error!"); return MND_ERROR_OPERATION_FAILED;

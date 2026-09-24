@@ -212,6 +212,14 @@ xrt_result_t
 u_device_ni_get_battery_status(struct xrt_device *xdev, bool *out_present, bool *out_charging, float *out_charge);
 
 /*!
+ * Not implemented function for @ref xrt_device::get_tracking_state.
+ *
+ * @ingroup aux_util
+ */
+xrt_result_t
+u_device_ni_get_tracking_state(struct xrt_device *xdev, bool *out_connected, bool *out_tracking);
+
+/*!
  * Not implemented function for @ref xrt_device::get_brightness.
  *
  * @ingroup aux_util

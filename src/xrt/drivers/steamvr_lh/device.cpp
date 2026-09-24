@@ -329,12 +329,14 @@ Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx),
 	this->supported.force_feedback = false;
 	this->supported.form_factor_check = false;
 	this->supported.battery_status = true;
+	this->supported.tracking_state = true;
 	this->supported.brightness_control = true;
 
 	this->xrt_device::update_inputs = u_device_noop_update_inputs;
 #define SETUP_MEMBER_FUNC(name) this->xrt_device::name = &device_bouncer<Device, &Device::name>
 	SETUP_MEMBER_FUNC(get_tracked_pose);
 	SETUP_MEMBER_FUNC(get_battery_status);
+	SETUP_MEMBER_FUNC(get_tracking_state);
 #undef SETUP_MEMBER_FUNC
 
 	this->xrt_device::destroy = [](xrt_device *xdev) {
@@ -786,7 +788,60 @@ ControllerDevice::get_hand_tracking(enum xrt_input_name name,
 void
 Device::get_pose(uint64_t at_timestamp_ns, xrt_space_relation *out_relation)
 {
+	// A device that went dark may need its history switched between held and
+	// released if the mode changed since; cheap no-op while it's live.
+	if (!pose_valid.load(std::memory_order_relaxed)) {
+		sync_dark_pose();
+	}
 	m_relation_history_get(this->relation_hist, at_timestamp_ns, out_relation);
+}
+
+void
+Device::sync_dark_pose() const
+{
+	// The switch is about hands and trackers; a dark headset always holds.
+	const bool hold = device_type == XRT_DEVICE_TYPE_HMD || u_device_get_hold_pose_when_off();
+
+	std::lock_guard lk(dark_mutex);
+	if (pose_valid.load(std::memory_order_relaxed) || hold == !released_in_history) {
+		return;
+	}
+	if (!has_last_good) {
+		// Never tracked: nothing to hold, and the history is already empty
+		// or untracked.
+		return;
+	}
+
+	// Push after whatever is newest, the history only accepts increasing times.
+	int64_t latest_ts = 0;
+	xrt_space_relation latest = {};
+	int64_t ts = static_cast<int64_t>(chrono_timestamp_ns());
+	if (m_relation_history_get_latest(relation_hist, &latest_ts, &latest) && ts <= latest_ts) {
+		ts = latest_ts + 1;
+	}
+
+	xrt_space_relation rel = last_good;
+	rel.linear_velocity = {};
+	rel.angular_velocity = {};
+	if (hold) {
+		// Held: the last good pose, standing still.
+		rel.relation_flags = (xrt_space_relation_flags)(
+		    rel.relation_flags & ~(XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT |
+		                           XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT));
+	} else {
+		// Released: untracked, like upstream Monado, so apps can take over.
+		rel.relation_flags = XRT_SPACE_RELATION_BITMASK_NONE;
+	}
+	m_relation_history_push(relation_hist, &rel, ts);
+	released_in_history = !hold;
+}
+
+xrt_result_t
+Device::get_tracking_state(bool *out_connected, bool *out_tracking)
+{
+	*out_connected = connected.load(std::memory_order_relaxed);
+	*out_tracking = *out_connected && tracking.load(std::memory_order_relaxed);
+	return XRT_SUCCESS;
 }
 
 xrt_result_t
@@ -1150,13 +1205,20 @@ Device::update_pose(const vr::DriverPose_t &newPose) const
 	// Track power state so role assignment can skip powered-off devices.
 	connected.store(newPose.deviceIsConnected, std::memory_order_relaxed);
 
+	const bool valid = newPose.poseIsValid && newPose.deviceIsConnected;
+	tracking.store(valid && newPose.result == vr::TrackingResult_Running_OK, std::memory_order_relaxed);
+	pose_valid.store(valid, std::memory_order_relaxed);
+
 	/*
-	 * Keep the last good pose in the history when the device powers off or
-	 * the pose goes invalid: with sticky role assignment this makes
-	 * in-game hands freeze in place instead of being reported untracked
-	 * and snapping back to the body ("nap mode").
+	 * When the device powers off or the pose goes invalid, by default keep
+	 * the last good pose in the history: with sticky role assignment this
+	 * makes in-game hands freeze in place instead of being reported
+	 * untracked and snapping back to the body ("nap mode"). With
+	 * hold-pose-when-off switched off (libmonado), report it untracked
+	 * instead so apps can take over. sync_dark_pose() does either, once.
 	 */
-	if (!newPose.poseIsValid || !newPose.deviceIsConnected) {
+	if (!valid) {
+		sync_dark_pose();
 		return;
 	}
 
@@ -1220,7 +1282,11 @@ Device::update_pose(const vr::DriverPose_t &newPose) const
 
 	const uint64_t ts = chrono_timestamp_ns() + static_cast<uint64_t>(newPose.poseTimeOffset * 1000000.0);
 
+	std::lock_guard lk(dark_mutex);
 	m_relation_history_push(relation_hist, &relation, ts);
+	last_good = relation;
+	has_last_good = true;
+	released_in_history = false;
 }
 
 vr::ETrackedPropertyError
