@@ -1297,7 +1297,7 @@ _update_layers(volatile struct ipc_client_state *ics, struct ipc_layer_slot *slo
 			break;
 		case XRT_LAYER_PROJECTION_DEPTH:
 			xret = _update_projection_layer_depth(xc, ics, layer, i);
-			IPC_CHK_AND_RET(ics->server, xret, "_update_projection_depth_layer");
+			IPC_CHK_AND_RET(ics->server, xret, "_update_projection_layer_depth");
 			break;
 		case XRT_LAYER_QUAD:
 			xret = _update_quad_layer(xc, ics, layer, i);
