@@ -990,7 +990,7 @@ render_gfx_begin(struct render_gfx *render)
 	ret = vk->vkBeginCommandBuffer( //
 	    render->r->cmd,             //
 	    &begin_info);               //
-	VK_CHK_WITH_RET(ret, "vkResetCommandPool", false);
+	VK_CHK_WITH_RET(ret, "vkBeginCommandBuffer", false);
 
 	vk->vkCmdResetQueryPool(   //
 	    render->r->cmd,        //
