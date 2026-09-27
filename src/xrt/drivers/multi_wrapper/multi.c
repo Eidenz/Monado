@@ -163,7 +163,7 @@ get_hand_tracking(struct xrt_device *xdev,
 	struct xrt_space_relation tracker_relation;
 	xret =
 	    xrt_device_get_tracked_pose(tracker, d->tracking_override.input_name, *out_timestamp_ns, &tracker_relation);
-	U_LOG_CHK_AND_RET(d->log_level, xret, "xrt_device_get_hand_tracking");
+	U_LOG_CHK_AND_RET(d->log_level, xret, "xrt_device_get_tracked_pose");
 
 	switch (d->override_type) {
 	case XRT_TRACKING_OVERRIDE_DIRECT: direct_override(d, &tracker_relation, &out_value->hand_pose); break;
