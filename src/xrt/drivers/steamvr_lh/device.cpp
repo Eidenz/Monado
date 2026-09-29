@@ -1203,7 +1203,7 @@ Device::update_pose(const vr::DriverPose_t &newPose) const
 	math_quat_rotate_vec3(&chaperone.orientation, &relation.linear_velocity, &relation.linear_velocity);
 	math_quat_rotate_vec3(&chaperone.orientation, &relation.angular_velocity, &relation.angular_velocity);
 
-	const uint64_t ts = chrono_timestamp_ns() + static_cast<uint64_t>(newPose.poseTimeOffset * 1000000.0);
+	const int64_t ts = chrono_timestamp_ns() + time_s_to_ns(newPose.poseTimeOffset);
 
 	m_relation_history_push(relation_hist, &relation, ts);
 }
