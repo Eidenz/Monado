@@ -191,6 +191,9 @@ u_pp(struct u_pp_delegate dg, const char *fmt, ...)
 	ret = vsnprintf(dst, size_with_null, fmt, args);
 	va_end(args);
 
+	// Second call to `vsnprintf` with a buffer of the right size is supposed to succeed and write the exact amount.
+	assert(ret == (int)size);
+
 	if (ret > 0) {
 		dg.func(dg.ptr, dst, size);
 	}
