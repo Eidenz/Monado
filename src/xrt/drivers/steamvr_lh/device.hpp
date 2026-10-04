@@ -123,6 +123,10 @@ public:
 	void
 	set_driver(vr::ITrackedDeviceServerDriver *new_driver);
 
+	//! Re-read SteamVR's room setup if its files changed (at most once a second).
+	static void
+	poll_chaperone();
+
 protected:
 	Device(const DeviceBuilder &builder);
 	std::shared_ptr<Context> ctx;
@@ -130,7 +134,10 @@ protected:
 	std::unordered_map<vr::ETrackedDeviceProperty, Property> properties;
 	std::unordered_map<std::string_view, xrt_input *> inputs_map;
 	std::vector<xrt_input> inputs_vec;
+	//! Room setup transform applied to every pose, see @ref poll_chaperone.
 	inline static xrt_pose chaperone = XRT_POSE_IDENTITY;
+	//! Guards @ref chaperone: update_pose reads it on the driver's threads.
+	inline static std::mutex chaperone_mutex;
 	const InputClass *input_class;
 	std::string manufacturer;
 	std::string model;

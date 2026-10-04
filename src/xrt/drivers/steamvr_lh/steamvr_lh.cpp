@@ -196,6 +196,8 @@ Context::create(const std::string &steam_install,
 			ctx->process_pending_additions();
 			for (vr::IServerTrackedDeviceProvider *const &provider : ctx->providers)
 				provider->RunFrame();
+			// Pick up a room setup written while we run (Monadeck, SteamVR).
+			Device::poll_chaperone();
 			ctx->frame_thread_event.try_acquire_until(next);
 		}
 	});

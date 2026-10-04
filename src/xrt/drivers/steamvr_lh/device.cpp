@@ -43,6 +43,8 @@
 #include <openvr_driver.h>
 #include <thread>
 #include <algorithm>
+#include <chrono>
+#include <filesystem>
 #include <map>
 
 #define DEV_ERR(...) U_LOG_IFL_E(ctx->log_level, __VA_ARGS__)
@@ -1118,28 +1120,58 @@ copy_pose(const vr::HmdQuaternion_t &orientation, const double (&position)[3])
 }
 } // namespace
 
-void
-Device::init_chaperone(const std::string &steam_install)
+namespace {
+/*
+ * SteamVR's room setup: chaperone_info.vrchap holds a standing pose per
+ * tracking universe, lighthousedb.json lists the universes the lighthouse
+ * driver knows. Both are watched while running (see Device::poll_chaperone),
+ * so a room setup written while Monado is up applies without a restart.
+ */
+struct ChaperoneFiles
 {
-	static bool initialized = false;
-	if (initialized)
-		return;
+	std::string db_path;
+	std::string chap_path;
+	u_logging_level log_level{U_LOGGING_INFO};
+	std::filesystem::file_time_type db_time{};
+	std::filesystem::file_time_type chap_time{};
+	std::chrono::steady_clock::time_point next_check{};
+	bool watching{false};
+};
 
-	initialized = true;
+//! Guarded by Device::chaperone_mutex.
+ChaperoneFiles chaperone_files;
 
+std::filesystem::file_time_type
+modified_time(const std::string &path)
+{
+	std::error_code ec;
+	const auto time = std::filesystem::last_write_time(path, ec);
+	return ec ? std::filesystem::file_time_type::min() : time;
+}
+
+/*!
+ * The standing pose of the first known universe that has room setup data, or
+ * nothing (logged at @p failure_level) if the files are missing or don't match.
+ */
+std::optional<xrt_pose>
+load_chaperone(const ChaperoneFiles &files, u_logging_level failure_level)
+{
+	const u_logging_level log_level = files.log_level;
 	// Lighthouse driver seems to create a lighthousedb.json and a chaperone_info.vrchap (which is json)
 	// We will use the known_universes from the lighthousedb.json to match to a universe from chaperone_info.vrchap
 
 	using xrt::auxiliary::util::json::JSONNode;
-	auto lighthousedb = JSONNode::loadFromFile(steam_install + "/config/lighthouse/lighthousedb.json");
+	auto lighthousedb = JSONNode::loadFromFile(files.db_path);
 	if (lighthousedb.isInvalid()) {
-		DEV_ERR("Couldn't load lighthousedb file, playspace center will be off - was Room Setup run?");
-		return;
+		U_LOG_IFL(failure_level, log_level,
+		          "Couldn't load lighthousedb file, playspace center will be off - was Room Setup run?");
+		return std::nullopt;
 	}
-	auto chap_info = JSONNode::loadFromFile(steam_install + "/config/chaperone_info.vrchap");
+	auto chap_info = JSONNode::loadFromFile(files.chap_path);
 	if (chap_info.isInvalid()) {
-		DEV_ERR("Couldn't load chaperone info, playspace center will be off - was Room Setup run?");
-		return;
+		U_LOG_IFL(failure_level, log_level,
+		          "Couldn't load chaperone info, playspace center will be off - was Room Setup run?");
+		return std::nullopt;
 	}
 
 	JSONNode info = {};
@@ -1151,7 +1183,7 @@ Device::init_chaperone(const std::string &steam_install)
 		const std::string id = universe["id"].asString();
 		for (const JSONNode &u : chap_info["universes"].asArray()) {
 			if (u["universeID"].asString() == id) {
-				DEV_INFO("Found info for universe %s", id.c_str());
+				U_LOG_IFL_I(log_level, "Found info for universe %s", id.c_str());
 				info = u;
 				universe_found = true;
 				break;
@@ -1163,8 +1195,9 @@ Device::init_chaperone(const std::string &steam_install)
 	}
 
 	if (info.isInvalid()) {
-		DEV_ERR("Couldn't find chaperone info for any known universe, playspace center will be off");
-		return;
+		U_LOG_IFL(failure_level, log_level,
+		          "Couldn't find chaperone info for any known universe, playspace center will be off");
+		return std::nullopt;
 	}
 
 	std::vector<JSONNode> translation_arr = info["standing"]["translation"].asArray();
@@ -1174,16 +1207,75 @@ Device::init_chaperone(const std::string &steam_install)
 		translation_arr.push_back(JSONNode("0.0"));
 	}
 
+	xrt_pose pose = XRT_POSE_IDENTITY;
 	const double yaw = info["standing"]["yaw"].asDouble();
 	const xrt_vec3 yaw_axis{0.0, -1.0, 0.0};
-	math_quat_from_angle_vector(static_cast<float>(yaw), &yaw_axis, &chaperone.orientation);
-	chaperone.position = copy_vec3({
+	math_quat_from_angle_vector(static_cast<float>(yaw), &yaw_axis, &pose.orientation);
+	pose.position = copy_vec3({
 	    translation_arr[0].asDouble(),
 	    translation_arr[1].asDouble(),
 	    translation_arr[2].asDouble(),
 	});
-	math_quat_rotate_vec3(&chaperone.orientation, &chaperone.position, &chaperone.position);
-	DEV_INFO("Initialized chaperone data.");
+	math_quat_rotate_vec3(&pose.orientation, &pose.position, &pose.position);
+	return pose;
+}
+} // namespace
+
+void
+Device::init_chaperone(const std::string &steam_install)
+{
+	std::lock_guard lk(chaperone_mutex);
+	if (chaperone_files.watching)
+		return;
+
+	chaperone_files.db_path = steam_install + "/config/lighthouse/lighthousedb.json";
+	chaperone_files.chap_path = steam_install + "/config/chaperone_info.vrchap";
+	chaperone_files.log_level = ctx->log_level;
+	chaperone_files.db_time = modified_time(chaperone_files.db_path);
+	chaperone_files.chap_time = modified_time(chaperone_files.chap_path);
+	chaperone_files.watching = true;
+
+	if (auto pose = load_chaperone(chaperone_files, U_LOGGING_ERROR)) {
+		chaperone = *pose;
+		DEV_INFO("Initialized chaperone data.");
+	}
+}
+
+void
+Device::poll_chaperone()
+{
+	ChaperoneFiles files;
+	{
+		std::lock_guard lk(chaperone_mutex);
+		const auto now = std::chrono::steady_clock::now();
+		if (!chaperone_files.watching || now < chaperone_files.next_check) {
+			return;
+		}
+		chaperone_files.next_check = now + std::chrono::seconds(1);
+
+		const auto db_time = modified_time(chaperone_files.db_path);
+		const auto chap_time = modified_time(chaperone_files.chap_path);
+		if (db_time == chaperone_files.db_time && chap_time == chaperone_files.chap_time) {
+			return;
+		}
+		chaperone_files.db_time = db_time;
+		chaperone_files.chap_time = chap_time;
+		files = chaperone_files;
+	}
+
+	// Parsed outside the lock: update_pose takes it on the driver's threads.
+	// A file that's gone or half-written keeps the play space we have.
+	const std::optional<xrt_pose> pose = load_chaperone(files, U_LOGGING_DEBUG);
+	if (!pose) {
+		return;
+	}
+
+	std::lock_guard lk(chaperone_mutex);
+	const bool changed = std::memcmp(&chaperone, &*pose, sizeof(xrt_pose)) != 0;
+	chaperone = *pose;
+	if (changed) {
+		U_LOG_IFL_I(files.log_level, "Room setup changed on disk, play space updated.");
+	}
 }
 
 inline xrt_space_relation_flags
@@ -1276,9 +1368,14 @@ Device::update_pose(const vr::DriverPose_t &newPose) const
 	math_quat_rotate_vec3(&world.orientation, &relation.angular_velocity, &relation.angular_velocity);
 
 	// apply chaperone transform
-	math_pose_transform(&chaperone, &relation.pose, &relation.pose);
-	math_quat_rotate_vec3(&chaperone.orientation, &relation.linear_velocity, &relation.linear_velocity);
-	math_quat_rotate_vec3(&chaperone.orientation, &relation.angular_velocity, &relation.angular_velocity);
+	xrt_pose room;
+	{
+		std::lock_guard lk(chaperone_mutex);
+		room = chaperone;
+	}
+	math_pose_transform(&room, &relation.pose, &relation.pose);
+	math_quat_rotate_vec3(&room.orientation, &relation.linear_velocity, &relation.linear_velocity);
+	math_quat_rotate_vec3(&room.orientation, &relation.angular_velocity, &relation.angular_velocity);
 
 	const uint64_t ts = chrono_timestamp_ns() + static_cast<uint64_t>(newPose.poseTimeOffset * 1000000.0);
 
