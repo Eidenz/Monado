@@ -23,6 +23,7 @@ EXPORTS
     mnd_root_get_tracking_origin_name
     mnd_root_get_device_battery_status
     mnd_root_get_device_tracking_state
+    mnd_root_get_device_pose
     mnd_root_set_client_controller_freeze
     mnd_root_set_hold_pose_when_off
     mnd_root_get_hold_pose_when_off

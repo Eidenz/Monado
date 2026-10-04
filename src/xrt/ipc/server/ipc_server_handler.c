@@ -2860,6 +2860,26 @@ ipc_handle_device_get_tracking_state(volatile struct ipc_client_state *ics,
 }
 
 xrt_result_t
+ipc_handle_device_get_primary_pose(volatile struct ipc_client_state *ics,
+                                   uint32_t id,
+                                   int64_t at_timestamp,
+                                   struct xrt_space_relation *out_relation)
+{
+	struct xrt_device *xdev = NULL;
+	GET_XDEV_OR_RETURN(ics, id, xdev);
+
+	// The first pose input: the head for a headset, the grip for a controller.
+	for (uint32_t i = 0; i < xdev->input_count; i++) {
+		enum xrt_input_name name = xdev->inputs[i].name;
+		if (XRT_GET_INPUT_TYPE(name) == XRT_INPUT_TYPE_POSE) {
+			return xrt_device_get_tracked_pose(xdev, name, at_timestamp, out_relation);
+		}
+	}
+
+	return XRT_ERROR_INPUT_UNSUPPORTED;
+}
+
+xrt_result_t
 ipc_handle_device_get_brightness(volatile struct ipc_client_state *ics, uint32_t id, float *out_brightness)
 {
 	struct xrt_device *xdev = NULL;

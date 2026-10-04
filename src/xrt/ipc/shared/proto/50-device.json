@@ -263,6 +263,16 @@
 		]
 	},
 
+	"device_get_primary_pose": {
+		"in": [
+			{"name": "id", "type": "uint32_t"},
+			{"name": "at_timestamp", "type": "int64_t"}
+		],
+		"out": [
+			{"name": "relation", "type": "struct xrt_space_relation"}
+		]
+	},
+
 	"device_get_brightness": {
 		"in": [
 			{"name": "id", "type": "uint32_t"}

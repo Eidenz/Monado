@@ -18,6 +18,8 @@
 #include "util/u_file.h"
 #include "util/u_logging.h"
 
+#include "os/os_time.h"
+
 #include "shared/ipc_protocol.h"
 
 #include "client/ipc_client_connection.h"
@@ -790,6 +792,41 @@ mnd_root_get_device_tracking_state(mnd_root_t *root, uint32_t device_index, bool
 	case XRT_ERROR_IPC_FAILURE: PE("Connection error!"); return MND_ERROR_OPERATION_FAILED;
 	default: PE("Internal error, shouldn't get here"); return MND_ERROR_OPERATION_FAILED;
 	}
+}
+
+mnd_result_t
+mnd_root_get_device_pose(mnd_root_t *root, uint32_t device_index, mnd_pose_t *out_pose, bool *out_tracked)
+{
+	CHECK_NOT_NULL(root);
+	CHECK_DEVICE_INDEX(device_index);
+	CHECK_NOT_NULL(out_pose);
+	CHECK_NOT_NULL(out_tracked);
+
+	// The IPC call takes the service's device id, not our list index.
+	uint32_t device_id = root->device_list.devices[device_index].id;
+
+	struct xrt_space_relation rel = {0};
+	xrt_result_t xret = ipc_call_device_get_primary_pose(&root->ipc_c, device_id, os_monotonic_get_ns(), &rel);
+	switch (xret) {
+	case XRT_SUCCESS: break;
+	case XRT_ERROR_INPUT_UNSUPPORTED: return MND_ERROR_UNSUPPORTED_OPERATION;
+	case XRT_ERROR_IPC_FAILURE: PE("Connection error!"); return MND_ERROR_OPERATION_FAILED;
+	default: PE("Internal error, shouldn't get here"); return MND_ERROR_OPERATION_FAILED;
+	}
+
+	out_pose->orientation.x = rel.pose.orientation.x;
+	out_pose->orientation.y = rel.pose.orientation.y;
+	out_pose->orientation.z = rel.pose.orientation.z;
+	out_pose->orientation.w = rel.pose.orientation.w;
+	out_pose->position.x = rel.pose.position.x;
+	out_pose->position.y = rel.pose.position.y;
+	out_pose->position.z = rel.pose.position.z;
+
+	const enum xrt_space_relation_flags tracked =
+	    XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT;
+	*out_tracked = (rel.relation_flags & tracked) == tracked;
+
+	return MND_SUCCESS;
 }
 
 mnd_result_t

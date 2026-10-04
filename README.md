@@ -122,7 +122,21 @@ The startup default comes from `XRT_HOLD_POSE_WHEN_OFF` (default `true`).
 tracked, so a UI can grey out dead devices that stay in the device list. UDCAP
 gloves also report their battery level now.
 
-> **AI usage:** The UDCAP, hotplug, in-headset screenshot, finger-frame gesture and controller-freeze, hold-pose and tracking-state additions in this fork were developed with AI assistance (Anthropic's Claude), under human direction, testing, and review. Upstream Monado is unaffected.
+### Device pose
+
+`mnd_root_get_device_pose` (libmonado 1.10) returns where a device is right now,
+in its tracking origin's space, so a tool can measure things like where the
+headset sits on the floor.
+
+### Room setup without a restart
+
+The SteamVR Lighthouse driver (`steamvr_lh`) applies SteamVR's room setup
+(`chaperone_info.vrchap`, matched to a universe in `lighthousedb.json`) to every
+pose. It now watches both files while running and re-applies the room setup when
+either changes, so a floor calibration written while Monado runs takes effect at
+once.
+
+> **AI usage:** The UDCAP, hotplug, in-headset screenshot, finger-frame gesture and controller-freeze, hold-pose, tracking-state, device-pose and room-setup-reload additions in this fork were developed with AI assistance (Anthropic's Claude), under human direction, testing, and review. Upstream Monado is unaffected.
 
 ---
 

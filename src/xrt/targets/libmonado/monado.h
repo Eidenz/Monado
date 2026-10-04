@@ -26,7 +26,7 @@ extern "C" {
 //! Major version of the API.
 #define MND_API_VERSION_MAJOR 1
 //! Minor version of the API.
-#define MND_API_VERSION_MINOR 9
+#define MND_API_VERSION_MINOR 10
 //! Patch version of the API.
 #define MND_API_VERSION_PATCH 0
 
@@ -625,6 +625,25 @@ mnd_root_get_device_battery_status(
  */
 mnd_result_t
 mnd_root_get_device_tracking_state(mnd_root_t *root, uint32_t device_index, bool *out_connected, bool *out_tracking);
+
+/*!
+ * Get where a device is right now: the pose of its first pose input (the head
+ * for a headset, the grip for a controller), in its tracking origin's space,
+ * before the origin's offset (see @ref mnd_root_get_tracking_origin_offset) and
+ * any reference space offset are applied.
+ *
+ * Supported in version 1.10 and above.
+ *
+ * @param root              The libmonado state.
+ * @param device_index      Index of the device.
+ * @param[out] out_pose     The device's pose.
+ * @param[out] out_tracked  Whether its position and orientation are both tracked.
+ *
+ * @return MND_SUCCESS on success, MND_ERROR_UNSUPPORTED_OPERATION if the
+ *         device has no pose.
+ */
+mnd_result_t
+mnd_root_get_device_pose(mnd_root_t *root, uint32_t device_index, mnd_pose_t *out_pose, bool *out_tracked);
 
 /*!
  * Get current brightness of a display device.
