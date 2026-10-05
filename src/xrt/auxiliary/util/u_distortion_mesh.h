@@ -188,9 +188,6 @@ struct u_poly_3k_eye_values
 	struct xrt_vec2 tex_x_range;
 	struct xrt_vec2 tex_y_range;
 
-	//! Hack values for WMR devices with weird distortions
-	int32_t y_offset;
-
 	struct u_poly_3k_distortion_values channels[3];
 };
 

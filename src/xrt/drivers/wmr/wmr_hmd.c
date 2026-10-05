@@ -82,10 +82,6 @@ DEBUG_GET_ONCE_BOOL_OPTION(wmr_handtracking, "WMR_HANDTRACKING", true)
 DEBUG_GET_ONCE_OPTION(slam_submit_from_start, "SLAM_SUBMIT_FROM_START", NULL)
 #endif
 
-//! Specifies the y offset of the views.
-DEBUG_GET_ONCE_NUM_OPTION(left_view_y_offset, "WMR_LEFT_DISPLAY_VIEW_Y_OFFSET", 0)
-DEBUG_GET_ONCE_NUM_OPTION(right_view_y_offset, "WMR_RIGHT_DISPLAY_VIEW_Y_OFFSET", 0)
-
 
 #define WMR_TRACE(d, ...) U_LOG_XDEV_IFL_T(&d->base, d->log_level, __VA_ARGS__)
 #define WMR_DEBUG(d, ...) U_LOG_XDEV_IFL_D(&d->base, d->log_level, __VA_ARGS__)
@@ -1953,9 +1949,6 @@ wmr_hmd_create(enum wmr_headset_type hmd_type,
 	size_t idx = 0;
 	wh->base.hmd->blend_modes[idx++] = XRT_BLEND_MODE_OPAQUE;
 	wh->base.hmd->blend_mode_count = idx;
-
-	wh->config.eye_params[0].poly_3k.y_offset = debug_get_num_option_left_view_y_offset();
-	wh->config.eye_params[1].poly_3k.y_offset = debug_get_num_option_right_view_y_offset();
 
 	// Distortion information, fills in xdev->compute_distortion().
 	for (eye = 0; eye < 2; eye++) {

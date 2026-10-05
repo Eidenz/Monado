@@ -427,8 +427,6 @@ u_compute_distortion_poly_3k(
 		struct xrt_vec2 pix_coord = {(u + 1.0f * view) * (display_size.x / 2.0f) - eye_center.x,
 		                             v * display_size.y - eye_center.y};
 
-		pix_coord.y += (float)values->y_offset;
-
 		float r2 = m_vec2_dot(pix_coord, pix_coord);
 		float k1 = (float)k[0];
 		float k2 = (float)k[1];
