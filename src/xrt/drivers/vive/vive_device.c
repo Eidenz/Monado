@@ -887,7 +887,7 @@ vive_sensors_run_thread(void *ptr)
 	struct vive_device *d = (struct vive_device *)ptr;
 
 	U_TRACE_SET_THREAD_NAME("Vive: Sensors");
-	os_thread_helper_name(&d->sensors_thread, "Vive: Sensors");
+	os_thread_name_self("Vive: Sensors");
 
 #ifdef XRT_OS_LINUX
 	// Try to raise priority of this thread.

@@ -359,7 +359,7 @@ run_func(void *ptr)
 
 	snprintf(t->name, sizeof(t->name), "%s: Worker", p->prefix);
 	U_TRACE_SET_THREAD_NAME(t->name);
-	os_thread_name(&t->thread, t->name);
+	os_thread_name_self(t->name);
 
 	os_mutex_lock(&p->mutex);
 

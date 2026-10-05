@@ -316,7 +316,7 @@ comp_window_mswin_thread_func(void *ptr)
 {
 
 	struct comp_window_mswin *cwm = (struct comp_window_mswin *)ptr;
-	os_thread_helper_name(&(cwm->oth), "Compositor Window Message Thread");
+	os_thread_name_self("Compositor Window Message Thread");
 
 	comp_window_mswin_thread(cwm);
 	os_thread_helper_signal_stop(&cwm->oth);

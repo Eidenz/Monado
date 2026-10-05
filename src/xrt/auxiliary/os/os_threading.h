@@ -370,17 +370,18 @@ os_hardware_thread_count(void)
 }
 
 /*!
- * Make a best effort to name our thread.
+ * Make a best effort to name the current thread.
  *
- * @public @memberof os_thread
+ * Due to an easy race condition caused by musl starting threads before the
+ * handle is written into memory, only this function is exposed, since
+ * it is the safer option when called by the thread itself.
  */
 static inline void
-os_thread_name(struct os_thread *ost, const char *name)
+os_thread_name_self(const char *name)
 {
 #ifdef OS_THREAD_HAVE_SETNAME
-	pthread_setname_np(ost->thread, name);
+	pthread_setname_np(pthread_self(), name);
 #else
-	(void)ost;
 	(void)name;
 #endif
 }
@@ -729,22 +730,6 @@ static inline void
 os_thread_helper_signal_locked(struct os_thread_helper *oth)
 {
 	pthread_cond_signal(&oth->cond);
-}
-
-/*!
- * Make a best effort to name our thread.
- *
- * @public @memberof os_thread_helper
- */
-static inline void
-os_thread_helper_name(struct os_thread_helper *oth, const char *name)
-{
-#ifdef OS_THREAD_HAVE_SETNAME
-	pthread_setname_np(oth->thread, name);
-#else
-	(void)oth;
-	(void)name;
-#endif
 }
 
 /*!

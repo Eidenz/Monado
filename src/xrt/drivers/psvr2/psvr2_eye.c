@@ -199,7 +199,7 @@ psvr2_eye_tracking_control_thread(void *usrptr)
 	const char *thread_name = "PSVR2 Eye Tracking Control";
 
 	U_TRACE_SET_THREAD_NAME(thread_name);
-	os_thread_helper_name(&hmd->et_data.eye_tracking_thread, thread_name);
+	os_thread_name_self(thread_name);
 
 #ifdef XRT_OS_LINUX
 	// Try to raise priority of this thread.

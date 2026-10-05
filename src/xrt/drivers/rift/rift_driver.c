@@ -404,7 +404,7 @@ rift_radio_thread(void *ptr)
 	const char *thread_name = "Rift Radio";
 
 	U_TRACE_SET_THREAD_NAME(thread_name);
-	os_thread_helper_name(&hmd->radio_state.thread, thread_name);
+	os_thread_name_self(thread_name);
 
 #ifdef XRT_OS_LINUX
 	// Try to raise priority of this thread.

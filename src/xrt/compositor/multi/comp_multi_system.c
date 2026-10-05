@@ -527,7 +527,7 @@ static int
 multi_main_loop(struct multi_system_compositor *msc)
 {
 	U_TRACE_SET_THREAD_NAME("Multi Client Module");
-	os_thread_helper_name(&msc->oth, "Multi Client Module");
+	os_thread_name_self("Multi Client Module");
 
 	// Try to raise priority of this thread.
 	u_try_to_set_realtime_priority_on_thread(U_LOGGING_INFO, "Multi Client Module");

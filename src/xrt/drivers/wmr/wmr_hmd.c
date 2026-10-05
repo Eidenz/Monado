@@ -658,7 +658,7 @@ wmr_run_thread(void *ptr)
 	struct wmr_hmd *wh = (struct wmr_hmd *)ptr;
 
 	U_TRACE_SET_THREAD_NAME("WMR: USB-HMD");
-	os_thread_helper_name(&wh->oth, "WMR: USB-HMD");
+	os_thread_name_self("WMR: USB-HMD");
 
 #ifdef XRT_OS_LINUX
 	// Try to raise priority of this thread.

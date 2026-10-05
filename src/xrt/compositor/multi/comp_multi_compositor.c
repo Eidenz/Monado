@@ -245,7 +245,7 @@ run_func(void *ptr)
 	struct multi_compositor *mc = (struct multi_compositor *)ptr;
 
 	U_TRACE_SET_THREAD_NAME("Multi Client Module: Waiter");
-	os_thread_helper_name(&mc->wait_thread.oth, "Multi Client Module: Waiter");
+	os_thread_name_self("Multi Client Module: Waiter");
 
 	os_thread_helper_lock(&mc->wait_thread.oth);
 
