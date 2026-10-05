@@ -531,10 +531,11 @@ u_compute_distortion_bounds_poly_3k(const struct xrt_matrix_3x3 *inv_affine_xfor
 	out_fov->angle_down = -atanf(tanangle_down);
 	out_fov->angle_up = -atanf(tanangle_up);
 
-	out_tex_x_range->x = tanf(out_fov->angle_left);
-	out_tex_x_range->y = tanf(out_fov->angle_right);
-	out_tex_y_range->x = tanf(out_fov->angle_down);
-	out_tex_y_range->y = tanf(out_fov->angle_up);
+	// Ensure it's in distortion Y-down space, rather than OpenXR Y-up space
+	out_tex_x_range->x = tanangle_left;
+	out_tex_x_range->y = tanangle_right;
+	out_tex_y_range->x = tanangle_up;
+	out_tex_y_range->y = tanangle_down;
 }
 
 

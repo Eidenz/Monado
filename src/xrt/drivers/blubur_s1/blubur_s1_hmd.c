@@ -171,6 +171,7 @@ blubur_s1_hmd_get_view_poses(struct xrt_device *xdev,
 static void
 blubur_s1_hmd_fill_in_poly_3k(struct blubur_s1_hmd *hmd)
 {
+	// clang-format off
 	hmd->poly_3k_values[0] = (struct u_poly_3k_eye_values){
 	    .channels =
 	        {
@@ -206,15 +207,13 @@ blubur_s1_hmd_fill_in_poly_3k(struct blubur_s1_hmd *hmd)
 	            },
 	        },
 	};
-	// NOTE: these distortion values appear to exhibit the Y offset bug that some WMR headsets do, worked around it
-	//       by copying eye center Y to the other eye
 	hmd->poly_3k_values[1] = (struct u_poly_3k_eye_values){
 	    .channels =
 	        {
 	            {
 	                .display_size = {PANEL_WIDTH, VIEW_SIZE},
 	                .eye_center = {2166.0195141711984f,
-	                               hmd->poly_3k_values->channels[0].eye_center.y /* 693.80762487779759f */},
+	                               693.80762487779759f },
 	                .k =
 	                    {
 	                        1.6848296693566205e-007f,
@@ -225,7 +224,7 @@ blubur_s1_hmd_fill_in_poly_3k(struct blubur_s1_hmd *hmd)
 	            {
 	                .display_size = {PANEL_WIDTH, VIEW_SIZE},
 	                .eye_center = {2164.9567320272263f,
-	                               hmd->poly_3k_values->channels[1].eye_center.y /* 693.8666328641682f */},
+	                               693.8666328641682f },
 	                .k =
 	                    {
 	                        2.2979021408214227e-007f,
@@ -236,7 +235,7 @@ blubur_s1_hmd_fill_in_poly_3k(struct blubur_s1_hmd *hmd)
 	            {
 	                .display_size = {PANEL_WIDTH, VIEW_SIZE},
 	                .eye_center = {2164.0315727658904f,
-	                               hmd->poly_3k_values->channels[2].eye_center.y /* 693.45351818980896f */},
+	                               693.45351818980896f },
 	                .k =
 	                    {
 	                        3.1993667496208384e-007f,
@@ -265,6 +264,7 @@ blubur_s1_hmd_fill_in_poly_3k(struct blubur_s1_hmd *hmd)
 	            },
 	    },
 	};
+	// clang-format on
 
 	for (int i = 0; i < 2; i++) {
 		math_matrix_3x3_inverse(&affine_xform[i], &hmd->poly_3k_values[i].inv_affine_xform);
