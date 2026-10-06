@@ -343,10 +343,8 @@ Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx),
 
 	this->xrt_device::destroy = [](xrt_device *xdev) {
 		auto *dev = static_cast<Device *>(xdev);
+		// LH_STANDBY_ON_EXIT's standby happens earlier, see enter_standby_on_exit().
 		if (dev->driver) {
-			if (debug_get_bool_option_lh_standby_on_exit()) {
-				dev->driver->EnterStandby();
-			}
 			dev->driver->Deactivate();
 		}
 		delete dev;
@@ -358,6 +356,14 @@ Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx),
 // NOTE: No operations that would force inputs_vec or finger_inputs_vec to reallocate (such as insertion)
 // should be done after this function is called, otherwise the pointers in inputs_map/finger_inputs_map
 // would be invalidated.
+void
+Device::enter_standby_on_exit()
+{
+	if (driver != nullptr && debug_get_bool_option_lh_standby_on_exit()) {
+		driver->EnterStandby();
+	}
+}
+
 void
 ControllerDevice::set_input_class(const InputClass *input_class)
 {

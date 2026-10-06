@@ -123,6 +123,12 @@ public:
 	void
 	set_driver(vr::ITrackedDeviceServerDriver *new_driver);
 
+	//! With LH_STANDBY_ON_EXIT, put the device into standby, which powers
+	//! controllers and trackers off. Called on shutdown, before anything is
+	//! torn down (see destroy() in steamvr_lh.cpp).
+	void
+	enter_standby_on_exit();
+
 	//! Re-read SteamVR's room setup if its files changed (at most once a second).
 	static void
 	poll_chaperone();

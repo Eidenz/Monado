@@ -1165,10 +1165,27 @@ get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 void
 destroy(struct xrt_system_devices *xsysd)
 {
+	Context *ctx = svrs->ctx.get();
+
+	// LH_STANDBY_ON_EXIT: standby first, while the context still finds every
+	// device. The lighthouse driver only powers a controller off in
+	// EnterStandby() after reading its Prop_DeviceCanPowerOff_Bool back
+	// through the device's property container, and the controller slots are
+	// emptied below.
+	if (ctx != nullptr) {
+		if (ctx->hmd != nullptr) {
+			ctx->hmd->enter_standby_on_exit();
+		}
+		for (size_t j = 0; j < MAX_CONTROLLERS; j++) {
+			if (ctx->controller[j] != nullptr) {
+				ctx->controller[j]->enter_standby_on_exit();
+			}
+		}
+	}
+
 	// Controllers that never made it into xsysd (Activate() failed) still hold
 	// a reference to the context: destroy them here so nothing leaks and the
 	// use_count check below holds. Must run while static_xdevs is intact.
-	Context *ctx = svrs->ctx.get();
 	for (size_t j = 0; ctx != nullptr && j < MAX_CONTROLLERS; j++) {
 		struct xrt_device *cd = ctx->controller[j];
 		if (cd == nullptr) {
