@@ -15,6 +15,7 @@
 #include "util/u_handles.h"
 #include "util/u_pretty_print.h"
 #include "util/u_visibility_mask.h"
+#include "util/u_stage_bounds.h"
 #include "util/u_trace_marker.h"
 
 #include "server/ipc_server.h"
@@ -1579,6 +1580,11 @@ ipc_handle_compositor_get_reference_bounds_rect(volatile struct ipc_client_state
 
 	if (ics->xc == NULL) {
 		return XRT_ERROR_IPC_SESSION_NOT_CREATED;
+	}
+
+	// The play area, when a tracking driver knows it (steamvr_lh: SteamVR's room setup).
+	if (reference_space_type == XRT_SPACE_REFERENCE_TYPE_STAGE && u_stage_bounds_get(bounds)) {
+		return XRT_SUCCESS;
 	}
 
 	return xrt_comp_get_reference_bounds_rect(ics->xc, reference_space_type, bounds);

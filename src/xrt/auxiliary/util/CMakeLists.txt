@@ -116,6 +116,8 @@ add_library(
 	u_template_historybuf.hpp
 	u_thread_priority.c
 	u_thread_priority.h
+	u_stage_bounds.cpp
+	u_stage_bounds.h
 	u_time.cpp
 	u_time.h
 	u_trace_marker.c

@@ -22,6 +22,7 @@
 #include "util/u_hand_tracking.h"
 #include "util/u_logging.h"
 #include "util/u_json.hpp"
+#include "util/u_stage_bounds.h"
 
 #include "util/u_time.h"
 #include "xrt/xrt_defines.h"
@@ -1129,9 +1130,10 @@ copy_pose(const vr::HmdQuaternion_t &orientation, const double (&position)[3])
 namespace {
 /*
  * SteamVR's room setup: chaperone_info.vrchap holds a standing pose per
- * tracking universe, lighthousedb.json lists the universes the lighthouse
- * driver knows. Both are watched while running (see Device::poll_chaperone),
- * so a room setup written while Monado is up applies without a restart.
+ * tracking universe (and the play area: the walls drawn, and the rectangle
+ * apps get), lighthousedb.json lists the universes the lighthouse driver
+ * knows. Both are watched while running (see Device::poll_chaperone), so a
+ * room setup written while Monado is up applies without a restart.
  */
 struct ChaperoneFiles
 {
@@ -1155,11 +1157,60 @@ modified_time(const std::string &path)
 	return ec ? std::filesystem::file_time_type::min() : time;
 }
 
+struct RoomSetup
+{
+	xrt_pose standing;
+	//! Width along X and depth along Z, centred on the standing origin.
+	std::optional<xrt_vec2> play_area;
+};
+
 /*!
- * The standing pose of the first known universe that has room setup data, or
+ * SteamVR's quick calibration (and Monadeck's room setup) leaves this 3 x 2 m
+ * box in collision_bounds: walls nobody drew.
+ */
+bool
+is_quick_calibration_box(const xrt::auxiliary::util::json::JSONNode &bounds)
+{
+	const auto walls = bounds.asArray();
+	if (walls.size() != 4) {
+		return false;
+	}
+	for (const auto &wall : walls) {
+		for (const auto &corner : wall.asArray()) {
+			const auto v = corner.asArray();
+			if (v.size() != 3 || std::abs(std::abs(v[0].asDouble()) - 1.5) > 1e-3 ||
+			    std::abs(std::abs(v[2].asDouble()) - 1.0) > 1e-3) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+/*!
+ * The play area apps are told about: SteamVR's rectangle, once walls were
+ * drawn around it.
+ */
+std::optional<xrt_vec2>
+play_area_of(const xrt::auxiliary::util::json::JSONNode &info)
+{
+	const auto walls = info["collision_bounds"];
+	const auto size = info["play_area"].asArray();
+	if (walls.asArray().empty() || is_quick_calibration_box(walls) || size.size() != 2) {
+		return std::nullopt;
+	}
+	const xrt_vec2 area{static_cast<float>(size[0].asDouble()), static_cast<float>(size[1].asDouble())};
+	if (!(area.x > 0.1f && area.y > 0.1f)) {
+		return std::nullopt;
+	}
+	return area;
+}
+
+/*!
+ * The room setup of the first known universe that has room setup data, or
  * nothing (logged at @p failure_level) if the files are missing or don't match.
  */
-std::optional<xrt_pose>
+std::optional<RoomSetup>
 load_chaperone(const ChaperoneFiles &files, u_logging_level failure_level)
 {
 	const u_logging_level log_level = files.log_level;
@@ -1223,7 +1274,21 @@ load_chaperone(const ChaperoneFiles &files, u_logging_level failure_level)
 	    translation_arr[2].asDouble(),
 	});
 	math_quat_rotate_vec3(&pose.orientation, &pose.position, &pose.position);
-	return pose;
+	return RoomSetup{pose, play_area_of(info)};
+}
+
+//! Tell apps about the play area (logged when it changes).
+void
+publish_play_area(const std::optional<xrt_vec2> &area, u_logging_level log_level)
+{
+	xrt_vec2 before{};
+	const bool had = u_stage_bounds_get(&before);
+	u_stage_bounds_set(area ? &*area : nullptr);
+	if (area && (!had || std::memcmp(&before, &*area, sizeof(xrt_vec2)) != 0)) {
+		U_LOG_IFL_I(log_level, "Play area for apps: %.2f x %.2f m", area->x, area->y);
+	} else if (!area && had) {
+		U_LOG_IFL_I(log_level, "No play area for apps.");
+	}
 }
 } // namespace
 
@@ -1241,8 +1306,9 @@ Device::init_chaperone(const std::string &steam_install)
 	chaperone_files.chap_time = modified_time(chaperone_files.chap_path);
 	chaperone_files.watching = true;
 
-	if (auto pose = load_chaperone(chaperone_files, U_LOGGING_ERROR)) {
-		chaperone = *pose;
+	if (auto room = load_chaperone(chaperone_files, U_LOGGING_ERROR)) {
+		chaperone = room->standing;
+		publish_play_area(room->play_area, chaperone_files.log_level);
 		DEV_INFO("Initialized chaperone data.");
 	}
 }
@@ -1271,14 +1337,15 @@ Device::poll_chaperone()
 
 	// Parsed outside the lock: update_pose takes it on the driver's threads.
 	// A file that's gone or half-written keeps the play space we have.
-	const std::optional<xrt_pose> pose = load_chaperone(files, U_LOGGING_DEBUG);
-	if (!pose) {
+	const std::optional<RoomSetup> room = load_chaperone(files, U_LOGGING_DEBUG);
+	if (!room) {
 		return;
 	}
+	publish_play_area(room->play_area, files.log_level);
 
 	std::lock_guard lk(chaperone_mutex);
-	const bool changed = std::memcmp(&chaperone, &*pose, sizeof(xrt_pose)) != 0;
-	chaperone = *pose;
+	const bool changed = std::memcmp(&chaperone, &room->standing, sizeof(xrt_pose)) != 0;
+	chaperone = room->standing;
 	if (changed) {
 		U_LOG_IFL_I(files.log_level, "Room setup changed on disk, play space updated.");
 	}
