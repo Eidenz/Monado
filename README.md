@@ -19,10 +19,15 @@ sudo cmake --install cbuild
 This fork adds UDCAP gloves support and **device hotplug** for the SteamVR
 Lighthouse driver: controllers and trackers are discovered as they are powered
 on — including after apps are already running — and appear to OpenXR clients
-without a restart. Devices that power off stay listed but go inactive and lose
-their controller role (append-only, like SteamVR). When UDCAP gloves are active
-they hold the left/right controller roles until real controllers are powered
-on, and take them back when the controllers are powered off.
+without a restart. Devices that power off stay listed (append-only, like
+SteamVR) and are reported as disconnected, but keep their controller role until
+a powered-on device can take it over, so in-game hands hold their last pose
+instead of snapping back to the body. To have a powered-off device reported as
+untracked instead, so apps can apply their own fallback, set
+`XRT_HOLD_POSE_WHEN_OFF=0` or flip the switch at runtime through libmonado. When
+UDCAP gloves are active they hold the left/right controller roles until real
+controllers are powered on, and take them back when the controllers are powered
+off.
 
 Note: the HMD must be connected at startup; only controllers, trackers and
 gloves hotplug. Gloves are picked up at startup only (start udcap-server before
