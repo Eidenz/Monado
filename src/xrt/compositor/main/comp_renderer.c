@@ -1250,7 +1250,8 @@ comp_renderer_draw(struct comp_renderer *r)
 		    rect);                     //
 	}
 
-	// One-shot in-headset screenshot (test trigger: SIGUSR1). Reuses the
+	// One-shot in-headset screenshot (test triggers: SIGUSR1 for a photo,
+	// SIGUSR2 for a quiet capture another program reads). Reuses the
 	// mirror's GPU readback of the (undistorted) left-eye scratch image, then
 	// hands the frame to a worker thread so the PNG encode + disk write never
 	// stalls the compositor. On-demand only: zero cost when not capturing.

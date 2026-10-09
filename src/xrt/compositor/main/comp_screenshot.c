@@ -46,6 +46,19 @@ screenshot_signal_handler(int sig)
 	u_screenshot_request();
 }
 
+/*
+ * Fired by `kill -USR2 <monado-service pid>`: a quiet capture for another
+ * program (no sound, written to the capture dir as `latest.png`). Clients must
+ * check the capture dir's `ready` file names this process first: an older
+ * monado-service has no SIGUSR2 handler, and the default action terminates.
+ */
+static void
+quiet_capture_signal_handler(int sig)
+{
+	(void)sig;
+	u_screenshot_request_quiet();
+}
+
 
 /*
  *
@@ -139,23 +152,17 @@ resolve_crop(const struct xrt_frame *frame,
 	}
 }
 
-static void
-write_frame_to_disk(struct comp_screenshot *cs, struct xrt_frame *frame, const struct u_screenshot_request *req)
+// Readback frames are XRT_FORMAT_R8G8B8X8: 4 bytes per pixel, and the row
+// stride may exceed width*4. PNG wants tightly packed RGB, so repack the
+// (possibly cropped) region and drop the unused 4th channel. The bytes are
+// already sRGB-encoded, which is exactly what a PNG stores. Caller frees.
+static uint8_t *
+pack_rgb(const struct xrt_frame *frame, uint32_t cx, uint32_t cy, uint32_t cw, uint32_t ch)
 {
-	uint32_t full_w = frame->width;
-	uint32_t full_h = frame->height;
-
-	uint32_t cx, cy, cw, ch;
-	resolve_crop(frame, req, &cx, &cy, &cw, &ch);
-
-	// Readback frames are XRT_FORMAT_R8G8B8X8: 4 bytes per pixel, and the row
-	// stride may exceed width*4. PNG wants tightly packed RGB, so repack the
-	// (possibly cropped) region and drop the unused 4th channel. The bytes are
-	// already sRGB-encoded, which is exactly what a PNG stores.
 	uint8_t *rgb = malloc((size_t)cw * ch * 3);
 	if (rgb == NULL) {
 		U_LOG_E("screenshot: out of memory packing %ux%u", cw, ch);
-		return;
+		return NULL;
 	}
 
 	for (uint32_t y = 0; y < ch; y++) {
@@ -166,6 +173,51 @@ write_frame_to_disk(struct comp_screenshot *cs, struct xrt_frame *frame, const s
 			dst_row[x * 3 + 1] = src_row[x * 4 + 1];
 			dst_row[x * 3 + 2] = src_row[x * 4 + 2];
 		}
+	}
+	return rgb;
+}
+
+/*!
+ * A quiet capture: the whole view to `<capture_dir>/latest.png`, written
+ * under a temporary name and renamed into place, so a reader never sees a
+ * half-written file (and a new capture is a new inode). No sound.
+ */
+static void
+write_quiet_capture(struct comp_screenshot *cs, struct xrt_frame *frame)
+{
+	uint8_t *rgb = pack_rgb(frame, 0, 0, frame->width, frame->height);
+	if (rgb == NULL) {
+		return;
+	}
+
+	char tmp[600];
+	char path[600];
+	(void)snprintf(tmp, sizeof(tmp), "%s/.latest.png.tmp", cs->capture_dir);
+	(void)snprintf(path, sizeof(path), "%s/latest.png", cs->capture_dir);
+
+	int ok = stbi_write_png(tmp, (int)frame->width, (int)frame->height, 3, rgb, (int)(frame->width * 3));
+	free(rgb);
+
+	if (ok && rename(tmp, path) == 0) {
+		U_LOG_D("screenshot: quiet capture %s (%ux%u)", path, frame->width, frame->height);
+	} else {
+		U_LOG_E("screenshot: failed to write quiet capture %s", path);
+		(void)unlink(tmp);
+	}
+}
+
+static void
+write_frame_to_disk(struct comp_screenshot *cs, struct xrt_frame *frame, const struct u_screenshot_request *req)
+{
+	uint32_t full_w = frame->width;
+	uint32_t full_h = frame->height;
+
+	uint32_t cx, cy, cw, ch;
+	resolve_crop(frame, req, &cx, &cy, &cw, &ch);
+
+	uint8_t *rgb = pack_rgb(frame, cx, cy, cw, ch);
+	if (rgb == NULL) {
+		return;
 	}
 
 	char path[1024];
@@ -191,19 +243,28 @@ run_worker(void *ptr)
 	os_thread_helper_lock(&cs->oth);
 
 	while (os_thread_helper_is_running_locked(&cs->oth)) {
-		if (cs->pending == NULL) {
+		if (cs->pending == NULL && cs->pending_quiet == NULL) {
 			os_thread_helper_wait_locked(&cs->oth);
 			continue;
 		}
 
-		// Take ownership of the pending frame and release the lock for the
-		// (slow) encode + write.
-		struct xrt_frame *frame = cs->pending;
+		// Take ownership of a pending frame (photos first) and release the
+		// lock for the (slow) encode + write.
+		bool quiet = cs->pending == NULL;
+		struct xrt_frame *frame = quiet ? cs->pending_quiet : cs->pending;
 		struct u_screenshot_request req = cs->pending_req;
-		cs->pending = NULL;
+		if (quiet) {
+			cs->pending_quiet = NULL;
+		} else {
+			cs->pending = NULL;
+		}
 		os_thread_helper_unlock(&cs->oth);
 
-		write_frame_to_disk(cs, frame, &req);
+		if (quiet) {
+			write_quiet_capture(cs, frame);
+		} else {
+			write_frame_to_disk(cs, frame, &req);
+		}
 		xrt_frame_reference(&frame, NULL); // returns the frame to the readback pool
 
 		os_thread_helper_lock(&cs->oth);
@@ -212,6 +273,9 @@ run_worker(void *ptr)
 	// Drop anything still queued at shutdown.
 	if (cs->pending != NULL) {
 		xrt_frame_reference(&cs->pending, NULL);
+	}
+	if (cs->pending_quiet != NULL) {
+		xrt_frame_reference(&cs->pending_quiet, NULL);
 	}
 
 	os_thread_helper_unlock(&cs->oth);
@@ -266,8 +330,22 @@ comp_screenshot_init(struct comp_screenshot *cs)
 	}
 
 #if !defined(_WIN32)
-	// Best-effort: create the directory (and any missing parents).
+	// Quiet captures go to MONADO_CAPTURE_DIR, else a private runtime dir.
+	const char *capture = getenv("MONADO_CAPTURE_DIR");
+	const char *runtime = getenv("XDG_RUNTIME_DIR");
+	if (capture != NULL && capture[0] != '\0') {
+		(void)snprintf(cs->capture_dir, sizeof(cs->capture_dir), "%s", capture);
+	} else if (runtime != NULL && runtime[0] != '\0') {
+		(void)snprintf(cs->capture_dir, sizeof(cs->capture_dir), "%s/monado-capture", runtime);
+	} else {
+		(void)snprintf(cs->capture_dir, sizeof(cs->capture_dir), "/tmp/monado-capture-%u", (unsigned)getuid());
+	}
+
+	// Best-effort: create the directories (and any missing parents). What's in
+	// the headset is private: the capture dir is for this user only.
 	make_dirs(cs->dir);
+	make_dirs(cs->capture_dir);
+	(void)chmod(cs->capture_dir, 0700);
 #endif
 
 	int ret = os_thread_helper_init(&cs->oth);
@@ -294,9 +372,31 @@ comp_screenshot_init(struct comp_screenshot *cs)
 	if (sigaction(SIGUSR1, &sa, NULL) != 0) {
 		U_LOG_W("screenshot: failed to install SIGUSR1 handler");
 	}
+
+	// Quiet captures (SIGUSR2). Only once the handler is in place, advertise
+	// it: `ready` holds our pid, so a client can tell a live, capable
+	// monado-service from a stale file or an older build.
+	sa.sa_handler = quiet_capture_signal_handler;
+	if (sigaction(SIGUSR2, &sa, NULL) == 0) {
+		char tmp[600];
+		char path[600];
+		(void)snprintf(tmp, sizeof(tmp), "%s/.ready.tmp", cs->capture_dir);
+		(void)snprintf(path, sizeof(path), "%s/ready", cs->capture_dir);
+		FILE *f = fopen(tmp, "w");
+		if (f != NULL) {
+			fprintf(f, "%ld\n", (long)getpid());
+			fclose(f);
+			if (rename(tmp, path) != 0) {
+				(void)unlink(tmp);
+			}
+		}
+	} else {
+		U_LOG_W("screenshot: failed to install SIGUSR2 handler, quiet captures off");
+	}
 #endif
 
-	U_LOG_I("screenshot: ready, writing to %s (sound on; MONADO_SCREENSHOT_NO_SOUND to mute)", cs->dir);
+	U_LOG_I("screenshot: ready, writing to %s (sound on; MONADO_SCREENSHOT_NO_SOUND to mute); quiet captures to %s",
+	        cs->dir, cs->capture_dir);
 
 	return 0;
 }
@@ -313,14 +413,21 @@ comp_screenshot_submit(struct comp_screenshot *cs, struct xrt_frame *frame, cons
 {
 	os_thread_helper_lock(&cs->oth);
 
-	// One-slot mailbox: if a write is still pending, drop the older frame
-	// rather than let work pile up.
-	if (cs->pending != NULL) {
-		xrt_frame_reference(&cs->pending, NULL);
+	// One-slot mailbox per kind: if a write of the same kind is still pending,
+	// drop the older frame rather than let work pile up. A quiet capture never
+	// displaces a photo (or the other way round).
+	if (req->quiet) {
+		if (cs->pending_quiet != NULL) {
+			xrt_frame_reference(&cs->pending_quiet, NULL);
+		}
+		cs->pending_quiet = frame; // transfer caller's reference
+	} else {
+		if (cs->pending != NULL) {
+			xrt_frame_reference(&cs->pending, NULL);
+		}
+		cs->pending = frame; // transfer caller's reference
+		cs->pending_req = *req;
 	}
-
-	cs->pending = frame; // transfer caller's reference
-	cs->pending_req = *req;
 	os_thread_helper_signal_locked(&cs->oth);
 
 	os_thread_helper_unlock(&cs->oth);
@@ -335,4 +442,13 @@ comp_screenshot_fini(struct comp_screenshot *cs)
 
 	// Stops the worker and joins; the worker drops any pending frame on exit.
 	os_thread_helper_destroy(&cs->oth);
+
+#if !defined(_WIN32)
+	// No longer taking quiet captures; don't leave the last view lying around.
+	char path[600];
+	(void)snprintf(path, sizeof(path), "%s/ready", cs->capture_dir);
+	(void)unlink(path);
+	(void)snprintf(path, sizeof(path), "%s/latest.png", cs->capture_dir);
+	(void)unlink(path);
+#endif
 }

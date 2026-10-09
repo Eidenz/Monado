@@ -9,6 +9,11 @@
  * (an input driver, a signal handler, the gesture detector) can ask the
  * compositor to grab a screenshot, without taking a dependency on the
  * compositor itself. A request may optionally carry a normalised crop region.
+ *
+ * A request can also be *quiet*: a capture for another program (an assistant
+ * looking at the view, say) rather than a photo — no shutter sound, and it
+ * never lands in the screenshot folder. Quiet and normal requests are tracked
+ * separately, so one never swallows the other.
  */
 #pragma once
 
@@ -30,6 +35,8 @@ struct u_screenshot_request
 	bool has_region;
 	//! Normalised crop rect, [0,1], origin top-left (matches the image).
 	float x0, y0, x1, y1;
+	//! A capture for another program: no sound, written to the capture dir.
+	bool quiet;
 };
 
 /*!
@@ -50,8 +57,19 @@ void
 u_screenshot_request_rect(float x0, float y0, float x1, float y1);
 
 /*!
+ * Request a one-shot quiet full-view capture (see @ref u_screenshot_request).
+ * Async-signal-safe and thread-safe.
+ *
+ * @ingroup aux_util
+ */
+void
+u_screenshot_request_quiet(void);
+
+/*!
  * Consume a pending request, returning true at most once per request and
- * filling @p out (may be NULL). Intended to be polled by the compositor.
+ * filling @p out (may be NULL). Intended to be polled by the compositor. With
+ * both kinds pending, the normal one comes first and the quiet one on the
+ * next call.
  *
  * @ingroup aux_util
  */

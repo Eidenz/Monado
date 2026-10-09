@@ -34,9 +34,13 @@ struct comp_screenshot
 
 	//! Crop region for the pending frame, protected by @ref oth.
 	struct u_screenshot_request pending_req;
+	//! Pending quiet capture, its own slot so it never displaces a photo.
+	struct xrt_frame *pending_quiet;
 
 	//! Directory screenshots are written to.
 	char dir[512];
+	//! Directory quiet captures are written to (`latest.png`, plus `ready`).
+	char capture_dir[512];
 
 	//! Counter for filename uniqueness within a run.
 	uint32_t counter;
