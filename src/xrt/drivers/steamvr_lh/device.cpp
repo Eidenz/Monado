@@ -840,9 +840,10 @@ Device::sync_dark_pose() const
 {
 	// The switch is about hands and trackers; a dark headset always holds.
 	const bool hold = device_type == XRT_DEVICE_TYPE_HMD || u_device_get_hold_pose_when_off();
+	const HistoryTail want = hold ? HistoryTail::HELD : HistoryTail::RELEASED;
 
 	std::lock_guard lk(dark_mutex);
-	if (pose_valid.load(std::memory_order_relaxed) || hold == !released_in_history) {
+	if (pose_valid.load(std::memory_order_relaxed) || history_tail == want) {
 		return;
 	}
 	if (!has_last_good) {
@@ -872,7 +873,7 @@ Device::sync_dark_pose() const
 		rel.relation_flags = XRT_SPACE_RELATION_BITMASK_NONE;
 	}
 	m_relation_history_push(relation_hist, &rel, ts);
-	released_in_history = !hold;
+	history_tail = want;
 }
 
 xrt_result_t
@@ -1489,7 +1490,7 @@ Device::update_pose(const vr::DriverPose_t &newPose) const
 	m_relation_history_push(relation_hist, &relation, ts);
 	last_good = relation;
 	has_last_good = true;
-	released_in_history = false;
+	history_tail = HistoryTail::LIVE;
 }
 
 vr::ETrackedPropertyError

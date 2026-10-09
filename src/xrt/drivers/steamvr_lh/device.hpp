@@ -178,8 +178,15 @@ private:
 	//! Last fully valid relation pushed, re-served when holding again.
 	mutable xrt_space_relation last_good{};
 	mutable bool has_last_good{false};
-	//! Whether the newest history entry is an untracked (released) one.
-	mutable bool released_in_history{false};
+	//! What the newest history entry is. A live one still carries the device's
+	//! velocity, which prediction keeps integrating once no newer pose comes.
+	enum class HistoryTail
+	{
+		LIVE,     //!< A tracked pose from the driver, velocities and all.
+		HELD,     //!< The last good pose standing still.
+		RELEASED, //!< An untracked entry, so apps can take over.
+	};
+	mutable HistoryTail history_tail{HistoryTail::LIVE};
 	//! Whether the last pose update was valid (connected and poseIsValid).
 	mutable std::atomic<bool> pose_valid{false};
 
