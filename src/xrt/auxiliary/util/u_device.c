@@ -221,24 +221,25 @@ u_device_setup_one_eye(struct xrt_device *xdev, const struct u_device_simple_inf
 bool
 u_device_setup_split_side_by_side(struct xrt_device *xdev, const struct u_device_simple_info *info)
 {
+	const uint32_t view_count = xdev->hmd->view_count;
+
 	// 1 or 2 views supported.
-	assert(xdev->hmd->view_count > 0);
-	assert(xdev->hmd->view_count <= 2);
-	assert(xdev->hmd->view_count <= XRT_MAX_VIEWS);
+	if (view_count == 0 || view_count > XRT_MAX_VIEWS) {
+		U_LOG_E("view count '%u' not supported", view_count);
+		return false;
+	}
 
-	uint32_t view_count = xdev->hmd->view_count;
+	const uint32_t w_pixels = info->display.w_pixels / view_count;
+	const uint32_t h_pixels = info->display.h_pixels;
+	const float w_meters = info->display.w_meters / view_count;
+	const float h_meters = info->display.h_meters;
 
-	uint32_t w_pixels = info->display.w_pixels / view_count;
-	uint32_t h_pixels = info->display.h_pixels;
-	float w_meters = info->display.w_meters / view_count;
-	float h_meters = info->display.h_meters;
-
-	float lens_center_x_meters[2] = {
+	const float lens_center_x_meters[2] = {
 	    w_meters - info->lens_horizontal_separation_meters / 2.0f,
 	    info->lens_horizontal_separation_meters / 2.0f,
 	};
 
-	float lens_center_y_meters[2] = {
+	const float lens_center_y_meters[2] = {
 	    info->lens_vertical_position_meters,
 	    info->lens_vertical_position_meters,
 	};
@@ -266,14 +267,12 @@ u_device_setup_split_side_by_side(struct xrt_device *xdev, const struct u_device
 		xdev->hmd->views[i].rot = u_device_rotation_ident;
 	}
 
-	{
-		/* right eye */
-		if (!math_compute_fovs(w_meters, lens_center_x_meters[view_count - 1], info->fov[view_count - 1],
-		                       h_meters, lens_center_y_meters[view_count - 1], 0,
-		                       &xdev->hmd->distortion.fov[view_count - 1])) {
-			return false;
-		}
+	/* right eye */
+	if (!math_compute_fovs(w_meters, lens_center_x_meters[view_count - 1], info->fov[view_count - 1], h_meters,
+	                       lens_center_y_meters[view_count - 1], 0, &xdev->hmd->distortion.fov[view_count - 1])) {
+		return false;
 	}
+
 	if (view_count == 2) {
 		/* left eye - mirroring right eye */
 		xdev->hmd->distortion.fov[0].angle_up = xdev->hmd->distortion.fov[1].angle_up;

@@ -569,7 +569,7 @@ run_vblank_event_thread(void *ptr)
 
 	COMP_DEBUG(ct->c, "Surface thread starting");
 
-	os_thread_helper_name(&cts->vblank.event_thread, "VBlank Events");
+	os_thread_name_self("VBlank Events");
 	U_TRACE_SET_THREAD_NAME("VBlank Events");
 
 	// Try to raise priority of this thread.

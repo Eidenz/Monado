@@ -48,6 +48,7 @@ fdo_ci_templates_sha: 5cc6ded703fc990f9d055f0d948ffd4460a9ca40
   libuvc-dev:
   libv4l-dev:
   libwayland-dev:
+  libceres-dev:
   # Only used for building packages
   debhelper:
   devscripts:
@@ -73,7 +74,7 @@ distributions:
       # This image does some extra work.
       - codename: trixie
         script: i386_and_proclamation_container_prep.sh
-        tag: "2026-03-03"
+        tag: "2026-09-15"
         deb_version_suffix: bpo13
         packages:
           <<: *default_debian_packages
@@ -127,7 +128,7 @@ distributions:
 
       - codename: bookworm
         script: i386_and_proclamation_container_prep.sh
-        tag: "2026-02-16"
+        tag: "2026-09-15"
         deb_version_suffix: bpo12
         packages:
           <<: *default_debian_packages
@@ -216,7 +217,7 @@ distributions:
       # LTS
       - codename: jammy
         distro_version: "22.04"
-        tag: "2025-01-11"
+        tag: "2026-09-15"
         deb_version_suffix: ubuntu2204
         packages:
           <<: *default_debian_packages
@@ -226,7 +227,7 @@ distributions:
 
       - codename: noble
         distro_version: "24.04"
-        tag: "2025-01-11"
+        tag: "2026-09-15"
         deb_version_suffix: ubuntu2404
         packages:
           <<: *default_debian_packages
@@ -236,17 +237,17 @@ distributions:
 
   - name: arch
     images:
-      - tag: "2026-02-11"
+      - tag: "2026-09-15"
         script: install-arch-additional-deps.sh
         # pipewire-jack wireplumber: Explicitly choose dependencies to avoid pacman asking interactively
         # python-setuptools glu: librealsense
         # python-attrs: xr-hardware-git
         packages:
           base-devel:
-          pipewire-jack:
-          wireplumber:
           bluez-libs:
+          ceres-solver:
           check:
+          cjson:
           clang:
           cmake:
           diffutils:
@@ -256,30 +257,31 @@ distributions:
           git:
           glfw-x11:
           glslang:
+          glu:
           graphviz:
           gtk3:
           hidapi:
+          libbsd:
           libusb:
           libxrandr:
           mesa:
+          meson:
           ninja:
+          onnxruntime-cpu:
           opencv:
           patch:
+          pipewire-jack:
           pkgconfig:
+          python-attrs:
+          python-setuptools:
           python3:
           qt6-base:
           v4l-utils:
           vulkan-headers:
           vulkan-icd-loader:
-          wget:
-          meson:
-          python-setuptools:
-          glu:
           wayland:
-          libbsd:
-          python-attrs:
-          cjson:
-          onnxruntime-cpu:
+          wget:
+          wireplumber:
         build_jobs:
           - name: "arch"
 
@@ -290,7 +292,7 @@ distributions:
 
   - name: alpine
     images:
-      - tag: "2025-12-09"
+      - tag: "2026-09-15"
         packages:
           - "cmake"
           - "cmd:glslangValidator"

@@ -165,7 +165,13 @@ struct r_remote_connection
  * @ingroup drv_remote
  */
 xrt_result_t
-r_create_devices(uint16_t port, uint32_t view_count, struct xrt_system_devices **out_xsysd);
+r_create_devices(uint16_t port,
+                 uint32_t view_count,
+                 uint32_t w_pixels,
+                 uint32_t h_pixels,
+                 float w_meters,
+                 float h_meters,
+                 struct xrt_system_devices **out_xsysd);
 
 /*!
  * Initializes and connects the connection.

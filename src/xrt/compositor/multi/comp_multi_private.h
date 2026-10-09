@@ -130,6 +130,7 @@ struct multi_compositor
 
 		bool session_active;
 		bool is_base_session;
+		enum xrt_view_type session_view_type;
 	} state;
 
 	struct

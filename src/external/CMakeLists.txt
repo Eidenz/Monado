@@ -8,6 +8,8 @@ if(BUILD_TESTING)
 	target_include_directories(
 		xrt-external-catch2 SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Catch2
 		)
+	# clang-22 gives a warning for this in our build configuration, so let's disable it.
+	target_compile_definitions(xrt-external-catch2 PUBLIC CATCH_CONFIG_NO_COUNTER)
 	if(MSVC)
 		# Needed for Visual Studio 2019.
 		# https://github.com/catchorg/Catch2/issues/2916#issuecomment-2404082203
@@ -148,11 +150,12 @@ if(XRT_HAVE_OPENGL)
 	add_subdirectory(imgui)
 endif()
 
-# tinyceres
-add_library(xrt-external-tinyceres INTERFACE)
-target_include_directories(
-	xrt-external-tinyceres SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/tinyceres/include
-	)
+# Ceres, from the system if we have it
+if(XRT_HAVE_BIGCERES)
+	add_subdirectory(bigceres)
+endif()
+
+add_subdirectory(tinyceres)
 
 # Tracy
 if(XRT_HAVE_TRACY)

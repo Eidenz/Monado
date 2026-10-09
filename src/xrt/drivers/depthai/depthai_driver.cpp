@@ -480,7 +480,7 @@ depthai_mainloop(void *ptr)
 	struct depthai_fs *depthai = (struct depthai_fs *)ptr;
 
 	U_TRACE_SET_THREAD_NAME("DepthAI: Image");
-	os_thread_helper_name(&depthai->image_thread, "DepthAI: Image");
+	os_thread_name_self("DepthAI: Image");
 
 	DEPTHAI_DEBUG(depthai, "DepthAI: Image thread called");
 
@@ -620,7 +620,7 @@ depthai_imu_mainloop(void *ptr)
 	struct depthai_fs *depthai = (struct depthai_fs *)ptr;
 
 	U_TRACE_SET_THREAD_NAME("DepthAI: IMU");
-	os_thread_helper_name(&depthai->imu_thread, "DepthAI: IMU");
+	os_thread_name_self("DepthAI: IMU");
 
 #ifdef XRT_OS_LINUX
 	// Try to raise priority of this thread.

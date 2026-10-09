@@ -174,7 +174,7 @@ struct xrt_session_event_passthrough_state_change
 };
 
 /*!
- *  Visibility mask changed event
+ * Visibility mask changed event
  */
 struct xrt_session_event_visibility_mask_change
 {

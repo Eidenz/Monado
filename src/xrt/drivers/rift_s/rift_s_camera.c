@@ -1,5 +1,5 @@
 /*
- * Copyright 2021, Collabora, Ltd.
+ * Copyright 2021-2026, Collabora, Ltd.
  * Copyright 2022 Jan Schmidt
  * SPDX-License-Identifier: BSL-1.0
  *
@@ -229,7 +229,6 @@ rift_s_camera_create(struct xrt_prober *xp,
 	}
 
 	if (!found_mode) {
-		selected_mode = 0;
 		RIFT_S_ERROR("Couldn't find compatible camera input format.");
 		goto cleanup;
 	}

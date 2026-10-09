@@ -13,7 +13,6 @@ add_library(
 	led_search_model.h
 	pose_metrics.c
 	pose_metrics.h
-	pose_optimize.h
 	t_constellation_tracker.cpp
 	t_constellation_tracker.h
 	t_constellation_tracker_dataset.cpp
@@ -30,24 +29,25 @@ add_library(
 	lambdatwist/quadratic.h
 	lambdatwist/refine_lambda.h
 	lambdatwist/vec.h
+	optimizer/math.hpp
+	optimizer/pose_optimize.cpp
+	optimizer/pose_optimize.hpp
+	optimizer/ransac.cpp
+	optimizer/ransac.hpp
 	)
 target_link_libraries(
 	constellation
 	PRIVATE
 		xrt-interfaces
+		xrt-external-bigceres
 		tracking-includes
 		aux_os
 		aux_util
 		aux_util_scribble
 		aux_math
 		aux_tracking
+		Eigen3::Eigen
 	)
-
-if(XRT_HAVE_OPENCV)
-	target_include_directories(constellation PRIVATE ${OpenCV_INCLUDE_DIRS})
-	target_link_libraries(constellation PRIVATE ${OpenCV_LIBRARIES})
-	target_sources(constellation PRIVATE pose_optimize.cpp)
-endif()
 
 if(XRT_FEATURE_RERUN)
 	target_link_libraries(constellation PRIVATE rerun_sdk)

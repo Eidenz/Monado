@@ -1,5 +1,5 @@
 // Copyright 2022, Simon Zeni <simon@bl4ckb0ne.ca>
-// Copyright 2022-2023, Collabora, Ltd.
+// Copyright 2022-2026, Collabora, Ltd.
 // Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
@@ -322,6 +322,11 @@ comp_window_peek_blit(struct comp_window_peek *w, VkImage src, int32_t width, in
 	vk_cmd_pool_lock(&w->pool);
 
 	ret = vk->vkBeginCommandBuffer(w->cmd, &begin_info);
+	if (ret != VK_SUCCESS) {
+		vk_cmd_pool_unlock(&w->pool);
+		VK_ERROR(vk, "Error: Could not begin command buffer.\n");
+		return;
+	}
 
 	VkImageSubresourceRange range = {
 	    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,

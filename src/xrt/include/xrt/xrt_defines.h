@@ -173,6 +173,17 @@ enum xrt_distortion_model
 };
 
 /*!
+ * The type of panel refresh the device has.
+ */
+enum xrt_panel_refresh_type
+{
+	//! entire panel refreshes simultaneously
+	XRT_PANEL_REFRESH_TYPE_GLOBAL = 0,
+	//! panel refreshes progressively along scanout direction, e.g. OLED panels
+	XRT_PANEL_REFRESH_TYPE_ROLLING,
+};
+
+/*!
  * Screen scanout direction
  */
 enum xrt_scanout_direction
@@ -2425,9 +2436,11 @@ enum xrt_form_factor
  */
 enum xrt_view_type
 {
+	XRT_VIEW_TYPE_INVALID = 0,
 	XRT_VIEW_TYPE_MONO = 1,
 	XRT_VIEW_TYPE_STEREO = 2,
 	XRT_VIEW_TYPE_QUAD = 3,
+	XRT_VIEW_TYPE_MAX,
 };
 
 /*!
@@ -2560,6 +2573,20 @@ xrt_reference_dec_and_is_zero(struct xrt_reference *xref)
 	XRT_REFERENCE_DEBUG_PRINT(Decremented, xref, count);
 
 	return count == 0;
+}
+
+static inline uint32_t
+xrt_view_type_view_count(enum xrt_view_type view_type)
+{
+	switch (view_type) {
+	case XRT_VIEW_TYPE_INVALID:
+	case XRT_VIEW_TYPE_MAX: break;
+	case XRT_VIEW_TYPE_MONO: return 1;
+	case XRT_VIEW_TYPE_STEREO: return 2;
+	case XRT_VIEW_TYPE_QUAD: return 4;
+	}
+
+	return 0;
 }
 
 #ifdef __cplusplus

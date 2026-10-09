@@ -76,12 +76,12 @@ remote_builder_setup_space_overseer(struct b_space_overseer *bso, struct xrt_sys
 }
 
 static bool
-get_settings(cJSON *json, int *port, uint32_t *view_count)
+get_settings(cJSON *json, struct u_config_remote_settings *out_settings)
 {
 	struct u_config_json config_json = {0};
 	u_config_json_open_or_create_main_file(&config_json);
 
-	bool bret = u_config_json_get_remote_settings(&config_json, port, view_count);
+	bool bret = u_config_json_get_remote_settings(&config_json, out_settings);
 
 	u_config_json_close(&config_json);
 
@@ -127,17 +127,21 @@ remote_open_system(struct xrt_builder *xb,
 	assert(*out_xso == NULL);
 
 
-	int port = 4242;
-	uint32_t view_count = 2;
-	if (!get_settings(config, &port, &view_count)) {
-		port = 4242;
-		view_count = 2;
-	}
+	struct u_config_remote_settings settings = {
+	    .port = 4242,
+	    .view_count = 2,
+	    .w_pixels = 1920,
+	    .h_pixels = 1080,
+	    .w_meters = 0.13f,
+	    .h_meters = 0.07f,
+	};
+	get_settings(config, &settings); // Leaves the defaults on failure.
 
 	struct b_space_overseer *uso = b_space_overseer_create(broadcast);
 	struct xrt_space_overseer *xso = (struct xrt_space_overseer *)uso;
 
-	xrt_result_t xret = r_create_devices(port, view_count, out_xsysd);
+	xrt_result_t xret = r_create_devices(settings.port, settings.view_count, settings.w_pixels, settings.h_pixels,
+	                                     settings.w_meters, settings.h_meters, out_xsysd);
 	if (xret != XRT_SUCCESS) {
 		xrt_space_overseer_destroy(&xso);
 		return xret;

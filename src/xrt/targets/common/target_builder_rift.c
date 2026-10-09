@@ -158,9 +158,7 @@ rift_estimate_system(struct xrt_builder *xb,
 	}
 
 	xret = xrt_prober_lock_list(xp, &xpdevs, &xpdev_count);
-	if (xret != XRT_SUCCESS) {
-		return xret;
-	}
+	U_LOG_CHK_AND_RET(rb->log_level, xret, "xrt_prober_lock_list");
 
 	struct xrt_prober_device *dev =
 	    u_builder_find_prober_device(xpdevs, xpdev_count, OCULUS_VR_VID, OCULUS_CV1_PID, XRT_BUS_TYPE_USB);
@@ -207,9 +205,9 @@ rift_estimate_system(struct xrt_builder *xb,
 	           estimate->maybe.left, estimate->maybe.right, estimate->maybe.extra_device_count);
 
 	xret = xrt_prober_unlock_list(xp, &xpdevs);
-	assert(xret == XRT_SUCCESS);
+	U_LOG_CHK_AND_RET(rb->log_level, xret, "xrt_prober_unlock_list");
 
-	return XRT_SUCCESS;
+	return xret;
 }
 
 void

@@ -1222,8 +1222,6 @@ render_resources_get_duration(struct render_resources *r, uint64_t *out_gpu_dura
 bool
 render_scratch_images_ensure(struct render_resources *r, struct render_scratch_images *rsi, VkExtent2D extent)
 {
-	bool bret;
-
 	if (rsi->extent.width == extent.width &&         //
 	    rsi->extent.height == extent.height &&       //
 	    rsi->color[0].srgb_view != VK_NULL_HANDLE && //
@@ -1234,18 +1232,14 @@ render_scratch_images_ensure(struct render_resources *r, struct render_scratch_i
 	render_scratch_images_fini(r, rsi);
 
 	for (uint32_t i = 0; i < r->view_count; i++) {
-		bret = create_scratch_image_and_view( //
-		    r->vk,                            //
-		    extent,                           //
-		    &rsi->color[i]);                  //
+		bool bret = create_scratch_image_and_view( //
+		    r->vk,                                 //
+		    extent,                                //
+		    &rsi->color[i]);                       //
 		if (!bret) {
-			break;
+			render_scratch_images_fini(r, rsi);
+			return false;
 		}
-	}
-
-	if (!bret) {
-		render_scratch_images_fini(r, rsi);
-		return false;
 	}
 
 	rsi->extent = extent;

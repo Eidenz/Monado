@@ -454,7 +454,8 @@ math_quat_finite_difference(const struct xrt_quat *quat0,
                             struct xrt_vec3 *out_ang_vel);
 
 /*!
- * Takes a rotation vector equal to half of a Rodrigues rotation vector and returns its corresponding unit quaternion.
+ * Takes a Rodrigues rotation vector and returns its corresponding unit quaternion.
+ *
  * Useful for head tracking and pose-prediction.
  *
  * @relates xrt_quat
@@ -462,11 +463,12 @@ math_quat_finite_difference(const struct xrt_quat *quat0,
  * @ingroup aux_math
  */
 void
-math_quat_exp(const struct xrt_vec3 *axis_angle, struct xrt_quat *out_quat);
+math_quat_exp_so3(const struct xrt_vec3 *axis_angle, struct xrt_quat *out_quat);
 
 
 /*!
- * Takes a unit quaternion and returns a rotation vector equal to half of its corresponding Rodrigues rotation vector.
+ * Takes a unit quaternion and returns its corresponding Rodrigues rotation vector.
+ *
  * Useful for head tracking and pose-prediction.
  *
  * @relates xrt_quat
@@ -474,7 +476,7 @@ math_quat_exp(const struct xrt_vec3 *axis_angle, struct xrt_quat *out_quat);
  * @ingroup aux_math
  */
 void
-math_quat_ln(const struct xrt_quat *quat, struct xrt_vec3 *out_axis_angle);
+math_quat_ln_so3(const struct xrt_quat *quat, struct xrt_vec3 *out_axis_angle);
 
 /*!
  * Used to rotate a derivative like a angular velocity.

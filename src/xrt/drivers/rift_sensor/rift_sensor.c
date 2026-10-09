@@ -333,7 +333,7 @@ rift_sensor_usb_thread_run(void *user_ptr)
 	const char *thread_name = "Rift Sensor USB";
 
 	U_TRACE_SET_THREAD_NAME(thread_name);
-	os_thread_helper_name(&context->usb_thread, thread_name);
+	os_thread_name_self(thread_name);
 
 #ifdef XRT_OS_LINUX
 	// Try to raise priority of this thread.

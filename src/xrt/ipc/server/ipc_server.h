@@ -61,6 +61,8 @@ extern "C" {
 
 #define IPC_MAX_CLIENT_BODY_TRACKERS 16
 #define IPC_MAX_CLIENT_HAND_TRACKERS 16
+#define IPC_MAX_CLIENT_APP_INSTANCES 4
+#define IPC_MAX_CLIENT_APP_SYSTEMS (IPC_MAX_CLIENT_APP_INSTANCES * 4)
 #define IPC_MAX_CLIENT_SEMAPHORES 8
 #define IPC_MAX_CLIENT_SWAPCHAINS (XRT_MAX_LAYERS * 2)
 #define IPC_MAX_CLIENT_SPACES 128
@@ -131,6 +133,16 @@ struct ipc_client_state
 		 * Hand trackers owned by this client.
 		 */
 		struct xrt_hand_tracker *xhts[IPC_MAX_CLIENT_HAND_TRACKERS];
+
+		/*!
+		 * Array of app instances owned by this client.
+		 */
+		struct xrt_app_instance *xainsts[IPC_MAX_CLIENT_APP_INSTANCES];
+
+		/*!
+		 * Array of app systems owned by this client.
+		 */
+		struct xrt_app_system *xasys[IPC_MAX_CLIENT_APP_SYSTEMS];
 	} objects;
 
 	//! Session for this client.
@@ -539,6 +551,39 @@ ipc_server_set_client_io_blocks(struct ipc_server *s, uint32_t client_id, const 
  */
 xrt_result_t
 ipc_server_set_client_controller_freeze(struct ipc_server *s, uint32_t client_id, bool freeze);
+
+/*!
+ * Get the session running state for this client.
+ *
+ * @ingroup ipc_server
+ */
+xrt_result_t
+ipc_server_get_client_session_running_state(struct ipc_server *s,
+                                            uint32_t client_id,
+                                            struct xrt_compositor_session_running_state *out_running_state);
+
+/*!
+ * Get the view configuration for this client.
+ *
+ * @ingroup ipc_server
+ */
+xrt_result_t
+ipc_server_get_client_view_config(struct ipc_server *s,
+                                  uint32_t client_id,
+                                  enum xrt_view_type view_type,
+                                  struct xrt_view_config *out_default_view_config,
+                                  struct xrt_recommended_view_config *out_recommended_view_config);
+
+/*!
+ * Set the recommended view configuration for this client.
+ *
+ * @ingroup ipc_server
+ */
+xrt_result_t
+ipc_server_set_client_recommended_view_config(struct ipc_server *s,
+                                              uint32_t client_id,
+                                              enum xrt_view_type view_type,
+                                              const struct xrt_recommended_view_config *recommended_view_config);
 
 /*!
  * Called by client threads to set a session to active.

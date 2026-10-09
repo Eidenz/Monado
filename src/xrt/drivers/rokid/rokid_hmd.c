@@ -275,13 +275,16 @@ rokid_fusion_add_vars(struct rokid_fusion *fusion, void *root)
 static void *
 rokid_usb_thread(void *ptr)
 {
-
-	U_TRACE_SET_THREAD_NAME("Rokid USB thread");
 	struct rokid_hmd *rokid = ptr;
+
+	const char *thread_name = "Rokid USB thread";
+
+	U_TRACE_SET_THREAD_NAME(thread_name);
+	os_thread_name_self(thread_name);
 
 #ifdef XRT_OS_LINUX
 	// Try to raise priority of this thread, so we don't miss packets under load
-	u_linux_try_to_set_realtime_priority_on_thread(U_LOGGING_INFO, "Rokid USB thread");
+	u_linux_try_to_set_realtime_priority_on_thread(U_LOGGING_INFO, thread_name);
 #endif
 
 	int last_libusb_result = LIBUSB_SUCCESS;
@@ -468,7 +471,6 @@ rokid_hmd_create(struct xrt_prober_device *prober_device)
 		ROKID_ERROR(rokid, "Failed to init USB thread");
 		goto cleanup;
 	}
-	os_thread_helper_name(&rokid->usb_thread, "Rokid USB thread");
 
 	// This also sets base.str used below.
 	if (!rokid_hmd_usb_init(rokid, prober_device)) {

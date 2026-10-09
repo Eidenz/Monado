@@ -427,8 +427,6 @@ u_compute_distortion_poly_3k(
 		struct xrt_vec2 pix_coord = {(u + 1.0f * view) * (display_size.x / 2.0f) - eye_center.x,
 		                             v * display_size.y - eye_center.y};
 
-		pix_coord.y += (float)values->y_offset;
-
 		float r2 = m_vec2_dot(pix_coord, pix_coord);
 		float k1 = (float)k[0];
 		float k2 = (float)k[1];
@@ -531,10 +529,11 @@ u_compute_distortion_bounds_poly_3k(const struct xrt_matrix_3x3 *inv_affine_xfor
 	out_fov->angle_down = -atanf(tanangle_down);
 	out_fov->angle_up = -atanf(tanangle_up);
 
-	out_tex_x_range->x = tanf(out_fov->angle_left);
-	out_tex_x_range->y = tanf(out_fov->angle_right);
-	out_tex_y_range->x = tanf(out_fov->angle_down);
-	out_tex_y_range->y = tanf(out_fov->angle_up);
+	// Ensure it's in distortion Y-down space, rather than OpenXR Y-up space
+	out_tex_x_range->x = tanangle_left;
+	out_tex_x_range->y = tanangle_right;
+	out_tex_y_range->x = tanangle_up;
+	out_tex_y_range->y = tanangle_down;
 }
 
 

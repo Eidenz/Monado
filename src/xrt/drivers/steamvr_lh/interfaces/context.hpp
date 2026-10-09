@@ -30,6 +30,7 @@
 #include "blockqueue.hpp"
 #include "paths.hpp"
 
+#include "xrt/xrt_system.h"
 #include "xrt/xrt_tracking.h"
 
 struct xrt_input;
@@ -47,6 +48,42 @@ class Context final : public xrt_tracking_origin,
 public:
 	Settings settings;
 
+	struct Vec2Components
+	{
+		vr::VRInputComponentHandle_t x;
+		vr::VRInputComponentHandle_t y;
+	};
+
+	/*
+	 * All data types are are locked by `devices_mut`
+	 */
+	struct
+	{
+		vr::VRInputComponentHandle_t next_handle;
+		std::unordered_map<vr::VRInputComponentHandle_t, xrt_input *> handle_to_input;
+		std::unordered_map<vr::VRInputComponentHandle_t, Vec2Components *> vec2_inputs;
+		std::unordered_map<xrt_input *, std::unique_ptr<Vec2Components>> vec2_input_to_components;
+		std::unordered_map<vr::VRInputComponentHandle_t, ControllerDevice *> skeleton_to_controller;
+		//! Which device a boolean component belongs to (the screenshot chord).
+		std::unordered_map<vr::VRInputComponentHandle_t, Device *> handle_to_device;
+	} input;
+
+	/*
+	 * Controller roles follow the devices that are powered on, see get_roles().
+	 * get_roles is called with a fresh zeroed struct every time (the IPC
+	 * handler does not carry previous state), so change detection and the
+	 * generation counter live here. Locked by `roles_mutex`.
+	 */
+	std::mutex roles_mutex;
+	xrt_system_roles cached_roles = XRT_SYSTEM_ROLES_INIT;
+
+	xrt_result_t
+	get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles);
+
+	//! The device behind @p xdev if it is one of ours, else null. Call with `devices_mut` held.
+	Device *
+	device_from_xdev_locked(struct xrt_device *xdev);
+
 private:
 	Resources resources;
 	IOBuffer iobuf;
@@ -55,17 +92,7 @@ private:
 	BlockQueue blockqueue;
 	Paths paths;
 
-	std::vector<vr::VRInputComponentHandle_t> handles;
-	std::unordered_map<vr::VRInputComponentHandle_t, xrt_input *> handle_to_input;
-	std::unordered_map<vr::VRInputComponentHandle_t, Device *> handle_to_device;
-	struct Vec2Components
-	{
-		vr::VRInputComponentHandle_t x;
-		vr::VRInputComponentHandle_t y;
-	};
-	std::unordered_map<vr::VRInputComponentHandle_t, Vec2Components *> vec2_inputs;
-	std::unordered_map<xrt_input *, std::unique_ptr<Vec2Components>> vec2_input_to_components;
-	std::unordered_map<vr::VRInputComponentHandle_t, ControllerDevice *> skeleton_to_controller;
+	uint64_t current_frame{0};
 
 	struct Event
 	{
@@ -92,7 +119,11 @@ private:
 	process_pending_additions();
 
 	void
-	append_to_xsysd(struct xrt_device *xdev);
+	activate_pending(const PendingAddition &pa);
+
+	//! Call with `devices_mut` held.
+	void
+	append_to_xsysd_locked(struct xrt_device *xdev);
 
 	Device *
 	prop_container_to_device(vr::PropertyContainerHandle_t handle);
@@ -103,9 +134,9 @@ private:
 	                        vr::VRInputComponentHandle_t *handle);
 
 	xrt_input *
-	update_component_common(vr::VRInputComponentHandle_t handle,
-	                        double offset,
-	                        std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
+	update_component_common_locked(vr::VRInputComponentHandle_t handle,
+	                               double offset,
+	                               std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
 
 	bool
 	setup_hmd(const char *serial, vr::ITrackedDeviceServerDriver *driver);
@@ -114,21 +145,14 @@ private:
 	setup_controller(const char *serial, vr::ITrackedDeviceServerDriver *driver);
 	std::vector<vr::IServerTrackedDeviceProvider *> providers;
 
-	inline vr::VRInputComponentHandle_t
-	new_handle()
-	{
-		vr::VRInputComponentHandle_t h = handles.size() + 1;
-		handles.push_back(h);
-		return h;
-	}
-
 public:
 	Context(const std::string &steam_install, const std::string &steamvr_install, u_logging_level level);
 
-	// These are owned by monado, context is destroyed when these are destroyed
-	std::mutex devices_mut;
+	// These are owned by Monado, context is destroyed when these are destroyed
+	std::mutex devices_mut{};
 	class HmdDevice *hmd{nullptr};
 	class ControllerDevice *controller[16]{nullptr};
+	//! The system we publish hotplugged devices to, set once setup is over (`devices_mut`).
 	struct xrt_system_devices *xsysd{nullptr};
 	//! Invoked for devices hotplugged after boot, before they are appended
 	//! to xsysd (the builder uses it to add them to the space overseer).
@@ -148,6 +172,9 @@ public:
 private:
 	std::condition_variable discover_cv;
 	std::chrono::steady_clock::time_point discover_end_time;
+	//! Devices the driver has not finished activating: HMDs set up in TrackedDeviceAdded and controllers
+	//! queued for the frame thread, which counts them down once activated (`devices_mut`).
+	size_t devices_in_setup{0};
 	std::atomic<bool> frame_thread_run;
 	std::binary_semaphore frame_thread_event{0};
 	std::thread frame_thread;

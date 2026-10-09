@@ -77,9 +77,11 @@ public:
 
 class Device : public xrt_device
 {
-
 public:
 	m_relation_history *relation_hist;
+
+	//! The component handles that are attached to this device.
+	std::vector<vr::VRInputComponentHandle_t> handles;
 
 	//! Whether the physical device is currently connected (powered on),
 	//! kept up to date from the deviceIsConnected flag of pose updates.
@@ -123,15 +125,18 @@ public:
 	void
 	set_driver(vr::ITrackedDeviceServerDriver *new_driver);
 
-	//! With LH_STANDBY_ON_EXIT, put the device into standby, which powers
-	//! controllers and trackers off. Called on shutdown, before anything is
-	//! torn down (see destroy() in steamvr_lh.cpp).
-	void
-	enter_standby_on_exit();
-
 	//! Re-read SteamVR's room setup if its files changed (at most once a second).
 	static void
 	poll_chaperone();
+
+	//! Call with `devices_mut` held.
+	inline vr::VRInputComponentHandle_t
+	new_input_handle_locked()
+	{
+		vr::VRInputComponentHandle_t h = ++this->ctx->input.next_handle;
+		this->handles.push_back(h);
+		return h;
+	}
 
 protected:
 	Device(const DeviceBuilder &builder);
@@ -217,9 +222,10 @@ public:
 		float max{1.0f};
 	};
 
-	struct VivePro2Data vp2
-	{
-	};
+	// @todo Remove when clang-format is updated in CI
+	// clang-format off
+	struct VivePro2Data vp2{};
+	// clang-format on
 
 	HmdDevice(const DeviceBuilder &builder);
 
@@ -307,8 +313,8 @@ public:
 	void
 	set_skeleton(std::span<const vr::VRBoneTransform_t> bones, xrt_hand hand, bool is_simulated, const char *path);
 
-	void
-	set_active_hand(xrt_hand hand);
+	xrt_result_t
+	notify_chirality(bool has_chirality, xrt_hand chirality);
 
 	void
 	set_input_class(const InputClass *input_class);

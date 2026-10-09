@@ -82,10 +82,6 @@ DEBUG_GET_ONCE_BOOL_OPTION(wmr_handtracking, "WMR_HANDTRACKING", true)
 DEBUG_GET_ONCE_OPTION(slam_submit_from_start, "SLAM_SUBMIT_FROM_START", NULL)
 #endif
 
-//! Specifies the y offset of the views.
-DEBUG_GET_ONCE_NUM_OPTION(left_view_y_offset, "WMR_LEFT_DISPLAY_VIEW_Y_OFFSET", 0)
-DEBUG_GET_ONCE_NUM_OPTION(right_view_y_offset, "WMR_RIGHT_DISPLAY_VIEW_Y_OFFSET", 0)
-
 
 #define WMR_TRACE(d, ...) U_LOG_XDEV_IFL_T(&d->base, d->log_level, __VA_ARGS__)
 #define WMR_DEBUG(d, ...) U_LOG_XDEV_IFL_D(&d->base, d->log_level, __VA_ARGS__)
@@ -662,7 +658,7 @@ wmr_run_thread(void *ptr)
 	struct wmr_hmd *wh = (struct wmr_hmd *)ptr;
 
 	U_TRACE_SET_THREAD_NAME("WMR: USB-HMD");
-	os_thread_helper_name(&wh->oth, "WMR: USB-HMD");
+	os_thread_name_self("WMR: USB-HMD");
 
 #ifdef XRT_OS_LINUX
 	// Try to raise priority of this thread.
@@ -1798,15 +1794,18 @@ get_compositor_info_wmr(struct xrt_device *xdev,
 	struct wmr_hmd *wh = wmr_hmd(xdev);
 
 	double scanout_multiplier = 0.0;
+	enum xrt_panel_refresh_type refresh_mode = XRT_PANEL_REFRESH_TYPE_GLOBAL;
 	enum xrt_scanout_direction scanout_direction = XRT_SCANOUT_DIRECTION_NONE;
 
 	if (wh->hmd_desc->hmd_type == WMR_HEADSET_SAMSUNG_800ZAA ||
 	    wh->hmd_desc->hmd_type == WMR_HEADSET_SAMSUNG_XE700X3AI) {
+		refresh_mode = XRT_PANEL_REFRESH_TYPE_ROLLING;
 		scanout_direction = XRT_SCANOUT_DIRECTION_TOP_TO_BOTTOM;
 		scanout_multiplier = 1600.0 / 1624.0;
 	}
 
 	*out_info = (struct xrt_device_compositor_info){
+	    .panel_refresh_type = refresh_mode,
 	    .scanout_direction = scanout_direction,
 	    .scanout_time_ns = (int64_t)(mode->frame_interval_ns * scanout_multiplier),
 	};
@@ -1930,7 +1929,7 @@ wmr_hmd_create(enum wmr_headset_type hmd_type,
 		}
 
 		if (cur->dev_id_str && strncmp(wh->config_hdr.name, cur->dev_id_str, 64) == 0) {
-			hmd_type = cur->hmd_type;
+			assert(hmd_type == cur->hmd_type);
 			wh->hmd_desc = cur;
 			break;
 		}
@@ -1950,9 +1949,6 @@ wmr_hmd_create(enum wmr_headset_type hmd_type,
 	size_t idx = 0;
 	wh->base.hmd->blend_modes[idx++] = XRT_BLEND_MODE_OPAQUE;
 	wh->base.hmd->blend_mode_count = idx;
-
-	wh->config.eye_params[0].poly_3k.y_offset = debug_get_num_option_left_view_y_offset();
-	wh->config.eye_params[1].poly_3k.y_offset = debug_get_num_option_right_view_y_offset();
 
 	// Distortion information, fills in xdev->compute_distortion().
 	for (eye = 0; eye < 2; eye++) {

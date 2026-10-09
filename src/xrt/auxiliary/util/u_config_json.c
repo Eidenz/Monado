@@ -240,7 +240,7 @@ u_config_json_get_active(struct u_config_json *json, enum u_config_json_active_c
 }
 
 bool
-u_config_json_get_remote_settings(struct u_config_json *json, int *out_port, uint32_t *out_view_count)
+u_config_json_get_remote_settings(struct u_config_json *json, struct u_config_remote_settings *out_settings)
 {
 	cJSON *t = cJSON_GetObjectItemCaseSensitive(json->root, "remote");
 	if (t == NULL) {
@@ -267,8 +267,34 @@ u_config_json_get_remote_settings(struct u_config_json *json, int *out_port, uin
 		return false;
 	}
 
-	*out_port = port;
-	*out_view_count = view_count;
+	out_settings->port = port;
+	out_settings->view_count = (uint32_t)view_count;
+
+	// Optional, keep the caller's defaults if missing or invalid.
+	int w_pixels = 0;
+	if (get_obj_int(t, "w_pixels", &w_pixels) && w_pixels > 0) {
+		out_settings->w_pixels = (uint32_t)w_pixels;
+	} else {
+		U_LOG_W("Unable to read 'w_pixels' value, fallback to default %u", out_settings->w_pixels);
+	}
+	int h_pixels = 0;
+	if (get_obj_int(t, "h_pixels", &h_pixels) && h_pixels > 0) {
+		out_settings->h_pixels = (uint32_t)h_pixels;
+	} else {
+		U_LOG_W("Unable to read 'h_pixels' value, fallback to default %u", out_settings->h_pixels);
+	}
+	float w_meters = 0.0f;
+	if (get_obj_float(t, "w_meters", &w_meters) && w_meters > 0.0f) {
+		out_settings->w_meters = w_meters;
+	} else {
+		U_LOG_W("Unable to read 'w_meters' value, fallback to default %f", out_settings->w_meters);
+	}
+	float h_meters = 0.0f;
+	if (get_obj_float(t, "h_meters", &h_meters) && h_meters > 0.0f) {
+		out_settings->h_meters = h_meters;
+	} else {
+		U_LOG_W("Unable to read 'h_meters' value, fallback to default %f", out_settings->h_meters);
+	}
 
 	return true;
 }

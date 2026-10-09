@@ -31,7 +31,6 @@
 #include "old/XRTVRSystem_023.hpp"
 
 #include <cstring>
-#include <new>
 
 
 namespace xrt::state_trackers::openvr {
@@ -56,6 +55,7 @@ XRTVRClientCore_003::Init(vr::EVRApplicationType eApplicationType, const char *p
 	    .app_info =
 	        {
 	            .application_name = "OpenVR client",
+	            .immediate_disconnect = false,
 	            .ext_hand_tracking_enabled = false,
 	            .ext_hand_tracking_data_source_enabled = false,
 	            .ext_eye_gaze_interaction_enabled = false,
@@ -68,6 +68,7 @@ XRTVRClientCore_003::Init(vr::EVRApplicationType eApplicationType, const char *p
 	            .meta_body_tracking_calibration_enabled = false,
 	            .meta_body_tracking_fidelity_enabled = false,
 	            .android_face_tracking_enabled = false,
+	            .view_configuration_views_change_supported = true,
 	        },
 	    .platform_info = {0},
 	};
@@ -89,10 +90,22 @@ XRTVRClientCore_003::Init(vr::EVRApplicationType eApplicationType, const char *p
 		return vr::EVRInitError::VRInitError_Init_HmdNotFound;
 	}
 
+	xret = xrt_instance_create_app_instance(this->xinst, &this->xainst);
+	if (xret != XRT_SUCCESS) {
+		OPENVR_LOG_ERROR_XRET(logger, "Failed to create app instance.", xret);
+		return xretToInitError(xret);
+	}
+
 	// @note We need an xsysc here since `getVulkanOutputDevice` must work in a headless session.
 	xret = xrt_instance_create_system(this->xinst, &this->xsys, &this->xsysd, &this->xso, &this->xsysc);
 	if (xret != XRT_SUCCESS) {
 		OPENVR_LOG_ERROR_XRET(logger, "Failed to create xrt_system", xret);
+		return xretToInitError(xret);
+	}
+
+	xret = xrt_app_instance_create_app_system(this->xainst, this->xsys, &this->xasys);
+	if (xret != XRT_SUCCESS) {
+		OPENVR_LOG_ERROR_XRET(logger, "Failed to create app system.", xret);
 		return xretToInitError(xret);
 	}
 
@@ -142,8 +155,16 @@ XRTVRClientCore_003::Cleanup()
 		xrt_system_devices_destroy(&this->xsysd);
 	}
 
+	if (this->xasys) {
+		xrt_app_system_destroy(&this->xasys);
+	}
+
 	if (this->xsys) {
 		xrt_system_destroy(&this->xsys);
+	}
+
+	if (this->xainst) {
+		xrt_app_instance_destroy(&this->xainst);
 	}
 
 	if (this->xinst) {
@@ -244,6 +265,7 @@ XRTVRClientCore_003::BIsHmdPresent()
 	    .app_info =
 	        {
 	            .application_name = "OpenVR client (temporary instance for BIsHmdPresent)",
+	            .immediate_disconnect = false,
 	            .ext_hand_tracking_enabled = false,
 	            .ext_hand_tracking_data_source_enabled = false,
 	            .ext_eye_gaze_interaction_enabled = false,
@@ -256,6 +278,7 @@ XRTVRClientCore_003::BIsHmdPresent()
 	            .meta_body_tracking_calibration_enabled = false,
 	            .meta_body_tracking_fidelity_enabled = false,
 	            .android_face_tracking_enabled = false,
+	            .view_configuration_views_change_supported = false,
 	        },
 	    .platform_info = {0},
 	};

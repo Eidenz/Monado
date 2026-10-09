@@ -515,6 +515,7 @@ static void
 on_button_var(const char *name, void *ptr)
 {
 	struct u_var_button *btn = (struct u_var_button *)ptr;
+
 	ImVec2 dims = {btn->width, btn->height};
 	const char *label = strlen(btn->label) == 0 ? name : btn->label;
 	bool disabled = btn->disabled;
@@ -524,7 +525,7 @@ on_button_var(const char *name, void *ptr)
 		igPushItemFlag(ImGuiItemFlags_Disabled, true);
 	}
 
-	if (igButton(label, dims)) {
+	if (igButton(label, dims) && btn->cb) {
 		btn->cb(btn->ptr);
 	}
 

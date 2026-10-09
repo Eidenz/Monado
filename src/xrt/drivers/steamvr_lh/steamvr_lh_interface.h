@@ -36,7 +36,18 @@ extern "C" {
  * @ingroup drv_steamvr_lh
  */
 enum xrt_result
-steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices **out_xsysd);
+steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsysd);
+
+/*!
+ * Controller role assignment that follows the devices which are powered on,
+ * including ones hotplugged after @ref steamvr_lh_create_devices. The builder
+ * installs this as @ref xrt_system_devices::get_roles in place of the static
+ * roles. Devices not owned by this driver never get a role here.
+ *
+ * @ingroup drv_steamvr_lh
+ */
+xrt_result_t
+steamvr_lh_get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles);
 
 /*!
  * Callback invoked when a device is hotplugged after
@@ -50,7 +61,7 @@ typedef void (*steamvr_lh_device_added_callback)(struct xrt_device *xdev, void *
 /*!
  * Register a callback for hotplugged devices, used by the builder to add new
  * devices to the space overseer. Must be called before any client connects,
- * right after @ref steamvr_lh_create_devices.
+ * once the system that @ref steamvr_lh_create_devices filled is open.
  *
  * @ingroup drv_steamvr_lh
  */

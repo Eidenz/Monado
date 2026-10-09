@@ -382,6 +382,35 @@ vk_find_struct_in_chain(const VkBaseInStructure *base, VkStructureType type)
 	return NULL;
 }
 
+#ifdef VK_KHR_timeline_semaphore
+/*!
+ * Finds the app's timelineSemaphore value in whichever feature struct carries
+ * it. A valid chain holds at most one of the two (VUID-VkDeviceCreateInfo-pNext-02830).
+ */
+static bool
+find_app_timeline_semaphore_feature(const VkDeviceCreateInfo *info, VkBool32 *out_enabled)
+{
+	const VkBaseInStructure *base = (const VkBaseInStructure *)info;
+
+	const VkBaseInStructure *found =
+	    vk_find_struct_in_chain(base, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES);
+	if (found != NULL) {
+		*out_enabled = ((const VkPhysicalDeviceTimelineSemaphoreFeatures *)found)->timelineSemaphore;
+		return true;
+	}
+
+#ifdef VK_VERSION_1_2
+	found = vk_find_struct_in_chain(base, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES);
+	if (found != NULL) {
+		*out_enabled = ((const VkPhysicalDeviceVulkan12Features *)found)->timelineSemaphore;
+		return true;
+	}
+#endif
+
+	return false;
+}
+#endif
+
 XrResult
 oxr_vk_create_vulkan_device(struct oxr_logger *log,
                             struct oxr_system *sys,
@@ -489,23 +518,17 @@ oxr_vk_create_vulkan_device(struct oxr_logger *log,
 	};
 
 	if (timeline_semaphore_info.timelineSemaphore) {
-		// Check if the user has already put the struct into the chain
-		const VkBaseInStructure *existing = vk_find_struct_in_chain(
-		    (VkBaseInStructure *)&modified_info, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES);
-		if (existing != NULL) {
-			VkPhysicalDeviceTimelineSemaphoreFeatures *existing_timeline_semaphore_info =
-			    (VkPhysicalDeviceTimelineSemaphoreFeatures *)existing;
-			if (!existing_timeline_semaphore_info->timelineSemaphore) {
-				oxr_warn(log, "Timeline semaphores are explicitly disabled by application");
-				timeline_semaphore_info.timelineSemaphore = VK_FALSE;
-			}
-			// Timeline semaphores are already enabled so we don't have to do anything
-		} else {
+		VkBool32 app_enabled = VK_FALSE;
+		if (!find_app_timeline_semaphore_feature(&modified_info, &app_enabled)) {
 			// Insert struct at the front of the chain
 			// Have to cast away const.
 			timeline_semaphore.pNext = (void *)modified_info.pNext;
 			modified_info.pNext = &timeline_semaphore;
+		} else if (!app_enabled) {
+			oxr_warn(log, "Application set timelineSemaphore to VK_FALSE, falling back to fences");
+			timeline_semaphore_info.timelineSemaphore = VK_FALSE;
 		}
+		// Otherwise the application has already enabled them.
 	}
 #endif
 

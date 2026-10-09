@@ -295,7 +295,7 @@ do_cylinder_layer(struct render_gfx *render,
 	    src_sampler,                                 //
 	    src_image_view,                              //
 	    &descriptor_set);                            // out_descriptor_set
-	VK_CHK_AND_RET(ret, "render_gfx_layer_quad_alloc_and_write");
+	VK_CHK_AND_RET(ret, "render_gfx_layer_cylinder_alloc_and_write");
 
 	VK_NAME_DESCRIPTOR_SET(vk, descriptor_set, "render_gfx layer quad descriptor set");
 
@@ -363,7 +363,7 @@ do_equirect2_layer(struct render_gfx *render,
 	    src_sampler,                                  //
 	    src_image_view,                               //
 	    &descriptor_set);                             // out_descriptor_set
-	VK_CHK_AND_RET(ret, "render_gfx_layer_quad_alloc_and_write");
+	VK_CHK_AND_RET(ret, "render_gfx_layer_equirect2_alloc_and_write");
 
 	VK_NAME_DESCRIPTOR_SET(vk, descriptor_set, "render_gfx layer quad descriptor set");
 
@@ -558,7 +558,7 @@ crg_distortion_common(struct render_gfx *render,
 		    md->views[i].src_sampler,          //
 		    md->views[i].src_image_view,       //
 		    &ms.descriptor_sets[i]);           //
-		VK_CHK_WITH_GOTO(ret, "render_gfx_mesh_alloc", err_no_memory);
+		VK_CHK_WITH_GOTO(ret, "render_gfx_mesh_alloc_and_write", err_no_memory);
 
 		VK_NAME_DESCRIPTOR_SET(vk, ms.descriptor_sets[i], "render_gfx mesh descriptor sets");
 	}
@@ -644,7 +644,7 @@ crg_distortion_fast_path(struct render_gfx *render,
 {
 	const struct xrt_layer_data *data = &layer->data;
 
-	const VkSampler clamp_to_border_black = render->r->samplers.clamp_to_border_black;
+	VkSampler clamp_to_border_black = render->r->samplers.clamp_to_border_black;
 
 	struct gfx_mesh_data md = XRT_STRUCT_INIT;
 	for (uint32_t i = 0; i < d->target.view_count; i++) {
@@ -659,7 +659,7 @@ crg_distortion_fast_path(struct render_gfx *render,
 		src_pose = vds[i]->pose;
 		src_fov = vds[i]->fov;
 		src_norm_rect = vds[i]->sub.norm_rect;
-		const VkImageView src_image_view = get_image_view(image, data->flags, array_index);
+		VkImageView src_image_view = get_image_view(image, data->flags, array_index);
 
 		if (data->flip_y) {
 			src_norm_rect.y += src_norm_rect.h;

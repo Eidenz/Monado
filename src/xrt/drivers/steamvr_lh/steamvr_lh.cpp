@@ -13,15 +13,8 @@
 
 #include "interfaces/context.hpp"
 
-#include "b_body_tracker.h"
-#include "b_hand_tracker.h"
-
 #include "util/u_var.h"
 #include "util/u_device.h"
-#include "util/u_misc.h"
-#include "util/u_device.h"
-#include "util/u_device.h"
-#include "util/u_system_devices.h"
 #include "util/u_screenshot.h"
 
 #include "vive/vive_bindings.h"
@@ -43,6 +36,7 @@
 #include <string_view>
 #include <filesystem>
 #include <istream>
+#include <algorithm>
 
 namespace {
 
@@ -94,23 +88,13 @@ DEBUG_GET_ONCE_FLOAT_OPTION(lh_stick_deadzone, "LH_STICK_DEADZONE", 0)
 static constexpr size_t MAX_CONTROLLERS = 16;
 
 
-struct steamvr_lh_system
-{
-	// System devices wrapper.
-	struct xrt_system_devices base;
-
-	//! Pointer to driver context
-	std::shared_ptr<Context> ctx;
-};
-
-struct steamvr_lh_system *svrs = U_TYPED_CALLOC(struct steamvr_lh_system);
-
-// Cached role state, get_roles is called with a fresh zeroed struct every
-// time (the IPC handler does not carry previous state), so change detection
-// and the generation counter must live here.
-std::mutex roles_mutex;
-xrt_system_roles cached_roles = XRT_SYSTEM_ROLES_INIT;
-
+/*
+ * The lighthouse driver is a process singleton (one driver_lighthouse.so, with
+ * the working directory moved into its config folder), so one context serves
+ * the C entry points at the end of this file. The devices own it; this only
+ * observes.
+ */
+std::weak_ptr<Context> g_context;
 
 // ~/.steam/root is a symlink to where the Steam root is
 const std::string STEAM_INSTALL_DIR = std::string(getenv("HOME")) + "/.steam/root";
@@ -267,14 +251,27 @@ Context::GetDriverHandle()
 bool
 Context::setup_hmd(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 {
-	this->hmd = new HmdDevice(DeviceBuilder{this->shared_from_this(), driver, serial, STEAM_INSTALL_DIR});
+	auto *hmd = new HmdDevice(DeviceBuilder{this->shared_from_this(), driver, serial, STEAM_INSTALL_DIR});
+
+	{
+		// Publish the device before activating it: the driver writes its properties and creates its
+		// input components from within Activate, and those callbacks have to be able to find it.
+		std::lock_guard lk(this->devices_mut);
+		this->hmd = hmd;
+	}
+
 #define VERIFY(expr, msg)                                                                                              \
 	if (!(expr)) {                                                                                                 \
 		CTX_ERR("Activating HMD failed: %s", msg);                                                             \
-		delete this->hmd;                                                                                      \
-		this->hmd = nullptr;                                                                                   \
+		std::lock_guard lk(this->devices_mut);                                                                 \
+		if (this->hmd == hmd) {                                                                                \
+			this->hmd = nullptr;                                                                           \
+		}                                                                                                      \
+		delete hmd;                                                                                            \
 		return false;                                                                                          \
 	}
+	// Never call into the driver with `devices_mut` held: it takes its own locks here, and calls back into
+	// us (WritePropertyBatch, TrackedDevicePoseUpdated, ...) from its own threads while holding them.
 	vr::EVRInitError err = driver->Activate(0);
 	VERIFY(err == vr::VRInitError_None, std::to_string(err).c_str());
 
@@ -318,18 +315,18 @@ Context::setup_hmd(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 		fov.angle_down = atanf(tan_top);
 	}
 
-	u_var_add_root(this->hmd, "SteamVR HMD Device", true);
-	u_var_add_f32(this->hmd, &this->hmd->ipd, "IPD");
+	u_var_add_root(hmd, "SteamVR HMD Device", true);
+	u_var_add_f32(hmd, &hmd->ipd, "IPD");
 
-	u_var_add_f32(this->hmd, &distortion.fov[0].angle_up, "View 0 FovAngleUp");
-	u_var_add_f32(this->hmd, &distortion.fov[0].angle_down, "View 0 FovAngleDown");
-	u_var_add_f32(this->hmd, &distortion.fov[0].angle_left, "View 0 FovAngleLeft");
-	u_var_add_f32(this->hmd, &distortion.fov[0].angle_right, "View 0 FovAngleRight");
+	u_var_add_f32(hmd, &distortion.fov[0].angle_up, "View 0 FovAngleUp");
+	u_var_add_f32(hmd, &distortion.fov[0].angle_down, "View 0 FovAngleDown");
+	u_var_add_f32(hmd, &distortion.fov[0].angle_left, "View 0 FovAngleLeft");
+	u_var_add_f32(hmd, &distortion.fov[0].angle_right, "View 0 FovAngleRight");
 
-	u_var_add_f32(this->hmd, &distortion.fov[1].angle_up, "View 1 FovAngleUp");
-	u_var_add_f32(this->hmd, &distortion.fov[1].angle_down, "View 1 FovAngleDown");
-	u_var_add_f32(this->hmd, &distortion.fov[1].angle_left, "View 1 FovAngleLeft");
-	u_var_add_f32(this->hmd, &distortion.fov[1].angle_right, "View 1 FovAngleRight");
+	u_var_add_f32(hmd, &distortion.fov[1].angle_up, "View 1 FovAngleUp");
+	u_var_add_f32(hmd, &distortion.fov[1].angle_down, "View 1 FovAngleDown");
+	u_var_add_f32(hmd, &distortion.fov[1].angle_left, "View 1 FovAngleLeft");
+	u_var_add_f32(hmd, &distortion.fov[1].angle_right, "View 1 FovAngleRight");
 
 	hmd_parts->display = display;
 	hmd->set_hmd_parts(std::move(hmd_parts));
@@ -341,11 +338,20 @@ bool
 Context::setup_controller(const char *serial, vr::ITrackedDeviceServerDriver *driver)
 {
 	// Defer creation to the frame thread: TrackedDeviceAdded may be called
-	// from the lighthouse driver's background threads, and creating/activating
-	// a device touches shared maps (CreateBooleanComponent etc.) that the
-	// frame thread's process_pending_additions()/RunFrame() also access.
-	std::lock_guard lk(pending_addition_mut);
-	pending_additions.push_back({serial, driver});
+	// from the lighthouse driver's background threads, and activating there
+	// would have the Activate() callbacks race the Update* callbacks that
+	// RunFrame() triggers (see process_pending_additions).
+	{
+		std::lock_guard lk(pending_addition_mut);
+		pending_additions.push_back({serial, driver});
+	}
+
+	// Handed to the frame thread: discovery stays open until it has activated the device.
+	{
+		std::lock_guard lk(this->devices_mut);
+		this->devices_in_setup++;
+	}
+
 	return true;
 }
 
@@ -358,101 +364,143 @@ Context::process_pending_additions()
 		to_add.swap(pending_additions);
 	}
 
-	for (auto &pa : to_add) {
+	for (const PendingAddition &pa : to_add) {
+		activate_pending(pa);
+
+		{
+			std::lock_guard lk(this->devices_mut);
+			this->devices_in_setup--;
+		}
+		this->discover_cv.notify_all();
+	}
+}
+
+void
+Context::activate_pending(const PendingAddition &pa)
+{
+	size_t device_idx = 0;
+	ControllerDevice *device = nullptr;
+	bool readded = false;
+
+	{
+		std::lock_guard lk(this->devices_mut);
+
 		// Re-add of a known device (e.g. dongle reconnect): reuse its slot.
-		size_t device_idx = 0;
 		for (; device_idx < MAX_CONTROLLERS; ++device_idx) {
 			if (controller[device_idx] &&
 			    std::strcmp(controller[device_idx]->serial, pa.serial.c_str()) == 0) {
 				break;
 			}
 		}
+
 		if (device_idx != MAX_CONTROLLERS) {
 			CTX_INFO("Device %s re-added, reactivating at slot %zu", pa.serial.c_str(), device_idx);
-			controller[device_idx]->set_driver(pa.driver);
-			vr::EVRInitError err = pa.driver->Activate(device_idx + 1);
-			if (err != vr::VRInitError_None) {
-				CTX_ERR("Reactivating controller %s failed: error %u", pa.serial.c_str(), err);
-				continue;
+			device = controller[device_idx];
+			device->set_driver(pa.driver);
+			readded = true;
+		} else {
+			// Find the first available slot for a new controller
+			for (device_idx = 0; device_idx < MAX_CONTROLLERS; ++device_idx) {
+				if (!controller[device_idx])
+					break;
 			}
-			controller[device_idx]->connected = true;
-			continue;
+
+			// Check if we've exceeded the maximum number of controllers
+			if (device_idx == MAX_CONTROLLERS) {
+				CTX_WARN("Attempted to activate more than %zu controllers - this is unsupported",
+				         MAX_CONTROLLERS);
+				return;
+			}
+
+			// Create the new controller and claim its slot before activating it: the driver writes
+			// its properties and creates its input components from within Activate, and those
+			// callbacks have to be able to find it.
+			device =
+			    new ControllerDevice(device_idx + 1, DeviceBuilder{this->shared_from_this(), pa.driver,
+			                                                       pa.serial.c_str(), STEAM_INSTALL_DIR});
+			controller[device_idx] = device;
 		}
+	}
 
-		// Find the first available slot for a new controller.
-		for (device_idx = 0; device_idx < MAX_CONTROLLERS; ++device_idx) {
-			if (!controller[device_idx])
-				break;
-		}
+	// Never call into the driver with `devices_mut` held: it takes its own locks here, and calls back into
+	// us (WritePropertyBatch, TrackedDevicePoseUpdated, ...) from its own threads while holding them.
+	vr::EVRInitError err = pa.driver->Activate(device_idx + 1);
 
-		// Check if we've exceeded the maximum number of controllers.
-		if (device_idx == MAX_CONTROLLERS) {
-			CTX_WARN("Attempted to activate more than %zu controllers - this is unsupported",
-			         MAX_CONTROLLERS);
-			continue;
-		}
-
-		// Create the new controller. It must be in its slot before
-		// Activate(): the driver delivers callbacks for this index
-		// (pose updates, component creation) during Activate() already.
-		auto *dev = new ControllerDevice(device_idx + 1, DeviceBuilder{this->shared_from_this(), pa.driver,
-		                                                               pa.serial.c_str(), STEAM_INSTALL_DIR});
-		controller[device_idx] = dev;
-
-		vr::EVRInitError err = pa.driver->Activate(device_idx + 1);
+	if (readded) {
 		if (err != vr::VRInitError_None) {
-			// Keep the device in its slot (component handles may
-			// point into it already), but never give it a role and
-			// don't expose it to the system.
-			CTX_ERR("Activating controller %s failed: error %u", pa.serial.c_str(), err);
-			dev->connected = false;
-			continue;
+			CTX_ERR("Reactivating controller %s failed: error %u", pa.serial.c_str(), err);
+			return;
 		}
+		device->connected = true;
+		return;
+	}
 
-		switch (dev->name) {
-		case XRT_DEVICE_VIVE_WAND:
-			dev->binding_profiles = vive_binding_profiles_wand;
-			dev->binding_profile_count = vive_binding_profiles_wand_count;
-			break;
-		case XRT_DEVICE_INDEX_CONTROLLER:
-			dev->binding_profiles = vive_binding_profiles_index;
-			dev->binding_profile_count = vive_binding_profiles_index_count;
-			break;
-		case XRT_DEVICE_FLIPVR:
-			dev->binding_profiles = vive_binding_profiles_flipvr;
-			dev->binding_profile_count = vive_binding_profiles_flipvr_count;
-			break;
-		default: break;
-		}
+	if (err != vr::VRInitError_None) {
+		// Published all the same, like a device that fails during boot: it is
+		// torn down with the system, and a later re-add revives it in place.
+		// Until then it reports disconnected and never gets a role.
+		CTX_ERR("Activating controller %s failed: error %u", pa.serial.c_str(), err);
+		device->connected = false;
+	}
 
-		// Before boot assembly finishes xsysd is null and the boot code
-		// picks the device up from controller[]; after that this is a
-		// hotplug and we append it to the system ourselves.
-		if (xsysd != nullptr) {
-			CTX_INFO("Hotplugged device %s at slot %zu", pa.serial.c_str(), device_idx);
-			append_to_xsysd(dev);
-		}
+	enum xrt_device_name name = device->name;
+	switch (name) {
+	case XRT_DEVICE_VIVE_WAND:
+		device->binding_profiles = vive_binding_profiles_wand;
+		device->binding_profile_count = vive_binding_profiles_wand_count;
+		break;
+	case XRT_DEVICE_INDEX_CONTROLLER:
+		device->binding_profiles = vive_binding_profiles_index;
+		device->binding_profile_count = vive_binding_profiles_index_count;
+		break;
+	case XRT_DEVICE_FLIPVR:
+		device->binding_profiles = vive_binding_profiles_flipvr;
+		device->binding_profile_count = vive_binding_profiles_flipvr_count;
+		break;
+	default: break;
+	}
+
+	// Until steamvr_lh_create_devices has assembled the system it picks the
+	// device up from controller[]; after that this is a hotplug and we publish
+	// it ourselves.
+	std::lock_guard lk(this->devices_mut);
+	if (xsysd != nullptr) {
+		CTX_INFO("Hotplugged device %s at slot %zu", pa.serial.c_str(), device_idx);
+		append_to_xsysd_locked(device);
 	}
 }
 
 void
 Context::wait_for_discover()
 {
+	std::unique_lock lk(this->devices_mut);
+
 	this->discover_end_time =
 	    std::chrono::steady_clock::now() + std::chrono::milliseconds(debug_get_num_option_lh_discover_wait_ms());
-	while (true) {
-		std::unique_lock lk(this->devices_mut);
-		this->discover_cv.wait_until(lk, this->discover_end_time);
 
-		if (this->discover_end_time <= std::chrono::steady_clock::now())
+	while (true) {
+		if (std::chrono::steady_clock::now() < this->discover_end_time) {
+			this->discover_cv.wait_until(lk, this->discover_end_time);
+			continue;
+		}
+
+		// The window is not over while a device we already know about is still being activated.
+		if (this->devices_in_setup == 0)
 			break;
+
+		this->discover_cv.wait(lk, [this] { return this->devices_in_setup == 0; });
 	}
 }
 
 void
-Context::append_to_xsysd(struct xrt_device *xdev)
+Context::append_to_xsysd_locked(struct xrt_device *xdev)
 {
 	uint32_t count = xsysd->static_xdev_count;
+	for (uint32_t i = 0; i < count; i++) {
+		if (xsysd->static_xdevs[i] == xdev) {
+			return; // Already published by steamvr_lh_create_devices.
+		}
+	}
 	if (count >= XRT_SYSTEM_MAX_DEVICES) {
 		CTX_WARN("Out of device slots, not exposing %s", xdev->str);
 		return;
@@ -473,7 +521,9 @@ Context::append_to_xsysd(struct xrt_device *xdev)
 void
 Context::extend_discover()
 {
-	this->discover_end_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(2000);
+	// Only ever push the deadline out - a device showing up must not cut `LH_DISCOVER_WAIT_MS` short.
+	this->discover_end_time =
+	    std::max(this->discover_end_time, std::chrono::steady_clock::now() + std::chrono::milliseconds(2000));
 	this->discover_cv.notify_all();
 }
 
@@ -483,40 +533,59 @@ Context::TrackedDeviceAdded(const char *pchDeviceSerialNumber,
                             vr::ETrackedDeviceClass eDeviceClass,
                             vr::ITrackedDeviceServerDriver *pDriver)
 {
-	std::lock_guard lk(this->devices_mut);
+	{
+		std::lock_guard lk(this->devices_mut);
 
-	if (this->in_setup) {
-		// Boot: keep the discovery window open a little longer for every
-		// device that shows up, so late controllers still make the cut.
-		this->extend_discover();
+		if (this->in_setup) {
+			// Boot: keep the discovery window open a little longer for every
+			// device that shows up, so late controllers still make the cut.
+			this->extend_discover();
+		}
+		// Unlike upstream, devices appearing after setup are welcome: the frame
+		// thread creates them and publishes them to xrt_system_devices itself
+		// (see process_pending_additions).
+
+		// The setup below runs without `devices_mut` held, and publishes the device before the driver has
+		// finished activating it - keep discovery from ending in the middle of that.
+		this->devices_in_setup++;
 	}
-	// Unlike upstream, devices appearing after setup are welcome: setup_controller()
-	// queues them and the frame thread creates them and appends them to
-	// xrt_system_devices itself (see process_pending_additions).
+
+	bool added = false;
 
 	CTX_INFO("New device added: %s", pchDeviceSerialNumber);
 	switch (eDeviceClass) {
 	case vr::TrackedDeviceClass_HMD: {
 		CTX_INFO("Found lighthouse HMD: %s", pchDeviceSerialNumber);
-		return setup_hmd(pchDeviceSerialNumber, pDriver);
+		added = setup_hmd(pchDeviceSerialNumber, pDriver);
+		break;
 	}
 	case vr::TrackedDeviceClass_Controller: {
 		CTX_INFO("Found lighthouse controller: %s", pchDeviceSerialNumber);
-		return setup_controller(pchDeviceSerialNumber, pDriver);
+		added = setup_controller(pchDeviceSerialNumber, pDriver);
+		break;
 	}
 	case vr::TrackedDeviceClass_TrackingReference: {
 		CTX_INFO("Found lighthouse base station: %s", pchDeviceSerialNumber);
-		return false;
+		break;
 	}
 	case vr::TrackedDeviceClass_GenericTracker: {
 		CTX_INFO("Found lighthouse tracker: %s", pchDeviceSerialNumber);
-		return setup_controller(pchDeviceSerialNumber, pDriver);
+		added = setup_controller(pchDeviceSerialNumber, pDriver);
+		break;
 	}
 	default: {
 		CTX_WARN("Attempted to add unsupported device class: %u", eDeviceClass);
-		return false;
+		break;
 	}
 	}
+
+	{
+		std::lock_guard lk(this->devices_mut);
+		this->devices_in_setup--;
+	}
+	this->discover_cv.notify_all();
+
+	return added;
 }
 
 void
@@ -530,6 +599,8 @@ Context::TrackedDevicePoseUpdated(uint32_t unWhichDevice, const vr::DriverPose_t
 
 	Device *dev = nullptr;
 
+	std::lock_guard lk(this->devices_mut);
+
 	// If unWhichDevice is 0, it refers to the HMD; otherwise, it refers to one of the controllers
 	if (unWhichDevice == 0) {
 		dev = static_cast<Device *>(this->hmd);
@@ -538,8 +609,9 @@ Context::TrackedDevicePoseUpdated(uint32_t unWhichDevice, const vr::DriverPose_t
 		dev = static_cast<Device *>(this->controller[unWhichDevice - 1]);
 	}
 
-	// Pose updates may arrive from driver threads for a device whose slot
-	// hasn't been filled (yet); don't crash on them.
+	// The slot is empty: Monado destroyed the device, or the frame thread has
+	// not created a hotplugged one yet (the driver's threads can send poses
+	// for it before that).
 	if (dev == nullptr) {
 		return;
 	}
@@ -567,7 +639,7 @@ Context::VendorSpecificEvent(uint32_t unWhichDevice,
 {
 	std::lock_guard lk(event_queue_mut);
 	this->add_event_locked({
-	    .eventType = eventType,
+	    .eventType = static_cast<uint32_t>(eventType),
 	    .trackedDeviceIndex = unWhichDevice,
 	    .eventAgeSeconds = {},
 	    .data = eventData,
@@ -689,34 +761,45 @@ Context::create_component_common(vr::PropertyContainerHandle_t container,
                                  vr::VRInputComponentHandle_t *pHandle)
 {
 	*pHandle = vr::k_ulInvalidInputComponentHandle;
+
+	std::lock_guard lk(this->devices_mut);
 	Device *device = prop_container_to_device(container);
 	if (!device) {
 		return vr::VRInputError_InvalidHandle;
 	}
+
 	if (xrt_input *input = device->get_input_from_name(name); input) {
 		CTX_DEBUG("creating component %s for %p", name, (void *)device);
-		vr::VRInputComponentHandle_t handle = new_handle();
-		handle_to_input[handle] = input;
-		handle_to_device[handle] = device;
+		vr::VRInputComponentHandle_t handle = device->new_input_handle_locked();
+		this->input.handle_to_input[handle] = input;
+		this->input.handle_to_device[handle] = device;
 		*pHandle = handle;
 	}
+
 	return vr::VRInputError_None;
 }
 
 xrt_input *
-Context::update_component_common(vr::VRInputComponentHandle_t handle,
-                                 double offset,
-                                 std::chrono::steady_clock::time_point now)
+Context::update_component_common_locked(vr::VRInputComponentHandle_t handle,
+                                        double offset,
+                                        std::chrono::steady_clock::time_point now)
 {
 	xrt_input *input{nullptr};
+
 	if (handle != vr::k_ulInvalidInputComponentHandle) {
-		input = handle_to_input[handle];
+		// A destroyed device's handles are gone from the table, haptic handles map to no input.
+		auto it = this->input.handle_to_input.find(handle);
+		if (it == this->input.handle_to_input.end() || it->second == nullptr) {
+			return nullptr;
+		}
+		input = it->second;
 		std::chrono::duration<double, std::chrono::seconds::period> offset_dur(offset);
 		std::chrono::duration offset = (now + offset_dur).time_since_epoch();
 		int64_t timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(offset).count();
 		input->active = true;
 		input->timestamp = timestamp;
 	}
+
 	return input;
 }
 
@@ -748,7 +831,8 @@ device_trigger_held(const xrt_device *dev)
 vr::EVRInputError
 Context::UpdateBooleanComponent(vr::VRInputComponentHandle_t ulComponent, bool bNewValue, double fTimeOffset)
 {
-	xrt_input *input = update_component_common(ulComponent, fTimeOffset);
+	std::lock_guard lk(this->devices_mut);
+	xrt_input *input = update_component_common_locked(ulComponent, fTimeOffset);
 	if (input) {
 		// Screenshot on a deliberate chord: hold the trigger and click the
 		// system button, on either hand controller. The trigger requirement
@@ -759,12 +843,12 @@ Context::UpdateBooleanComponent(vr::VRInputComponentHandle_t ulComponent, bool b
 		                 input->name == XRT_INPUT_VIVE_SYSTEM_CLICK;
 		if (is_system && bNewValue && !input->value.boolean) {
 			Device *dev = nullptr;
-			if (auto it = handle_to_device.find(ulComponent); it != handle_to_device.end()) {
+			if (auto it = this->input.handle_to_device.find(ulComponent);
+			    it != this->input.handle_to_device.end()) {
 				dev = it->second;
 			}
-			bool is_hand = dev != nullptr &&
-			               (dev->device_type == XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER ||
-			                dev->device_type == XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER);
+			bool is_hand = dev != nullptr && (dev->device_type == XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER ||
+			                                  dev->device_type == XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER);
 			if (is_hand && device_trigger_held(dev)) {
 				u_screenshot_request();
 			}
@@ -787,10 +871,13 @@ Context::CreateScalarComponent(vr::PropertyContainerHandle_t ulContainer,
 	auto end = name.back();
 	auto second_last = name.at(name.size() - 2);
 	if (second_last == '/' && (end == 'x' || end == 'y')) {
-		Device *device = prop_container_to_device(ulContainer);
+		std::lock_guard lk(this->devices_mut);
+
+		Device *device = this->prop_container_to_device(ulContainer);
 		if (!device) {
 			return vr::VRInputError_InvalidHandle;
 		}
+
 		bool x = end == 'x';
 		name.remove_suffix(2);
 		std::string n(name);
@@ -801,15 +888,15 @@ Context::CreateScalarComponent(vr::PropertyContainerHandle_t ulContainer,
 
 		// Create the component mapping if it hasn't been created yet
 		Vec2Components *components =
-		    vec2_input_to_components.try_emplace(input, new Vec2Components).first->second.get();
+		    this->input.vec2_input_to_components.try_emplace(input, new Vec2Components).first->second.get();
 
-		vr::VRInputComponentHandle_t new_handle = this->new_handle();
+		vr::VRInputComponentHandle_t new_handle = device->new_input_handle_locked();
 		if (x)
 			components->x = new_handle;
 		else
 			components->y = new_handle;
 
-		handle_to_input[new_handle] = input;
+		this->input.handle_to_input[new_handle] = input;
 		*pHandle = new_handle;
 		return vr::VRInputError_None;
 	}
@@ -841,10 +928,13 @@ applyDeadzone(struct xrt_vec2 input)
 vr::EVRInputError
 Context::UpdateScalarComponent(vr::VRInputComponentHandle_t ulComponent, float fNewValue, double fTimeOffset)
 {
-	if (auto h = handle_to_input.find(ulComponent); h != handle_to_input.end() && h->second) {
-		xrt_input *input = update_component_common(ulComponent, fTimeOffset);
+	std::lock_guard lk(this->devices_mut);
+
+	auto h = this->input.handle_to_input.find(ulComponent);
+	if (h != this->input.handle_to_input.end() && h->second) {
+		xrt_input *input = update_component_common_locked(ulComponent, fTimeOffset);
 		if (XRT_GET_INPUT_TYPE(input->name) == XRT_INPUT_TYPE_VEC2_MINUS_ONE_TO_ONE) {
-			std::unique_ptr<Vec2Components> &components = vec2_input_to_components.at(input);
+			std::unique_ptr<Vec2Components> &components = this->input.vec2_input_to_components.at(input);
 			if (components->x == ulComponent) {
 				input->value.vec2.x = fNewValue;
 			} else if (components->y == ulComponent) {
@@ -861,6 +951,7 @@ Context::UpdateScalarComponent(vr::VRInputComponentHandle_t ulComponent, float f
 			input->value.vec1.x = fNewValue;
 		}
 	}
+
 	return vr::VRInputError_None;
 }
 
@@ -870,6 +961,8 @@ Context::CreateHapticComponent(vr::PropertyContainerHandle_t ulContainer,
                                vr::VRInputComponentHandle_t *pHandle)
 {
 	*pHandle = vr::k_ulInvalidInputComponentHandle;
+
+	std::lock_guard lk(this->devices_mut);
 	Device *d = prop_container_to_device(ulContainer);
 	if (!d) {
 		return vr::VRInputError_InvalidHandle;
@@ -883,8 +976,8 @@ Context::CreateHapticComponent(vr::PropertyContainerHandle_t ulContainer,
 	}
 
 	auto *device = static_cast<ControllerDevice *>(d);
-	vr::VRInputComponentHandle_t handle = new_handle();
-	handle_to_input[handle] = nullptr;
+	vr::VRInputComponentHandle_t handle = device->new_input_handle_locked();
+	this->input.handle_to_input[handle] = nullptr;
 	device->set_haptic_handle(handle);
 	*pHandle = handle;
 
@@ -912,6 +1005,8 @@ Context::CreateSkeletonComponent(vr::PropertyContainerHandle_t ulContainer,
 		return ret;
 	}
 
+	std::lock_guard lk(this->devices_mut);
+
 	auto *device = static_cast<ControllerDevice *>(prop_container_to_device(ulContainer));
 	path.remove_prefix(skeleton_pfx.size());
 	xrt_hand hand;
@@ -926,7 +1021,7 @@ Context::CreateSkeletonComponent(vr::PropertyContainerHandle_t ulContainer,
 
 	device->set_skeleton(std::span(pGripLimitTransforms, unGripLimitTransformCount), hand,
 	                     eSkeletalTrackingLevel == vr::VRSkeletalTracking_Estimated, pchSkeletonPath);
-	skeleton_to_controller[*pHandle] = device;
+	this->input.skeleton_to_controller[*pHandle] = device;
 
 	return vr::VRInputError_None;
 }
@@ -941,11 +1036,12 @@ Context::UpdateSkeletonComponent(vr::VRInputComponentHandle_t ulComponent,
 		return vr::VRInputError_None;
 	}
 
-	if (!update_component_common(ulComponent, 0)) {
+	std::lock_guard lk(this->devices_mut);
+	if (!update_component_common_locked(ulComponent, 0)) {
 		return vr::VRInputError_InvalidHandle;
 	}
 
-	auto *device = skeleton_to_controller[ulComponent];
+	auto *device = this->input.skeleton_to_controller[ulComponent];
 	if (!device) {
 		CTX_ERR("Got unknown component handle %" PRIu64, ulComponent);
 		return vr::VRInputError_InvalidHandle;
@@ -995,6 +1091,8 @@ Context::ReadPropertyBatch(vr::PropertyContainerHandle_t ulContainerHandle,
                            vr::PropertyRead_t *pBatch,
                            uint32_t unBatchEntryCount)
 {
+	std::lock_guard lk(this->devices_mut);
+
 	Device *device = prop_container_to_device(ulContainerHandle);
 	if (!device)
 		return vr::TrackedProp_InvalidContainer;
@@ -1008,6 +1106,8 @@ Context::WritePropertyBatch(vr::PropertyContainerHandle_t ulContainerHandle,
                             vr::PropertyWrite_t *pBatch,
                             uint32_t unBatchEntryCount)
 {
+	std::lock_guard lk(this->devices_mut);
+
 	Device *device = prop_container_to_device(ulContainerHandle);
 	if (!device)
 		return vr::TrackedProp_InvalidContainer;
@@ -1063,8 +1163,25 @@ Context::Log(const char *pchLogMessage)
 }
 // NOLINTEND(bugprone-easily-swappable-parameters)
 
+Device *
+Context::device_from_xdev_locked(struct xrt_device *xdev)
+{
+	if (xdev == nullptr) {
+		return nullptr;
+	}
+	if (this->hmd != nullptr && xdev == this->hmd) {
+		return this->hmd;
+	}
+	for (ControllerDevice *controller : this->controller) {
+		if (controller != nullptr && xdev == controller) {
+			return controller;
+		}
+	}
+	return nullptr;
+}
+
 xrt_result_t
-get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
+Context::get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 {
 	int head, eyes, face, left, right, gamepad;
 
@@ -1081,31 +1198,15 @@ get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 	 * udcap gloves) which must not be cast to Device; those get their
 	 * roles from the builder's get_roles wrapper instead.
 	 */
-	Context *ctx = svrs->ctx.get();
 	struct xrt_device *candidates[XRT_SYSTEM_MAX_DEVICES] = {};
-	for (uint32_t i = 0; i < count; i++) {
-		struct xrt_device *xdev = xsysd->static_xdevs[i];
-		if (xdev == NULL) {
-			continue;
-		}
-
-		Device *dev = nullptr;
-		if (ctx->hmd != nullptr && xdev == ctx->hmd) {
-			dev = ctx->hmd;
-		} else {
-			for (size_t j = 0; j < MAX_CONTROLLERS; j++) {
-				if (ctx->controller[j] != nullptr && xdev == ctx->controller[j]) {
-					dev = ctx->controller[j];
-					break;
-				}
+	{
+		std::lock_guard lk(this->devices_mut);
+		for (uint32_t i = 0; i < count; i++) {
+			Device *dev = device_from_xdev_locked(xsysd->static_xdevs[i]);
+			if (dev != nullptr && dev->connected.load(std::memory_order_relaxed)) {
+				candidates[i] = dev;
 			}
 		}
-
-		if (dev == nullptr || !dev->connected.load(std::memory_order_relaxed)) {
-			continue;
-		}
-
-		candidates[i] = xdev;
 	}
 
 	u_device_assign_xdev_roles(candidates, count, &head, &eyes, &face, &left, &right, &gamepad);
@@ -1130,7 +1231,6 @@ get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 	}
 
 	if (left != cached_roles.left || right != cached_roles.right || gamepad != cached_roles.gamepad) {
-		u_logging_level log_level = ctx->log_level;
 		CTX_INFO("Controller roles changed: left=%d right=%d gamepad=%d", left, right, gamepad);
 
 		cached_roles.generation_id++;
@@ -1146,14 +1246,12 @@ get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 		cached_roles.gamepad_profile =
 		    gamepad != XRT_DEVICE_ROLE_UNASSIGNED ? xsysd->static_xdevs[gamepad]->name : XRT_DEVICE_INVALID;
 
-		if (left != XRT_DEVICE_ROLE_UNASSIGNED) {
-			auto *left_dev = static_cast<ControllerDevice *>(xsysd->static_xdevs[left]);
-			left_dev->set_active_hand(XRT_HAND_LEFT);
+		// Tell the devices which hand they are now, as b_system_devices does for the boot roles.
+		if (left != XRT_DEVICE_ROLE_UNASSIGNED && xsysd->static_xdevs[left]->supported.notify_chirality) {
+			xrt_device_notify_chirality(xsysd->static_xdevs[left], true, XRT_HAND_LEFT);
 		}
-
-		if (right != XRT_DEVICE_ROLE_UNASSIGNED) {
-			auto *right_dev = static_cast<ControllerDevice *>(xsysd->static_xdevs[right]);
-			right_dev->set_active_hand(XRT_HAND_RIGHT);
+		if (right != XRT_DEVICE_ROLE_UNASSIGNED && xsysd->static_xdevs[right]->supported.notify_chirality) {
+			xrt_device_notify_chirality(xsysd->static_xdevs[right], true, XRT_HAND_RIGHT);
 		}
 	}
 
@@ -1162,55 +1260,16 @@ get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 	return XRT_SUCCESS;
 }
 
-void
-destroy(struct xrt_system_devices *xsysd)
+extern "C" xrt_result_t
+steamvr_lh_get_roles(struct xrt_system_devices *xsysd, struct xrt_system_roles *out_roles)
 {
-	Context *ctx = svrs->ctx.get();
-
-	// LH_STANDBY_ON_EXIT: standby first, while the context still finds every
-	// device. The lighthouse driver only powers a controller off in
-	// EnterStandby() after reading its Prop_DeviceCanPowerOff_Bool back
-	// through the device's property container, and the controller slots are
-	// emptied below.
-	if (ctx != nullptr) {
-		if (ctx->hmd != nullptr) {
-			ctx->hmd->enter_standby_on_exit();
-		}
-		for (size_t j = 0; j < MAX_CONTROLLERS; j++) {
-			if (ctx->controller[j] != nullptr) {
-				ctx->controller[j]->enter_standby_on_exit();
-			}
-		}
+	std::shared_ptr<Context> ctx = g_context.lock();
+	if (ctx == nullptr) {
+		// No system has been created (yet, or any more).
+		return XRT_ERROR_DEVICE_CREATION_FAILED;
 	}
 
-	// Controllers that never made it into xsysd (Activate() failed) still hold
-	// a reference to the context: destroy them here so nothing leaks and the
-	// use_count check below holds. Must run while static_xdevs is intact.
-	for (size_t j = 0; ctx != nullptr && j < MAX_CONTROLLERS; j++) {
-		struct xrt_device *cd = ctx->controller[j];
-		if (cd == nullptr) {
-			continue;
-		}
-		bool published = false;
-		for (uint32_t i = 0; i < ARRAY_SIZE(xsysd->static_xdevs); i++) {
-			if (xsysd->static_xdevs[i] == cd) {
-				published = true;
-				break;
-			}
-		}
-		if (!published) {
-			xrt_device_destroy(&cd);
-		}
-		ctx->controller[j] = nullptr;
-	}
-
-	for (uint32_t i = 0; i < ARRAY_SIZE(xsysd->static_xdevs); i++) {
-		xrt_device_destroy(&xsysd->static_xdevs[i]);
-	}
-
-	assert(svrs->ctx.use_count() == 1);
-	svrs->ctx.reset();
-	free(svrs);
+	return ctx->get_roles(xsysd, out_roles);
 }
 
 extern "C" void
@@ -1219,33 +1278,33 @@ steamvr_lh_set_device_added_callback(struct xrt_system_devices *xsysd,
                                      void *userdata)
 {
 	(void)xsysd; // There is only ever one steamvr_lh system.
-	svrs->ctx->device_added_cb = callback;
-	svrs->ctx->device_added_ud = userdata;
+	std::shared_ptr<Context> ctx = g_context.lock();
+	if (ctx == nullptr) {
+		return;
+	}
+
+	std::lock_guard lk(ctx->devices_mut);
+	ctx->device_added_cb = callback;
+	ctx->device_added_ud = userdata;
 }
 
 extern "C" bool
 steamvr_lh_device_is_connected(struct xrt_device *xdev)
 {
-	if (xdev == NULL || svrs == NULL || svrs->ctx == nullptr) {
+	std::shared_ptr<Context> ctx = g_context.lock();
+	if (ctx == nullptr) {
 		return false;
 	}
 
-	Context *ctx = svrs->ctx.get();
-	if (ctx->hmd != nullptr && xdev == ctx->hmd) {
-		return ctx->hmd->connected.load(std::memory_order_relaxed);
-	}
-	for (size_t j = 0; j < MAX_CONTROLLERS; j++) {
-		if (ctx->controller[j] != nullptr && xdev == ctx->controller[j]) {
-			return ctx->controller[j]->connected.load(std::memory_order_relaxed);
-		}
-	}
+	std::lock_guard lk(ctx->devices_mut);
+	Device *dev = ctx->device_from_xdev_locked(xdev);
 
 	// Not one of ours (e.g. a glove device).
-	return false;
+	return dev != nullptr && dev->connected.load(std::memory_order_relaxed);
 }
 
 extern "C" enum xrt_result
-steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices **out_xsysd)
+steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices *xsysd)
 {
 	u_logging_level level = debug_get_log_option_lh_log();
 	// The driver likes to create a bunch of transient folders -
@@ -1305,55 +1364,47 @@ steamvr_lh_create_devices(struct xrt_prober *xp, struct xrt_system_devices **out
 	if (debug_get_bool_option_lh_load_slimevr() &&
 	    !loadDriver("/drivers/slimevr/bin/" OVR_PLAT_SUBDIR "/driver_slimevr" OVR_PLAT_EXT, false))
 		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
-	svrs->ctx = Context::create(STEAM_INSTALL_DIR, steamvr, std::move(drivers));
-	if (svrs->ctx == nullptr)
+	auto ctx = Context::create(STEAM_INSTALL_DIR, steamvr, std::move(drivers));
+	if (ctx == nullptr)
 		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
 
 	U_LOG_IFL_I(level, "Lighthouse initialization complete, giving time to setup connected devices...");
 	// RunFrame needs to be called to detect controllers
-	svrs->ctx->wait_for_discover();
+	ctx->wait_for_discover();
 	U_LOG_IFL_I(level, "Device search time complete.");
 
-	if (out_xsysd == NULL || *out_xsysd != NULL) {
-		U_LOG_IFL_E(level, "Invalid output system pointer");
+	if (xsysd == NULL) {
+		U_LOG_IFL_E(level, "Invalid system pointer");
 		return xrt_result::XRT_ERROR_DEVICE_CREATION_FAILED;
 	}
 
-	struct xrt_system_devices *xsysd = &svrs->base;
-
-	std::lock_guard lk(svrs->ctx->devices_mut);
-	svrs->ctx->in_setup = false;
-
-	u_system_devices_populate_function_pointers(xsysd, get_roles, destroy);
-	xsysd->create_body_tracker = b_body_tracker_create;
-	xsysd->create_hand_tracker = b_hand_tracker_create;
+	std::lock_guard lk(ctx->devices_mut);
+	ctx->in_setup = false;
 
 	// Include the HMD
-	if (svrs->ctx->hmd) {
-		if (svrs->ctx->hmd->variant == VIVE_VARIANT_PRO2 && !svrs->ctx->hmd->init_vive_pro_2(xp)) {
+	if (ctx->hmd) {
+		if (ctx->hmd->variant == VIVE_VARIANT_PRO2 && !ctx->hmd->init_vive_pro_2(xp)) {
 			U_LOG_IFL_W(level, "Found Vive Pro 2, but failed to initialize.");
 		}
 
-		// Always have a head at index 0 and iterate dev count.
-		xsysd->static_xdevs[xsysd->static_xdev_count] = svrs->ctx->hmd;
-		xsysd->static_roles.head = xsysd->static_xdevs[xsysd->static_xdev_count++];
+		xsysd->static_xdevs[xsysd->static_xdev_count++] = ctx->hmd;
 	}
 
 	// Include the controllers
 	for (size_t i = 0; i < MAX_CONTROLLERS; i++) {
-		if (svrs->ctx->controller[i]) {
-			xsysd->static_xdevs[xsysd->static_xdev_count++] = svrs->ctx->controller[i];
+		if (ctx->controller[i]) {
+			xsysd->static_xdevs[xsysd->static_xdev_count++] = ctx->controller[i];
 		}
 	}
 
-	// Give context a reference to xsysd so the frame thread can append
+	// Give the context a reference to xsysd so the frame thread can publish
 	// devices that are hotplugged after boot.
-	svrs->ctx->xsysd = xsysd;
+	ctx->xsysd = xsysd;
 
 	// Valid generations start at 1 (clients cache starting from 0).
-	cached_roles.generation_id = 1;
+	ctx->cached_roles.generation_id = 1;
 
-	*out_xsysd = xsysd;
+	g_context = ctx;
 
 	return xrt_result::XRT_SUCCESS;
 }

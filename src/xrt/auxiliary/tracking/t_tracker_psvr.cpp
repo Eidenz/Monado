@@ -1571,7 +1571,6 @@ process(TrackerPSVR &t, struct xrt_frame *xf)
 			float xdiff = r_blob.pt.x - l_blob.pt.x;
 			float ydiff = r_blob.pt.y - l_blob.pt.y;
 			if ((ydiff < 3.0f) && (ydiff > -3.0f) && (abs(xdiff) < lowest_dist)) {
-				lowest_dist = abs(xdiff);
 				r_index = j;
 				l_index = i;
 			}

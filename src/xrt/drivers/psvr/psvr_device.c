@@ -376,11 +376,9 @@ handle_tracker_sensor_msg(struct psvr_device *psvr, unsigned char *buffer, int s
 	// Simplest is the buttons.
 	psvr->buttons = s->buttons;
 
-	uint32_t tick_delta = 500;
-
 	// Startup correction, ignore last_sample_tick if zero.
 	if (last_sample_tick > 0) {
-		tick_delta = calc_delta_and_handle_rollover(s->samples[0].tick, last_sample_tick);
+		uint32_t tick_delta = calc_delta_and_handle_rollover(s->samples[0].tick, last_sample_tick);
 
 		// The PSVR device can buffer sensor data from previous
 		// sessions which we can get at the start of new sessions.
@@ -388,7 +386,6 @@ handle_tracker_sensor_msg(struct psvr_device *psvr, unsigned char *buffer, int s
 		// @todo Maybe reset sensor fusion?
 		if (tick_delta < 400 || tick_delta > 600) {
 			PSVR_DEBUG(psvr, "tick_delta = %u", tick_delta);
-			tick_delta = 500;
 		}
 	}
 

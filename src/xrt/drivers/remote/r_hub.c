@@ -411,7 +411,13 @@ r_hub_system_devices_destroy(struct xrt_system_devices *xsysd)
  */
 
 xrt_result_t
-r_create_devices(uint16_t port, uint32_t view_count, struct xrt_system_devices **out_xsysd)
+r_create_devices(uint16_t port,
+                 uint32_t view_count,
+                 uint32_t w_pixels,
+                 uint32_t h_pixels,
+                 float w_meters,
+                 float h_meters,
+                 struct xrt_system_devices **out_xsysd)
 {
 	int ret;
 
@@ -447,6 +453,10 @@ r_create_devices(uint16_t port, uint32_t view_count, struct xrt_system_devices *
 	r->gui.right = true;
 	r->port = port;
 	r->view_count = view_count;
+	r->w_pixels = w_pixels;
+	r->h_pixels = h_pixels;
+	r->w_meters = w_meters;
+	r->h_meters = h_meters;
 	r->accept_fd = -1;
 	r->rc.fd = -1;
 

@@ -80,7 +80,7 @@ enum role_enum
 #define CHECK_NOT_NULL(ARG)                                                                                            \
 	do {                                                                                                           \
 		if (ARG == NULL) {                                                                                     \
-			PE("Argument '" #ARG "' can not be null!");                                                    \
+			PE("Argument '" #ARG "' can not be null!\n");                                                  \
 			return MND_ERROR_INVALID_VALUE;                                                                \
 		}                                                                                                      \
 	} while (false)
@@ -88,7 +88,7 @@ enum role_enum
 #define CHECK_CLIENT_ID(ID)                                                                                            \
 	do {                                                                                                           \
 		if (ID == 0 && ID > INT_MAX) {                                                                         \
-			PE("Invalid client id (%u)", ID);                                                              \
+			PE("Invalid client id (%u)\n", ID);                                                            \
 			return MND_ERROR_INVALID_VALUE;                                                                \
 		}                                                                                                      \
 	} while (false)
@@ -96,7 +96,7 @@ enum role_enum
 #define CHECK_CLIENT_INDEX(INDEX)                                                                                      \
 	do {                                                                                                           \
 		if (INDEX >= root->clients.id_count) {                                                                 \
-			PE("Invalid client index, too large (%u)", INDEX);                                             \
+			PE("Invalid client index, too large (%u)\n", INDEX);                                           \
 			return MND_ERROR_INVALID_VALUE;                                                                \
 		}                                                                                                      \
 	} while (false)
@@ -176,6 +176,33 @@ update_device_list_and_infos(mnd_root_t *root)
 	return MND_SUCCESS;
 }
 
+static enum xrt_view_type
+mnd_view_type_to_xrt(mnd_view_type_t mnd_view_type)
+{
+	switch (mnd_view_type) {
+	case MND_VIEW_TYPE_INVALID: return XRT_VIEW_TYPE_INVALID;
+	case MND_VIEW_TYPE_MONO: return XRT_VIEW_TYPE_MONO;
+	case MND_VIEW_TYPE_STEREO: return XRT_VIEW_TYPE_STEREO;
+	case MND_VIEW_TYPE_QUAD: return XRT_VIEW_TYPE_QUAD;
+	}
+
+	return XRT_VIEW_TYPE_INVALID;
+}
+
+static bool
+xrt_view_type_to_mnd(enum xrt_view_type xrt_view_type, mnd_view_type_t *out_mnd_view_type)
+{
+	switch (xrt_view_type) {
+	case XRT_VIEW_TYPE_MAX: break;
+	case XRT_VIEW_TYPE_INVALID: *out_mnd_view_type = MND_VIEW_TYPE_INVALID; return true;
+	case XRT_VIEW_TYPE_MONO: *out_mnd_view_type = MND_VIEW_TYPE_MONO; return true;
+	case XRT_VIEW_TYPE_STEREO: *out_mnd_view_type = MND_VIEW_TYPE_STEREO; return true;
+	case XRT_VIEW_TYPE_QUAD: *out_mnd_view_type = MND_VIEW_TYPE_QUAD; return true;
+	}
+
+	return false;
+}
+
 
 /*
  *
@@ -206,6 +233,7 @@ mnd_root_create(mnd_root_t **out_root)
 	mnd_root_t *r = U_TYPED_CALLOC(mnd_root_t);
 
 	struct xrt_instance_info info = {0};
+	info.app_info.immediate_disconnect = true;
 	snprintf(info.app_info.application_name, sizeof(info.app_info.application_name), "%s", "libmonado");
 
 	xrt_result_t xret = ipc_client_connection_init(&r->ipc_c, U_LOGGING_INFO, &info);
@@ -406,6 +434,164 @@ mnd_root_set_client_io_blocks(mnd_root_t *root, uint32_t client_id, mnd_io_block
 	if (r != XRT_SUCCESS) {
 		PE("Failed to set io blocks for client id: %u.\n", client_id);
 		return MND_ERROR_OPERATION_FAILED;
+	}
+
+	return MND_SUCCESS;
+}
+
+mnd_result_t
+mnd_root_get_client_session_running_state(mnd_root_t *root, uint32_t client_id, mnd_session_state_t *out_session_state)
+{
+	CHECK_NOT_NULL(root);
+	CHECK_CLIENT_ID(client_id);
+	CHECK_NOT_NULL(out_session_state);
+
+	struct xrt_compositor_session_running_state running_state;
+	xrt_result_t r = ipc_call_system_get_client_session_running_state(&root->ipc_c, client_id, &running_state);
+	if (r != XRT_SUCCESS) {
+		PE("Failed to get session running state for client id: %u.\n", client_id);
+		return MND_ERROR_OPERATION_FAILED;
+	}
+
+	out_session_state->running = running_state.running;
+
+	if (!xrt_view_type_to_mnd(running_state.active_view_type, &out_session_state->active_view_type)) {
+		PE("Unsupported view type '%u' for client id: %u.\n", running_state.active_view_type, client_id);
+		return MND_ERROR_OPERATION_FAILED;
+	}
+
+	return MND_SUCCESS;
+}
+
+mnd_result_t
+mnd_root_get_client_system_view_config(mnd_root_t *root,
+                                       uint32_t client_id,
+                                       mnd_view_type_t mnd_view_type,
+                                       mnd_view_config_view_t *out_default_view_config,
+                                       mnd_recommended_view_config_t *out_recommended_view_config)
+{
+	CHECK_NOT_NULL(root);
+	CHECK_CLIENT_ID(client_id);
+	CHECK_NOT_NULL(out_default_view_config);
+	CHECK_NOT_NULL(out_recommended_view_config);
+
+	enum xrt_view_type view_type = mnd_view_type_to_xrt(mnd_view_type);
+
+	if (view_type == XRT_VIEW_TYPE_INVALID) {
+		PE("Invalid view type '%u'!\n", mnd_view_type);
+		return MND_ERROR_INVALID_VALUE;
+	}
+
+	uint32_t view_count = xrt_view_type_view_count(view_type);
+
+	struct xrt_view_config view_config_default;
+	struct xrt_recommended_view_config view_config_recommended;
+	xrt_result_t r = ipc_call_system_get_client_view_config(&root->ipc_c, client_id, view_type,
+	                                                        &view_config_default, &view_config_recommended);
+	if (r != XRT_SUCCESS) {
+		PE("Failed to get view config for client id: %u.\n", client_id);
+		return MND_ERROR_OPERATION_FAILED;
+	}
+
+	if (view_count != view_config_default.view_count) {
+		PE("View count mismatch for default config! Expected %u, got %u.\n", view_count,
+		   view_config_default.view_count);
+		return MND_ERROR_OPERATION_FAILED;
+	}
+
+	if (view_config_recommended.valid && view_count != view_config_recommended.view_count) {
+		PE("View count mismatch for recommended config! Expected %u, got %u.\n", view_count,
+		   view_config_recommended.view_count);
+		return MND_ERROR_OPERATION_FAILED;
+	}
+
+	(*out_recommended_view_config) = (mnd_recommended_view_config_t){
+	    .valid = view_config_recommended.valid,
+	};
+	for (uint32_t i = 0; i < view_count; i++) {
+		out_default_view_config[i] = (mnd_view_config_view_t){
+		    .width_pixels = view_config_default.views[i].recommended.width_pixels,
+		    .height_pixels = view_config_default.views[i].recommended.height_pixels,
+		    .sample_count = view_config_default.views[i].recommended.sample_count,
+		};
+
+		out_recommended_view_config->view_configs[i] = (mnd_view_config_view_t){
+		    .width_pixels = view_config_recommended.views[i].width_pixels,
+		    .height_pixels = view_config_recommended.views[i].height_pixels,
+		    .sample_count = view_config_recommended.views[i].sample_count,
+		};
+	}
+
+	return MND_SUCCESS;
+}
+
+mnd_result_t
+mnd_root_set_client_recommended_view_config(mnd_root_t *root,
+                                            uint32_t client_id,
+                                            mnd_view_type_t mnd_view_type,
+                                            const mnd_recommended_view_config_t *recommended_view_config)
+{
+	CHECK_NOT_NULL(root);
+	CHECK_CLIENT_ID(client_id);
+	CHECK_NOT_NULL(recommended_view_config);
+
+	mnd_result_t mret = get_client_info(root, client_id);
+	if (mret < 0) {
+		return mret; // Prints error.
+	}
+
+	if (!root->app_state.info.view_configuration_views_change_supported) {
+		PE("Client does not support setting recommended view config for client id: %u.\n", client_id);
+		return MND_ERROR_UNSUPPORTED_OPERATION;
+	}
+
+	enum xrt_view_type view_type = mnd_view_type_to_xrt(mnd_view_type);
+
+	if (view_type == XRT_VIEW_TYPE_INVALID) {
+		PE("Invalid view type '%u'!\n", view_type);
+		return MND_ERROR_INVALID_VALUE;
+	}
+
+	uint32_t view_count = xrt_view_type_view_count(view_type);
+
+	struct xrt_recommended_view_config xrt_view_config = {
+	    .view_count = view_count,
+	};
+	for (uint32_t i = 0; i < view_count; i++) {
+		xrt_view_config.views[i].width_pixels = recommended_view_config->view_configs[i].width_pixels;
+		xrt_view_config.views[i].height_pixels = recommended_view_config->view_configs[i].height_pixels;
+		xrt_view_config.views[i].sample_count = recommended_view_config->view_configs[i].sample_count;
+	}
+
+	xrt_result_t r = ipc_call_system_set_client_recommended_view_config( //
+	    &root->ipc_c,                                                    //
+	    client_id,                                                       //
+	    view_type,                                                       //
+	    &xrt_view_config);                                               //
+	if (r != XRT_SUCCESS) {
+		PE("Failed to set recommended view config for client id: %u.\n", client_id);
+		return MND_ERROR_OPERATION_FAILED;
+	}
+
+	return MND_SUCCESS;
+}
+
+mnd_result_t
+mnd_root_get_client_property_bool(mnd_root_t *root, uint32_t client_id, mnd_property_t prop, bool *out_bool)
+{
+	CHECK_NOT_NULL(root);
+	CHECK_NOT_NULL(out_bool);
+
+	mnd_result_t mret = get_client_info(root, client_id);
+	if (mret < 0) {
+		return mret; // Prints error.
+	}
+
+	switch (prop) {
+	case MND_PROPERTY_SUPPORTS_VIEW_CONFIGURATION_CHANGE_BOOL:
+		*out_bool = root->app_state.info.view_configuration_views_change_supported;
+		break;
+	default: PE("Is not a valid boolean property (%u)", prop); return MND_ERROR_INVALID_PROPERTY;
 	}
 
 	return MND_SUCCESS;

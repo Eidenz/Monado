@@ -165,10 +165,80 @@ print_linux_end_user_started_information(enum u_logging_level log_level)
 	U_LOG_IFL_I(log_level, "%s", sink.buffer);
 }
 
+#ifdef XRT_OS_WINDOWS
+/*!
+ * Cancel the blocking read each client thread is sitting in.
+ *
+ * The epoll based client loop wakes up on its own timeout and so notices
+ * `s->running` going false, but the Windows one blocks in ReadFile() with no
+ * timeout and would only notice once the client happens to send something.
+ * Cancelling the pending I/O makes that read fail so the thread can run its
+ * shutdown and be joined.
+ *
+ * The client thread closes this handle in common_shutdown() while holding the
+ * global state lock, so take it here as well, otherwise we could cancel I/O on
+ * a handle that has just been closed and possibly reused.
+ */
+static void
+cancel_all_client_io(struct ipc_server *s)
+{
+	os_mutex_lock(&s->global_state.lock);
+
+	for (uint32_t i = 0; i < IPC_MAX_CLIENTS; i++) {
+		struct ipc_thread *it = &s->threads[i];
+		if (it->state == IPC_THREAD_READY) {
+			continue;
+		}
+
+		xrt_ipc_handle_t ipc_handle = it->ics.imc.ipc_handle;
+		if (!xrt_ipc_handle_is_valid(ipc_handle)) {
+			continue;
+		}
+
+		CancelIoEx(ipc_handle, NULL);
+	}
+
+	os_mutex_unlock(&s->global_state.lock);
+}
+#endif // XRT_OS_WINDOWS
+
+/*!
+ * Join any still-running per-client threads.
+ *
+ * On shutdown @ref main_loop returns as soon as `s->running` is cleared, but the
+ * per-client threads may still be inside common_shutdown(), which destroys each
+ * client's compositor and dereferences `s->xsysd` / `s->xso`. Waiting for them
+ * here, before teardown_all() destroys those resources, avoids a race where a
+ * client thread locks a mutex the teardown below has already freed (observed as
+ * an `om->initialized` assertion in multi_compositor_destroy). `s->running` is
+ * already false by this point, so the epoll based client loop exits on its next
+ * timeout; the Windows one is woken by @ref cancel_all_client_io.
+ */
+static void
+join_all_client_threads(struct ipc_server *s)
+{
+#ifdef XRT_OS_WINDOWS
+	cancel_all_client_io(s);
+#endif
+
+	for (uint32_t i = 0; i < IPC_MAX_CLIENTS; i++) {
+		struct ipc_thread *it = &s->threads[i];
+		if (it->state == IPC_THREAD_READY) {
+			continue;
+		}
+		os_thread_join(&it->thread);
+		os_thread_destroy(&it->thread);
+		it->state = IPC_THREAD_READY;
+	}
+}
+
 static void
 teardown_all(struct ipc_server *s)
 {
 	u_var_remove_root(s);
+
+	// Client threads reference the resources destroyed below; wait them out first.
+	join_all_client_threads(s);
 
 	xrt_syscomp_destroy(&s->xsysc);
 
@@ -373,6 +443,15 @@ shutdown_clients(struct ipc_server *s)
 	for (uint32_t i = 0; i < IPC_MAX_CLIENTS; i++) {
 		struct ipc_thread *it = &s->threads[i];
 		volatile struct ipc_client_state *ics = &it->ics;
+		if (ics->client_state.info.immediate_disconnect) {
+			// instantly disconnect clients with this flag
+			// some clients (e.g. libmonado) have no session or event polling to respond to an exit request
+			U_LOG_I("Disconnecting client (Client %d): %s", ics->client_state.id,
+			        ics->client_state.info.application_name);
+			it->state = IPC_THREAD_STOPPING;
+			continue;
+		}
+
 		if (it->state == IPC_THREAD_READY || it->state == IPC_THREAD_STOPPING || ics->xs == NULL)
 			continue;
 
@@ -696,6 +775,110 @@ set_client_controller_freeze_locked(struct ipc_server *s, uint32_t client_id, bo
 	return XRT_SUCCESS;
 }
 
+static xrt_result_t
+get_client_session_running_state_locked(struct ipc_server *s,
+                                        uint32_t client_id,
+                                        struct xrt_compositor_session_running_state *out_running_state)
+{
+	volatile struct ipc_client_state *ics = find_client_locked(s, client_id);
+	if (ics == NULL) {
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	xrt_result_t xret = xrt_syscomp_session_get_running_state(s->xsysc, ics->xc, out_running_state);
+	if (xret != XRT_SUCCESS) {
+		IPC_ERROR(s, "Failed to get session running state for client '%u', error: '%s'", client_id,
+		          u_str_xrt_result_or_null(xret));
+		return xret;
+	}
+
+	return XRT_SUCCESS;
+}
+
+static xrt_result_t
+get_client_view_config_locked(struct ipc_server *s,
+                              uint32_t client_id,
+                              enum xrt_view_type view_type,
+                              struct xrt_view_config *out_default_view_config,
+                              struct xrt_recommended_view_config *out_recommended_view_config)
+{
+	volatile struct ipc_client_state *ics = find_client_locked(s, client_id);
+	if (ics == NULL) {
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	// The default view config comes from the system compositor, not from the client, so it is always available.
+	xrt_result_t xret = xrt_syscomp_get_view_config(s->xsysc, view_type, out_default_view_config);
+	if (xret != XRT_SUCCESS) {
+		IPC_ERROR(s, "Failed to get default view config for client '%u' and view type '%d', error: '%s'",
+		          client_id, view_type, u_str_xrt_result_or_null(xret));
+		return xret;
+	}
+
+	// A client without any app system has no recommendation.
+	(*out_recommended_view_config) = (struct xrt_recommended_view_config){
+	    .valid = false,
+	};
+
+	for (uint32_t i = 0; i < ARRAY_SIZE(ics->objects.xasys); i++) {
+		struct xrt_app_system *xasys = ics->objects.xasys[i];
+		if (xasys == NULL) {
+			continue;
+		}
+
+		xret = xrt_app_system_get_recommended_view_configuration( //
+		    xasys,                                                //
+		    view_type,                                            //
+		    out_recommended_view_config);
+		if (xret != XRT_SUCCESS) {
+			IPC_ERROR(
+			    s, "Failed to get recommended view config for client '%u' and view type '%d', error: '%s'",
+			    client_id, view_type, u_str_xrt_result_or_null(xret));
+			return xret;
+		}
+
+		// Only return the first system's view config
+		break;
+	}
+
+	return XRT_SUCCESS;
+}
+
+static xrt_result_t
+set_client_recommended_view_config_locked(struct ipc_server *s,
+                                          uint32_t client_id,
+                                          enum xrt_view_type view_type,
+                                          const struct xrt_recommended_view_config *recommended_view_config)
+{
+	volatile struct ipc_client_state *ics = find_client_locked(s, client_id);
+	if (ics == NULL) {
+		return XRT_ERROR_IPC_FAILURE;
+	}
+
+	for (uint32_t i = 0; i < ARRAY_SIZE(ics->objects.xasys); i++) {
+		struct xrt_app_system *xasys = ics->objects.xasys[i];
+		if (xasys == NULL) {
+			continue;
+		}
+
+		xrt_result_t xret = xrt_app_system_set_recommended_view_configuration( //
+		    xasys,                                                             //
+		    view_type,                                                         //
+		    recommended_view_config);
+		if (xret != XRT_SUCCESS) {
+			IPC_ERROR(
+			    s, "Failed to set recommended view config for client '%u' and view type '%d', error: '%s'",
+			    client_id, view_type, u_str_xrt_result_or_null(xret));
+			return xret;
+		}
+
+		// Only set the first system's view config
+		break;
+	}
+
+	return XRT_SUCCESS;
+}
+
 static uint32_t
 allocate_id_locked(struct ipc_server *s)
 {
@@ -820,6 +1003,46 @@ ipc_server_set_client_controller_freeze(struct ipc_server *s, uint32_t client_id
 {
 	os_mutex_lock(&s->global_state.lock);
 	xrt_result_t xret = set_client_controller_freeze_locked(s, client_id, freeze);
+	os_mutex_unlock(&s->global_state.lock);
+
+	return xret;
+}
+
+xrt_result_t
+ipc_server_get_client_session_running_state(struct ipc_server *s,
+                                            uint32_t client_id,
+                                            struct xrt_compositor_session_running_state *out_running_state)
+{
+	os_mutex_lock(&s->global_state.lock);
+	xrt_result_t xret = get_client_session_running_state_locked(s, client_id, out_running_state);
+	os_mutex_unlock(&s->global_state.lock);
+
+	return xret;
+}
+
+xrt_result_t
+ipc_server_get_client_view_config(struct ipc_server *s,
+                                  uint32_t client_id,
+                                  enum xrt_view_type view_type,
+                                  struct xrt_view_config *out_default_view_config,
+                                  struct xrt_recommended_view_config *out_recommended_view_config)
+{
+	os_mutex_lock(&s->global_state.lock);
+	xrt_result_t xret = get_client_view_config_locked(s, client_id, view_type, out_default_view_config,
+	                                                  out_recommended_view_config);
+	os_mutex_unlock(&s->global_state.lock);
+
+	return xret;
+}
+
+xrt_result_t
+ipc_server_set_client_recommended_view_config(struct ipc_server *s,
+                                              uint32_t client_id,
+                                              enum xrt_view_type view_type,
+                                              const struct xrt_recommended_view_config *recommended_view_config)
+{
+	os_mutex_lock(&s->global_state.lock);
+	xrt_result_t xret = set_client_recommended_view_config_locked(s, client_id, view_type, recommended_view_config);
 	os_mutex_unlock(&s->global_state.lock);
 
 	return xret;

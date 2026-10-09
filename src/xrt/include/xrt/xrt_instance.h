@@ -14,6 +14,7 @@
 #include "xrt/xrt_compiler.h"
 #include "xrt/xrt_defines.h"
 #include "xrt/xrt_config_os.h"
+#include "xrt/xrt_app_policy.h"
 
 
 #ifdef __cplusplus
@@ -72,6 +73,7 @@ struct xrt_platform_info
 struct xrt_application_info
 {
 	char application_name[XRT_MAX_APPLICATION_NAME_SIZE];
+	bool immediate_disconnect;
 	bool ext_hand_tracking_enabled;
 	bool ext_hand_tracking_data_source_enabled;
 	bool ext_eye_gaze_interaction_enabled;
@@ -84,6 +86,7 @@ struct xrt_application_info
 	bool meta_body_tracking_calibration_enabled;
 	bool meta_body_tracking_fidelity_enabled;
 	bool android_face_tracking_enabled;
+	bool view_configuration_views_change_supported;
 };
 
 /*!
@@ -177,6 +180,19 @@ struct xrt_instance
 	xrt_result_t (*get_prober)(struct xrt_instance *xinst, struct xrt_prober **out_xp);
 
 	/*!
+	 * Creates an application instance, should only be called once per application.
+	 *
+	 * All @ref xrt_app_instance instances created by this function are expected to be destroyed before the
+	 * xrt_instance is destroyed.
+	 *
+	 * @note Code consuming this interface should use xrt_instance_create_app_instance()
+	 *
+	 * @param      xinst      Pointer to self
+	 * @param[out] out_xainst Return of application instance, required.
+	 */
+	xrt_result_t (*create_app_instance)(struct xrt_instance *xinst, struct xrt_app_instance **out_xainst);
+
+	/*!
 	 * Destroy the instance and its owned objects, including the prober (if
 	 * any).
 	 *
@@ -249,6 +265,19 @@ XRT_NONNULL_ALL static inline xrt_result_t
 xrt_instance_get_prober(struct xrt_instance *xinst, struct xrt_prober **out_xp)
 {
 	return xinst->get_prober(xinst, out_xp);
+}
+
+/*!
+ * @copydoc xrt_instance::create_app_instance
+ *
+ * Helper for calling through the function pointer.
+ *
+ * @public @memberof xrt_instance
+ */
+XRT_NONNULL_ALL static inline xrt_result_t
+xrt_instance_create_app_instance(struct xrt_instance *xinst, struct xrt_app_instance **out_xainst)
+{
+	return xinst->create_app_instance(xinst, out_xainst);
 }
 
 /*!

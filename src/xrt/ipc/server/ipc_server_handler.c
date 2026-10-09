@@ -96,8 +96,8 @@ apply_controller_freeze(volatile struct ipc_client_state *ics_v,
 		// Rising edge for this space: snapshot the current pose, then hold it.
 		struct xrt_space_relation held = *out_relation;
 		held.relation_flags = (enum xrt_space_relation_flags)(
-		    held.relation_flags & ~(XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT |
-		                            XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT));
+		    held.relation_flags &
+		    ~(XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT | XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT));
 		held.linear_velocity = (struct xrt_vec3)XRT_VEC3_ZERO;
 		held.angular_velocity = (struct xrt_vec3)XRT_VEC3_ZERO;
 		ics->space_freeze_relation[space_id] = held;
@@ -1370,7 +1370,7 @@ _update_layers(volatile struct ipc_client_state *ics, struct ipc_layer_slot *slo
 			break;
 		case XRT_LAYER_PROJECTION_DEPTH:
 			xret = _update_projection_layer_depth(xc, ics, layer, i);
-			IPC_CHK_AND_RET(ics->server, xret, "_update_projection_depth_layer");
+			IPC_CHK_AND_RET(ics->server, xret, "_update_projection_layer_depth");
 			break;
 		case XRT_LAYER_QUAD:
 			xret = _update_quad_layer(xc, ics, layer, i);
@@ -1714,6 +1714,40 @@ ipc_handle_system_get_hold_pose_when_off(volatile struct ipc_client_state *_ics,
 	*out_hold = u_device_get_hold_pose_when_off() ? 1u : 0u;
 
 	return XRT_SUCCESS;
+}
+
+xrt_result_t
+ipc_handle_system_get_client_session_running_state(volatile struct ipc_client_state *_ics,
+                                                   uint32_t client_id,
+                                                   struct xrt_compositor_session_running_state *out_running_state)
+{
+	struct ipc_server *s = _ics->server;
+
+	return ipc_server_get_client_session_running_state(s, client_id, out_running_state);
+}
+
+xrt_result_t
+ipc_handle_system_get_client_view_config(volatile struct ipc_client_state *_ics,
+                                         uint32_t client_id,
+                                         enum xrt_view_type view_type,
+                                         struct xrt_view_config *out_default_view_config,
+                                         struct xrt_recommended_view_config *out_recommended_view_config)
+{
+	struct ipc_server *s = _ics->server;
+
+	return ipc_server_get_client_view_config(s, client_id, view_type, out_default_view_config,
+	                                         out_recommended_view_config);
+}
+
+xrt_result_t
+ipc_handle_system_set_client_recommended_view_config(volatile struct ipc_client_state *_ics,
+                                                     uint32_t client_id,
+                                                     enum xrt_view_type view_type,
+                                                     const struct xrt_recommended_view_config *recommended_view_config)
+{
+	struct ipc_server *s = _ics->server;
+
+	return ipc_server_set_client_recommended_view_config(s, client_id, view_type, recommended_view_config);
 }
 
 

@@ -365,7 +365,8 @@ euroc_player_fill_dataset_info(const char *path, euroc_player_dataset_info *data
 
 	size_t i = 0;
 	bool has_camera = euroc_player_preload_img_data(dataset->path, samples, i, 1);
-	while ((has_camera = euroc_player_preload_img_data(dataset->path, samples, ++i, 0))) {
+	while (has_camera) {
+		has_camera = euroc_player_preload_img_data(dataset->path, samples, ++i, 0);
 	}
 	size_t cam_count = i;
 	EUROC_ASSERT(cam_count <= EUROC_MAX_CAMS, "Increase EUROC_MAX_CAMS (dataset with %zu cams)", cam_count);

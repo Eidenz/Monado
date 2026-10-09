@@ -902,10 +902,9 @@ dump_menu(struct v4l2_fs *vid, uint32_t id, uint32_t min, uint32_t max)
 static void
 dump_contron_name(uint32_t id)
 {
-	const char *str = "ERROR";
 	switch (id) {
 #define CASE(CONTROL)                                                                                                  \
-	case V4L2_CID_##CONTROL: str = "V4L2_CID_" #CONTROL; break
+	case V4L2_CID_##CONTROL: fprintf(stderr, "V4L2_CID" #CONTROL); break;
 		CASE(BRIGHTNESS);
 		CASE(CONTRAST);
 		CASE(SATURATION);
@@ -976,9 +975,8 @@ dump_contron_name(uint32_t id)
 		CASE(IRIS_ABSOLUTE);
 		CASE(IRIS_RELATIVE);
 #undef CASE
-	default: fprintf(stderr, "0x%08x", id); return;
+	default: fprintf(stderr, "0x%08x", id); break;
 	}
-	fprintf(stderr, "%s", str);
 }
 
 static void

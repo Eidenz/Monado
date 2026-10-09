@@ -1,4 +1,4 @@
-// Copyright 2022-2024, Collabora, Ltd.
+// Copyright 2022-2026, Collabora, Ltd.
 // Copyright 2025-2026, NVIDIA CORPORATION.
 // SPDX-License-Identifier: BSL-1.0
 /*!
@@ -191,7 +191,12 @@ u_pp(struct u_pp_delegate dg, const char *fmt, ...)
 	ret = vsnprintf(dst, size_with_null, fmt, args);
 	va_end(args);
 
-	dg.func(dg.ptr, dst, size);
+	// Second call to `vsnprintf` with a buffer of the right size is supposed to succeed and write the exact amount.
+	assert(ret == (int)size);
+
+	if (ret > 0) {
+		dg.func(dg.ptr, dst, size);
+	}
 
 	if (tmp != dst) {
 		free(dst);

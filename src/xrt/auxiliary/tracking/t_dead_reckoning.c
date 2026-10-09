@@ -107,8 +107,8 @@ t_apply_dead_reckoning(struct m_ff_vec3_f32 *gyro_ff,
 
 		// Integrate gyroscope
 		struct xrt_quat angvel_delta = XRT_QUAT_IDENTITY;
-		struct xrt_vec3 scaled_half_g = m_vec3_mul_scalar(gyro, dt * 0.5f);
-		math_quat_exp(&scaled_half_g, &angvel_delta);        // Same as using math_quat_from_angle_vector(g/dt)
+		struct xrt_vec3 scaled_g = m_vec3_mul_scalar(gyro, dt);
+		math_quat_exp_so3(&scaled_g, &angvel_delta);         // Same as using math_quat_from_angle_vector(g/dt)
 		math_quat_rotate(orient, &angvel_delta, orient);     // Orientation
 		math_quat_rotate_derivative(orient, &gyro, ang_vel); // Angular velocity
 

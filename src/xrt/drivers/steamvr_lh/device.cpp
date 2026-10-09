@@ -302,6 +302,10 @@ ControllerDevice::ControllerDevice(vr::PropertyContainerHandle_t handle, const D
 	this->xrt_device::get_hand_tracking =
 	    &device_bouncer<ControllerDevice, &ControllerDevice::get_hand_tracking, xrt_result_t>;
 	this->xrt_device::set_output = &device_bouncer<ControllerDevice, &ControllerDevice::set_output, xrt_result_t>;
+	this->xrt_device::notify_chirality =
+	    &device_bouncer<ControllerDevice, &ControllerDevice::notify_chirality, xrt_result_t>;
+
+	this->supported.notify_chirality = true;
 
 	this->inputs_map["/skeleton/hand/left"] = &hand_tracking_inputs[XRT_HAND_LEFT];
 	this->inputs_map["/skeleton/hand/right"] = &hand_tracking_inputs[XRT_HAND_RIGHT];
@@ -344,10 +348,41 @@ Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx),
 
 	this->xrt_device::destroy = [](xrt_device *xdev) {
 		auto *dev = static_cast<Device *>(xdev);
-		// LH_STANDBY_ON_EXIT's standby happens earlier, see enter_standby_on_exit().
-		if (dev->driver) {
-			dev->driver->Deactivate();
+		auto &ctx = dev->ctx;
+
+		if (debug_get_bool_option_lh_standby_on_exit()) {
+			dev->driver->EnterStandby();
 		}
+		dev->driver->Deactivate();
+
+		// The context outlives us until the last device releases it, and its frame thread keeps
+		// running that whole time - unregister before tearing anything down so it cannot reach us.
+		{
+			std::lock_guard lk(ctx->devices_mut);
+
+			for (auto handle : dev->handles) {
+				// Remove all the handles this device has from the global tables
+				ctx->input.handle_to_input.erase(handle);
+				ctx->input.vec2_inputs.erase(handle);
+				ctx->input.skeleton_to_controller.erase(handle);
+				ctx->input.handle_to_device.erase(handle);
+			}
+
+			for (auto &input : dev->inputs_vec) {
+				// Remove all our vec2 inputs from the global table
+				ctx->input.vec2_input_to_components.erase(&input);
+			}
+
+			if (ctx->hmd == dev) {
+				ctx->hmd = nullptr;
+			}
+			for (ControllerDevice *&controller : ctx->controller) {
+				if (controller == dev) {
+					controller = nullptr;
+				}
+			}
+		}
+
 		delete dev;
 	};
 
@@ -357,14 +392,6 @@ Device::Device(const DeviceBuilder &builder) : xrt_device({}), ctx(builder.ctx),
 // NOTE: No operations that would force inputs_vec or finger_inputs_vec to reallocate (such as insertion)
 // should be done after this function is called, otherwise the pointers in inputs_map/finger_inputs_map
 // would be invalidated.
-void
-Device::enter_standby_on_exit()
-{
-	if (driver != nullptr && debug_get_bool_option_lh_standby_on_exit()) {
-		driver->EnterStandby();
-	}
-}
-
 void
 ControllerDevice::set_input_class(const InputClass *input_class)
 {
@@ -412,10 +439,13 @@ ControllerDevice::get_xrt_hand()
 	}
 }
 
-void
-ControllerDevice::set_active_hand(xrt_hand hand)
+xrt_result_t
+ControllerDevice::notify_chirality(bool has_chirality, xrt_hand chirality)
 {
-	this->skeleton_hand = hand;
+	// Just assume left hand if no chirality is specified
+	this->skeleton_hand = has_chirality ? chirality : XRT_HAND_LEFT;
+
+	return XRT_SUCCESS;
 }
 
 namespace {
@@ -834,9 +864,9 @@ Device::sync_dark_pose() const
 	rel.angular_velocity = {};
 	if (hold) {
 		// Held: the last good pose, standing still.
-		rel.relation_flags = (xrt_space_relation_flags)(
-		    rel.relation_flags & ~(XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT |
-		                           XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT));
+		rel.relation_flags =
+		    (xrt_space_relation_flags)(rel.relation_flags & ~(XRT_SPACE_RELATION_LINEAR_VELOCITY_VALID_BIT |
+		                                                      XRT_SPACE_RELATION_ANGULAR_VELOCITY_VALID_BIT));
 	} else {
 		// Released: untracked, like upstream Monado, so apps can take over.
 		rel.relation_flags = XRT_SPACE_RELATION_BITMASK_NONE;
@@ -907,11 +937,14 @@ HmdDevice::get_compositor_info(const struct xrt_device_compositor_mode *mode,
                                struct xrt_device_compositor_info *out_info)
 {
 	time_duration_ns scanout_time_ns;
+	enum xrt_panel_refresh_type panel_refresh_type;
 	enum xrt_scanout_direction scanout_direction;
 
-	vive_variant_scanout_info(this->variant, mode->frame_interval_ns, &scanout_time_ns, &scanout_direction);
+	vive_variant_scanout_info(this->variant, mode->frame_interval_ns, &scanout_time_ns, &scanout_direction,
+	                          &panel_refresh_type);
 
 	(*out_info) = {
+	    .panel_refresh_type = panel_refresh_type,
 	    .scanout_direction = scanout_direction,
 	    .scanout_time_ns = scanout_time_ns,
 	};
@@ -1450,7 +1483,7 @@ Device::update_pose(const vr::DriverPose_t &newPose) const
 	math_quat_rotate_vec3(&room.orientation, &relation.linear_velocity, &relation.linear_velocity);
 	math_quat_rotate_vec3(&room.orientation, &relation.angular_velocity, &relation.angular_velocity);
 
-	const uint64_t ts = chrono_timestamp_ns() + static_cast<uint64_t>(newPose.poseTimeOffset * 1000000.0);
+	const int64_t ts = chrono_timestamp_ns() + time_s_to_ns(newPose.poseTimeOffset);
 
 	std::lock_guard lk(dark_mutex);
 	m_relation_history_push(relation_hist, &relation, ts);
@@ -1763,12 +1796,12 @@ ControllerDevice::handle_property_write(const vr::PropertyWrite_t &prop)
 		}
 		case vr::TrackedControllerRole_RightHand: {
 			this->device_type = XRT_DEVICE_TYPE_RIGHT_HAND_CONTROLLER;
-			set_active_hand(XRT_HAND_RIGHT);
+			this->skeleton_hand = XRT_HAND_RIGHT;
 			break;
 		}
 		case vr::TrackedControllerRole_LeftHand: {
 			this->device_type = XRT_DEVICE_TYPE_LEFT_HAND_CONTROLLER;
-			set_active_hand(XRT_HAND_LEFT);
+			this->skeleton_hand = XRT_HAND_LEFT;
 			break;
 		}
 		case vr::TrackedControllerRole_OptOut: {

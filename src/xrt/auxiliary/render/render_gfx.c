@@ -990,7 +990,7 @@ render_gfx_begin(struct render_gfx *render)
 	ret = vk->vkBeginCommandBuffer( //
 	    render->r->cmd,             //
 	    &begin_info);               //
-	VK_CHK_WITH_RET(ret, "vkResetCommandPool", false);
+	VK_CHK_WITH_RET(ret, "vkBeginCommandBuffer", false);
 
 	vk->vkCmdResetQueryPool(   //
 	    render->r->cmd,        //
@@ -1227,7 +1227,7 @@ render_gfx_mesh_draw(struct render_gfx *render, uint32_t mesh_index, VkDescripto
 
 	VkBuffer buffers[1] = {r->mesh.vbo.buffer};
 	VkDeviceSize offsets[1] = {0};
-	assert(ARRAY_SIZE(buffers) == ARRAY_SIZE(offsets));
+	static_assert(ARRAY_SIZE(buffers) == ARRAY_SIZE(offsets), "buffers and offsets array size mismatch");
 
 	vk->vkCmdBindVertexBuffers( //
 	    r->cmd,                 //

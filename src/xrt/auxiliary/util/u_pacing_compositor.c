@@ -344,10 +344,6 @@ predict_next_frame(struct pacing_compositor *pc, int64_t now_ns)
 			    diff_id, adjusted_last_present_time_ns);
 		}
 
-		if (diff_id > 1) {
-			diff_id = 1;
-		}
-
 		f = walk_forward_through_frames(pc, adjusted_last_present_time_ns, now_ns);
 	} else {
 		assert(last_predicted != NULL);

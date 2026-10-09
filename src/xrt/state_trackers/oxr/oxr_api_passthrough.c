@@ -157,7 +157,7 @@ oxr_xrPassthroughLayerSetStyleFB(XrPassthroughLayerFB layer, const XrPassthrough
 	OXR_TRACE_MARKER();
 	struct oxr_passthrough_layer *pl;
 	struct oxr_logger log;
-	OXR_VERIFY_PASSTHROUGH_LAYER_AND_INIT_LOG(&log, layer, pl, "oxr_xrPassthroughLayerResumeFB");
+	OXR_VERIFY_PASSTHROUGH_LAYER_AND_INIT_LOG(&log, layer, pl, "oxr_xrPassthroughLayerSetStyleFB");
 	OXR_VERIFY_ARG_TYPE_AND_NOT_NULL(&log, style, XR_TYPE_PASSTHROUGH_STYLE_FB);
 	OXR_VERIFY_PASSTHROUGH_LAYER_STYLE(&log, style);
 

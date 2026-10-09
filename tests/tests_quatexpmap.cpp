@@ -11,10 +11,10 @@
 #include "math/m_api.h"
 #include "math/m_vec3.h"
 
-#include "math/m_quatexpmap.hpp"
-#include "math/m_quatexpmap_ceres.hpp"
-
 #include "tinyceres/jet.hpp"
+
+#include "math/m_quatexpmap.hpp"
+#include "math/m_quatexpmap_tinyceres.hpp"
 
 #include <vector>
 
@@ -63,7 +63,14 @@ TEST_CASE("m_quatexpmap")
 		}
 	}
 
-	SECTION("Test quat_exp and quat_ln are inverses")
+	SECTION("Test quat_ln_so3 with antipodal identity rotation returns zero vector")
+	{
+		Eigen::Quaterniond quat = {-1, 0, 0, 0};
+		auto result = quat_ln_so3(quat);
+		CHECK(result == Eigen::Vector3d::Zero());
+	}
+
+	SECTION("Test quat_exp_so3 and quat_ln_so3 are inverses")
 	{
 		// We use rotations with less than PI radians as quat_ln will return the negative rotation otherwise
 		auto aa = GENERATE_COPY(xrt_vec3{0, 0, 0},            //
@@ -72,10 +79,10 @@ TEST_CASE("m_quatexpmap")
 		                        axis3 * (float)M_PI * 0.99f); //
 
 		xrt_quat quat{};
-		math_quat_exp(&aa, &quat);
+		math_quat_exp_so3(&aa, &quat);
 
 		xrt_vec3 expected_aa{};
-		math_quat_ln(&quat, &expected_aa);
+		math_quat_ln_so3(&quat, &expected_aa);
 
 		CHECK(m_vec3_len(expected_aa - aa) <= 0.001);
 
@@ -85,7 +92,7 @@ TEST_CASE("m_quatexpmap")
 		CHECK(m_vec3_len(expected_aa - aa) <= 0.001);
 	}
 
-	SECTION("quat_ln produces sane derivatives")
+	SECTION("quat_ln_so3 produces sane derivatives")
 	{
 		// Identity is a special case that we need to be sure not to produce NaN derivatives for
 		Eigen::Quaternion<ceres::Jet<double, 4>> identity_quat = {{1, 0}, {0, 1}, {0, 2}, {0, 3}};
@@ -105,7 +112,7 @@ TEST_CASE("m_quatexpmap")
 		}
 	}
 
-	SECTION("quat_exp produces sane derivatives")
+	SECTION("quat_exp_so3 produces sane derivatives")
 	{
 		Eigen::Vector3<ceres::Jet<double, 3>> identity_rot = {{0, 0}, {0, 1}, {0, 2}};
 		Eigen::Vector3<ceres::Jet<double, 3>> some_rot = {{0.3, 0}, {0.1, 1}, {0.2, 2}};
@@ -113,7 +120,7 @@ TEST_CASE("m_quatexpmap")
 		auto vecs = {identity_rot, some_rot};
 
 		for (const auto &vec : vecs) {
-			auto quat = quat_exp(vec);
+			auto quat = quat_exp_so3(vec);
 
 			CHECK(quat.coeffs().allFinite());
 
@@ -134,29 +141,10 @@ TEST_CASE("m_quatexpmap")
 		//        rotation from the axisangle. `quat_exp` would produce a quaternion with 2x real rotation.
 		map_quat(q) = quat_exp_so3(map_vec3(aa));
 
-		CHECK(q.x - (axis.x * sin(angle / 2)) <= 0.001);
-		CHECK(q.y - (axis.y * sin(angle / 2)) <= 0.001);
-		CHECK(q.z - (axis.z * sin(angle / 2)) <= 0.001);
-		CHECK(q.w - (cos(angle / 2)) <= 0.001);
-	}
-
-	SECTION("Test quat_exp(angle_axis) returns the appropriate quaternion")
-	{
-		float angle = M_PI_2;
-		xrt_vec3 axis = axis4;
-		xrt_vec3 aa = axis * angle;
-		xrt_quat q{};
-		// @note: Since quaternions store half-rotations, quat_exp is storing a quaternion with 2x the rotation
-		//        of the axis-angle. `quat_exp_so3` would produce a physically accurate rotation, rather than
-		//        the algobraic exponential map.
-		map_quat(q) = quat_exp(map_vec3(aa));
-
-		// @note the *2 is there for intent (quaternion stores half rotations, we're expected twice the
-		//       real-world axisangle)
-		CHECK(q.x - (axis.x * sin(angle / 2 * 2)) <= 0.001);
-		CHECK(q.y - (axis.y * sin(angle / 2 * 2)) <= 0.001);
-		CHECK(q.z - (axis.z * sin(angle / 2 * 2)) <= 0.001);
-		CHECK(q.w - (cos(angle / 2 * 2)) <= 0.001);
+		CHECK(fabsf(q.x - (axis.x * sin(angle / 2))) <= 0.001);
+		CHECK(fabsf(q.y - (axis.y * sin(angle / 2))) <= 0.001);
+		CHECK(fabsf(q.z - (axis.z * sin(angle / 2))) <= 0.001);
+		CHECK(fabsf(q.w - (cos(angle / 2))) <= 0.001);
 	}
 
 	SECTION(

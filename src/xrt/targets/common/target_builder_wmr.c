@@ -117,9 +117,7 @@ wmr_estimate_system(struct xrt_builder *xb,
 
 	// Lock the device list
 	xret = xrt_prober_lock_list(xp, &xpdevs, &xpdev_count);
-	if (xret != XRT_SUCCESS) {
-		return xret;
-	}
+	U_LOG_CHK_AND_RET(log_level, xret, "xrt_prober_lock_list");
 
 
 	/*
@@ -147,7 +145,7 @@ wmr_estimate_system(struct xrt_builder *xb,
 	 */
 
 	xret = xrt_prober_unlock_list(xp, &xpdevs);
-	assert(xret == XRT_SUCCESS);
+	U_LOG_CHK_AND_RET(log_level, xret, "xrt_prober_unlock_list");
 
 
 	/*
@@ -190,7 +188,6 @@ wmr_open_system_impl(struct xrt_builder *xb,
 	struct wmr_headset_search_results whsr = {0};
 	struct xrt_prober_device **xpdevs = NULL;
 	size_t xpdev_count = 0;
-	xrt_result_t xret_unlock = XRT_SUCCESS;
 	xrt_result_t xret = XRT_SUCCESS;
 
 	/*
@@ -221,8 +218,9 @@ wmr_open_system_impl(struct xrt_builder *xb,
 		U_LOG_IFL_E(log_level, "Could not find headset devices! (holo %p, companion %p)",
 		            (void *)whsr.xpdev_holo, (void *)whsr.xpdev_companion);
 
-		xret_unlock = xrt_prober_unlock_list(xp, &xpdevs);
-		assert(xret_unlock == XRT_SUCCESS);
+		if (xrt_prober_unlock_list(xp, &xpdevs) != XRT_SUCCESS) {
+			U_LOG_IFL_E(log_level, "xrt_prober_unlock_list failed");
+		}
 
 		return XRT_ERROR_DEVICE_CREATION_FAILED;
 	}
@@ -272,9 +270,9 @@ wmr_open_system_impl(struct xrt_builder *xb,
 	 * Tidy
 	 */
 
-	xret_unlock = xrt_prober_unlock_list(xp, &xpdevs);
-	assert(xret_unlock == XRT_SUCCESS);
-	(void)xret_unlock;
+	if (xrt_prober_unlock_list(xp, &xpdevs) != XRT_SUCCESS) {
+		U_LOG_IFL_E(log_level, "xrt_prober_unlock_list failed");
+	}
 
 	xsysd->static_xdevs[xsysd->static_xdev_count++] = head;
 	if (left != NULL) {
@@ -313,8 +311,9 @@ error:
 	xrt_device_destroy(&left);
 	xrt_device_destroy(&right);
 
-	xret_unlock = xrt_prober_unlock_list(xp, &xpdevs);
-	assert(xret_unlock == XRT_SUCCESS);
+	if (xrt_prober_unlock_list(xp, &xpdevs) != XRT_SUCCESS) {
+		U_LOG_IFL_E(log_level, "xrt_prober_unlock_list failed");
+	}
 
 	return xret;
 }

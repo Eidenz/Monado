@@ -109,30 +109,6 @@ cos_sq(Scalar theta_sq)
 }
 
 /*!
- * Fully-templated free function for quaternion exponentiation.
- *
- * Implementation inspired by Grassia, F. S. (1998). Practical Parameterization of Rotations Using the Exponential Map.
- * Journal of Graphics Tools, 3(3), 29–48. http://doi.org/10.1080/10867651.1998.10487493
- *
- * @note This is not the SO(3) version of the exponential map as defined by Grassia, this is the standard form of
- *       quaternion exponentiation, which is why we do not include the factor of 1/2.
- */
-template <typename Derived>
-inline Eigen::Quaternion<typename Derived::Scalar>
-quat_exp(Eigen::MatrixBase<Derived> const &vec)
-{
-	EIGEN_STATIC_ASSERT_VECTOR_SPECIFIC_SIZE(Derived, 3);
-	using Scalar = typename Derived::Scalar;
-	Scalar theta_sq = vec.squaredNorm();
-	Scalar vecscale = sinc_sq(theta_sq);
-	Eigen::Quaternion<Scalar> ret;
-	ret.vec() = vecscale * vec;
-	ret.w() = cos_sq(theta_sq);
-	// @note We don't normalize here since with all valid inputs, the output should be normalized already.
-	return ret;
-}
-
-/*!
  * Fully-templated free function for quaternion exponentiation, SO(3) version as described by Grassia.
  *
  * Implementation inspired by Grassia, F. S. (1998). Practical Parameterization of Rotations Using the Exponential Map.
@@ -153,39 +129,23 @@ quat_exp_so3(Eigen::MatrixBase<Derived> const &vec)
 	Eigen::Quaternion<Scalar> ret;
 	ret.vec() = vecscale * vec;
 	ret.w() = cos_sq(sq_half_theta);
-	// @note Ditto.
+	// @note We don't normalize here since with all valid inputs, the output should be normalized already.
 	return ret;
 }
 
 /*!
- * Taylor series expansion of theta over sin(theta), also known as cosecant, for
- * use near 0 when you want continuity and validity at 0.
- */
-template <typename Scalar>
-inline Scalar
-cscTaylorExpansion(Scalar theta)
-{
-	return Scalar(1) +
-	       // theta ^ 2 / 6
-	       (theta * theta) / Scalar(6) +
-	       // 7 theta^4 / 360
-	       (Scalar(7) * theta * theta * theta * theta) / Scalar(360) +
-	       // 31 theta^6/15120
-	       (Scalar(31) * theta * theta * theta * theta * theta * theta) / Scalar(15120);
-}
-
-/*!
- * Fully-templated free function for quaternion log map.
+ * Fully-templated free function for quaternion log map, SO(3) version.
  *
  * Assumes a unit quaternion.
  *
  * @note This is the log of the quaternion as given, not of the shortest rotation it represents: a quaternion with
- *       a negative w takes the long way round (phi > pi/2). Negate the coefficients before calling if you want
- *       the minimal result, as is usually wanted when the output feeds an optimizer residual.
+ *       a negative w takes the long way round, returning a rotation vector whose norm exceeds pi. Negate the
+ *       coefficients before calling if you want the minimal result, as is usually wanted when the output feeds
+ *       an optimizer residual.
  */
 template <typename Scalar>
 inline Eigen::Matrix<Scalar, 3, 1>
-quat_ln(Eigen::Quaternion<Scalar> const &quat)
+quat_ln_so3(Eigen::Quaternion<Scalar> const &quat)
 {
 	/*
 	 * ln q = ( (phi)/(norm of vec) vec, ln(norm of quat))
@@ -208,13 +168,15 @@ quat_ln(Eigen::Quaternion<Scalar> const &quat)
 		 */
 		const Scalar x2 = sqr_vecnorm / (quat.w() * quat.w());
 		const Scalar phiOverSin = (Scalar(1) - x2 / Scalar(3) + x2 * x2 / Scalar(5)) / quat.w();
-		return quat.vec() * phiOverSin;
+
+		// 2.0 term to produce the physical rotation vector
+		return Scalar(2) * (quat.vec() * phiOverSin);
 	}
 
 	/*
-	 * A zero vector part with a negative w is the identity rotation written antipodally. Every vector of norm pi
+	 * A zero vector part with a negative w is the identity rotation written antipodally. Every vector of norm 2pi
 	 * is an equally valid log of it, so there is no axis to recover; return the identity's log rather than an
-	 * arbitrary 180 degree rotation.
+	 * arbitrary 360 degree rotation.
 	 */
 	if (sqr_vecnorm == Scalar(0)) {
 		return Eigen::Matrix<Scalar, 3, 1>::Zero();
@@ -229,24 +191,10 @@ quat_ln(Eigen::Quaternion<Scalar> const &quat)
 	 * The coefficient is nominally phi / sin(phi), but for a unit quaternion sin(phi) is exactly the vector norm
 	 * we already have. Dividing by that is cheaper than evaluating sin(atan2(...)), and it stays accurate as phi
 	 * approaches pi, where sin(phi) loses its significant digits.
+	 *
+	 * 2.0 term to produce the physical rotation vector.
 	 */
-	return quat.vec() * (phi / vecnorm);
-}
-
-/*!
- * Fully-templated free function for the quaternion log map, SO(3) version as described by Grassia.
- *
- * Assumes a unit quaternion. Inverse of quat_exp_so3().
- *
- * @note See quat_ln() for the handling of a negative w.
- */
-template <typename Scalar>
-Eigen::Matrix<Scalar, 3, 1>
-quat_ln_so3(const Eigen::Quaternion<Scalar> &quat)
-{
-	// @note The SO(3) log map is the rotation vector, i.e. the full angle about the axis rather than the half angle
-	//       carried by the quaternion, hence the factor of 2.
-	return Scalar(2) * quat_ln(quat);
+	return Scalar(2) * (quat.vec() * (phi / vecnorm));
 }
 
 } // namespace xrt::auxiliary::math

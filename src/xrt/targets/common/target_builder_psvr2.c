@@ -83,9 +83,7 @@ psvr2_estimate_system(struct xrt_builder *xb,
 	U_ZERO(estimate);
 
 	xret = xrt_prober_lock_list(xp, &xpdevs, &xpdev_count);
-	if (xret != XRT_SUCCESS) {
-		return xret;
-	}
+	U_LOG_CHK_AND_RET(pb->log_level, xret, "xrt_prober_lock_list");
 
 	struct xrt_prober_device *dev =
 	    u_builder_find_prober_device(xpdevs, xpdev_count, PSVR2_VID, PSVR2_PID, XRT_BUS_TYPE_USB);
@@ -112,9 +110,9 @@ psvr2_estimate_system(struct xrt_builder *xb,
 	            estimate->certain.left, estimate->certain.right);
 
 	xret = xrt_prober_unlock_list(xp, &xpdevs);
-	assert(xret == XRT_SUCCESS);
+	U_LOG_CHK_AND_RET(pb->log_level, xret, "xrt_prober_unlock_list");
 
-	return XRT_SUCCESS;
+	return xret;
 }
 
 static xrt_result_t
