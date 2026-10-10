@@ -1144,10 +1144,18 @@ comp_renderer_draw(struct comp_renderer *r)
 	bool fast_path = c->base.frame_params.one_projection_layer_fast_path;
 	bool do_timewarp = !c->debug.atw_off;
 
+	// Capture this frame? Claimed here, before the render path is chosen: a
+	// screenshot reads the per-eye scratch image after the frame is drawn,
+	// and the fast path skips that image, so a capture frame must take the
+	// layer-squash path or the capture would be whatever an old frame (or
+	// nothing at all) left in it.
+	struct u_screenshot_request shot_req;
+	bool take_shot = comp_screenshot_consume_request(&r->screenshot, &shot_req);
+
 	// The frame-overlay (finger-frame feedback) draws into the per-eye scratch,
-	// which the compute fast path bypasses. Force the layer-squash path so the
-	// overlay is visible while it is active.
-	if (fast_path && comp_render_cs_frame_overlay_active()) {
+	// which the fast path bypasses. Force the layer-squash path so the overlay
+	// is visible while it is active.
+	if (fast_path && (take_shot || comp_render_cs_frame_overlay_active())) {
 		fast_path = false;
 	}
 
@@ -1255,8 +1263,9 @@ comp_renderer_draw(struct comp_renderer *r)
 	// mirror's GPU readback of the (undistorted) left-eye scratch image, then
 	// hands the frame to a worker thread so the PNG encode + disk write never
 	// stalls the compositor. On-demand only: zero cost when not capturing.
-	struct u_screenshot_request shot_req;
-	if (comp_screenshot_consume_request(&r->screenshot, &shot_req)) {
+	// The fast path was disabled above for this frame, so the scratch image
+	// holds exactly what was just squashed for the display.
+	if (take_shot) {
 		uint32_t scratch_index = frame_state.scratch_state.views[0].index;
 		struct comp_scratch_single_images *view = &c->scratch.views[0].cssi;
 		struct render_scratch_color_image *rsci = &view->images[scratch_index];
@@ -1265,6 +1274,12 @@ comp_renderer_draw(struct comp_renderer *r)
 
 		// Always read back the whole left-eye view; the crop (if any) is
 		// applied off-thread when writing the PNG.
+		//
+		// Sample through the UNORM view, not the sRGB one: the blit's
+		// output is an rgba8 UNORM storage image that is copied verbatim
+		// into the PNG, so the bytes must stay sRGB-encoded end to end.
+		// The sRGB view decodes to linear on sample and nothing re-encodes,
+		// which is what made captures look dark and washed out.
 		struct xrt_frame *shot = NULL;
 		xrt_result_t sret = comp_mirror_blit_to_frame( //
 		    &r->mirror_to_debug_gui,                   //
@@ -1272,7 +1287,7 @@ comp_renderer_draw(struct comp_renderer *r)
 		    frame_id,                                  //
 		    predicted_display_time_ns,                 //
 		    rsci->image,                               //
-		    rsci->srgb_view,                           //
+		    rsci->unorm_view,                          //
 		    c->nr.samplers.clamp_to_edge,              //
 		    extent,                                    //
 		    rect,                                      //
